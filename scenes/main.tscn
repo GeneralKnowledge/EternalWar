@@ -1,0 +1,38 @@
+[gd_scene load_steps=3 format=3 uid="uid://eternal_main"]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://scripts/chase_camera.gd" id="2_cam"]
+[ext_resource type="Script" path="res://scripts/battleship.gd" id="3_bs"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_main")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.766, -0.321, 0.557, 0, 0.866, 0.5, -0.643, -0.383, 0.663, 0, 500, 0)
+light_energy = 1.2
+
+[node name="ChaseCamera" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2800, 200, 400)
+current = true
+fov = 70.0
+far = 20000.0
+near = 0.5
+script = ExtResource("2_cam")
+
+[node name="FriendlyBattleship" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2200, 0, 0)
+script = ExtResource("3_bs")
+
+[node name="EnemyBattleship" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2200, 0, 0)
+script = ExtResource("3_bs")
+
+[node name="FriendlyFighterContainer" type="Node3D" parent="."]
+
+[node name="EnemyFighterContainer" type="Node3D" parent="."]
+
+[node name="ProjectileContainer" type="Node3D" parent="."]
+
+[node name="Player" type="Node3D" parent="."]
