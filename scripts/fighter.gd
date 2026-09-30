@@ -2,15 +2,21 @@ class_name Fighter
 extends Ship
 
 ## Shared fighter systems used by both player and AI craft.
+## Flight is BSGO-style Newtonian: attitude is independent of velocity.
+## Release thrust to cut engines and coast — flip freely without losing momentum.
 
 signal fired_weapon
 
-const DEFAULT_MAX_SPEED := 420.0
-const DEFAULT_ACCELERATION := 280.0
-const DEFAULT_TURN_RATE := 2.4
-const BOOST_MULTIPLIER := 1.75
-const STRAFE_FACTOR := 0.55
-const DRAG := 1.8
+const DEFAULT_MAX_SPEED := 520.0
+const DEFAULT_ACCELERATION := 320.0
+const DEFAULT_TURN_RATE := 2.8
+const BOOST_MULTIPLIER := 1.85
+const STRAFE_FACTOR := 0.65
+const REVERSE_FACTOR := 0.55
+## Tiny residual drag so coasting feels infinite for combat timescales.
+const COAST_DRAG := 0.02
+## Extra damping only when over max speed from boost/stacking.
+const OVERSPEED_DRAG := 1.6
 
 @export var max_speed: float = DEFAULT_MAX_SPEED
 @export var acceleration: float = DEFAULT_ACCELERATION
@@ -20,12 +26,15 @@ const DRAG := 1.8
 var velocity: Vector3 = Vector3.ZERO
 var throttle: float = 0.0
 var boosting: bool = false
+## True while main/strafe/reverse thrusters are commanded.
+var engines_lit: bool = false
 var current_target: Ship = null
 
 var weapon: Weapon = null
 var model_root: Node3D = null
 var engine_light: OmniLight3D = null
 var engine_particles: GPUParticles3D = null
+var _engine_glows: Array[MeshInstance3D] = []
 
 var _explosion_played: bool = false
 
@@ -71,13 +80,10 @@ func _build_model() -> void:
 	var accent := Color(0.15, 0.2, 0.3) if team == Teams.Side.FRIENDLY else Color(0.3, 0.12, 0.1)
 	var engine_col := Color(0.4, 0.75, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.45, 0.2)
 
-	# Main fuselage
 	var body := BoxMesh.new()
 	body.size = Vector3(1.6, 0.7, 5.5)
-	var body_mi := Ship.make_mesh(body, hull_color)
-	model_root.add_child(body_mi)
+	model_root.add_child(Ship.make_mesh(body, hull_color))
 
-	# Nose
 	var nose := PrismMesh.new()
 	nose.size = Vector3(1.2, 0.6, 2.0)
 	var nose_mi := Ship.make_mesh(nose, hull_color.lightened(0.1))
@@ -85,7 +91,6 @@ func _build_model() -> void:
 	nose_mi.position = Vector3(0, 0, -3.5)
 	model_root.add_child(nose_mi)
 
-	# Cockpit canopy
 	var canopy := SphereMesh.new()
 	canopy.radius = 0.45
 	canopy.height = 0.7
@@ -93,14 +98,12 @@ func _build_model() -> void:
 	canopy_mi.position = Vector3(0, 0.45, -0.8)
 	model_root.add_child(canopy_mi)
 
-	# Wings
 	var wing := BoxMesh.new()
 	wing.size = Vector3(6.5, 0.15, 2.2)
 	var wing_mi := Ship.make_mesh(wing, accent)
 	wing_mi.position = Vector3(0, -0.1, 0.6)
 	model_root.add_child(wing_mi)
 
-	# Wing tips
 	for side in [-1.0, 1.0]:
 		var tip := BoxMesh.new()
 		tip.size = Vector3(0.2, 0.8, 1.2)
@@ -108,7 +111,6 @@ func _build_model() -> void:
 		tip_mi.position = Vector3(side * 3.2, 0.2, 0.4)
 		model_root.add_child(tip_mi)
 
-	# Engines
 	for side in [-1.0, 1.0]:
 		var eng := CylinderMesh.new()
 		eng.top_radius = 0.35
@@ -126,8 +128,8 @@ func _build_model() -> void:
 		glow_mi.position = Vector3(side * 0.9, 0.0, 3.4)
 		glow_mi.name = "EngineGlow"
 		model_root.add_child(glow_mi)
+		_engine_glows.append(glow_mi)
 
-	# Soft selection / hit radius visual (invisible collision proxy via group queries)
 	var hit_sphere := SphereMesh.new()
 	hit_sphere.radius = 3.0
 	hit_sphere.height = 6.0
@@ -150,7 +152,7 @@ func _setup_engine_fx() -> void:
 	engine_particles.amount = 24
 	engine_particles.lifetime = 0.35
 	engine_particles.position = Vector3(0, 0, 3.5)
-	engine_particles.emitting = true
+	engine_particles.emitting = false
 	var mat := ParticleProcessMaterial.new()
 	mat.direction = Vector3(0, 0, 1)
 	mat.spread = 12.0
@@ -168,49 +170,88 @@ func _setup_engine_fx() -> void:
 	add_child(engine_particles)
 
 
-func apply_steering(desired_forward: Vector3, thrust_input: float, strafe: Vector3, boost: bool, delta: float) -> void:
+## Rotate toward a facing direction without changing velocity (attitude thrusters).
+func apply_attitude(desired_forward: Vector3, roll_input: float, delta: float) -> void:
 	if not is_alive:
 		return
-	boosting = boost
-	throttle = clampf(thrust_input, -0.35, 1.0)
-
 	if desired_forward.length_squared() > 0.0001:
-		var target_basis := Basis.looking_at(desired_forward.normalized(), Vector3.UP)
-		var current_q := quaternion
-		var target_q := target_basis.get_rotation_quaternion()
+		var up := Vector3.UP
+		# Prefer current up when nearly inverted so we can flip freely.
+		if absf(desired_forward.dot(up)) > 0.92:
+			up = global_transform.basis.y
+		var target_basis := Basis.looking_at(desired_forward.normalized(), up)
+		if absf(roll_input) > 0.01:
+			target_basis = target_basis.rotated(desired_forward.normalized(), -roll_input * turn_rate * 1.4 * delta)
 		var t := clampf(turn_rate * delta, 0.0, 1.0)
-		quaternion = current_q.slerp(target_q, t)
+		quaternion = quaternion.slerp(target_basis.get_rotation_quaternion(), t)
 
-	var speed_cap := max_speed * (BOOST_MULTIPLIER if boost else 1.0)
-	var forward_force := -global_transform.basis.z * throttle * acceleration * (BOOST_MULTIPLIER if boost else 1.0)
-	var strafe_force := (
-		global_transform.basis.x * strafe.x
-		+ global_transform.basis.y * strafe.y
-	) * acceleration * STRAFE_FACTOR
 
-	velocity += (forward_force + strafe_force) * delta
-	# Soft drag toward speed cap
+## BSGO-style thrusters: only change velocity when engines are commanded.
+## thrust_input: -1..1 (negative = reverse), strafe.x/y in local ship axes, boost multiplies forward.
+func apply_thrusters(thrust_input: float, strafe: Vector3, boost: bool, delta: float) -> void:
+	if not is_alive:
+		return
+
+	throttle = clampf(thrust_input, -1.0, 1.0)
+	boosting = boost and throttle > 0.05
+	var strafe_cmd := strafe
+	if strafe_cmd.length_squared() > 1.0:
+		strafe_cmd = strafe_cmd.normalized()
+
+	engines_lit = absf(throttle) > 0.02 or strafe_cmd.length_squared() > 0.01
+
+	if engines_lit:
+		var boost_mul := BOOST_MULTIPLIER if boosting else 1.0
+		var forward_acc := acceleration * boost_mul
+		if throttle < 0.0:
+			forward_acc = acceleration * REVERSE_FACTOR
+		var force := -global_transform.basis.z * throttle * forward_acc
+		force += global_transform.basis.x * strafe_cmd.x * acceleration * STRAFE_FACTOR
+		force += global_transform.basis.y * strafe_cmd.y * acceleration * STRAFE_FACTOR
+		velocity += force * delta
+
+	# Soft speed ceiling — does not yank you to a stop when engines cut.
+	var speed_cap := max_speed * (BOOST_MULTIPLIER if boosting else 1.0)
 	var speed := velocity.length()
 	if speed > speed_cap:
-		velocity = velocity.normalized() * lerpf(speed, speed_cap, 1.0 - exp(-DRAG * delta))
-	else:
-		velocity = velocity.lerp(velocity * (0.92 if throttle < 0.05 else 1.0), 1.0 - exp(-0.4 * delta))
+		velocity = velocity.normalized() * lerpf(speed, speed_cap, 1.0 - exp(-OVERSPEED_DRAG * delta))
+	elif speed > 0.01:
+		# Near-zero coast drag (engines off keeps momentum).
+		var drag := COAST_DRAG if not engines_lit else COAST_DRAG * 0.25
+		velocity *= exp(-drag * delta)
 
 	global_position += velocity * delta
 
 
+## Combined helper used by AI: face a direction and optionally thrust.
+func apply_steering(desired_forward: Vector3, thrust_input: float, strafe: Vector3, boost: bool, delta: float) -> void:
+	apply_attitude(desired_forward, 0.0, delta)
+	apply_thrusters(thrust_input, strafe, boost, delta)
+
+
 func _apply_flight_physics(_delta: float) -> void:
-	# Player / AI drive apply_steering externally.
 	pass
 
 
 func _update_engine_fx() -> void:
+	var lit := engines_lit and absf(throttle) > 0.02
+	var intensity := 0.15
+	if lit:
+		intensity = 0.9 + absf(throttle) * 2.2 + (1.8 if boosting else 0.0)
 	if engine_light:
-		var intensity := 0.8 + throttle * 2.0 + (1.5 if boosting else 0.0)
 		engine_light.light_energy = intensity
+		engine_light.visible = intensity > 0.2
 	if engine_particles:
-		engine_particles.amount = int(16 + throttle * 24 + (20 if boosting else 0))
-		engine_particles.emitting = throttle > 0.05 or boosting or velocity.length() > 20.0
+		engine_particles.emitting = lit and throttle > 0.05
+		if engine_particles.emitting:
+			engine_particles.amount = int(18 + absf(throttle) * 28 + (24 if boosting else 0))
+	for glow in _engine_glows:
+		if not is_instance_valid(glow):
+			continue
+		glow.visible = true
+		var mat := glow.material_override as StandardMaterial3D
+		if mat:
+			mat.emission_energy_multiplier = 0.35 + (4.5 if lit else 0.0) + (2.0 if boosting else 0.0)
 
 
 func get_speed() -> float:
@@ -268,6 +309,5 @@ func _play_destruction() -> void:
 	if audio and audio.has_method("play_explosion"):
 		audio.play_explosion(global_position)
 
-	# Delay free so managers can react to destroyed signal first.
 	await get_tree().create_timer(0.05).timeout
 	queue_free()

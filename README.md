@@ -4,7 +4,7 @@ A playable Godot 4.x MVP: you are one fighter pilot inside a continuous 3D space
 
 ## Requirements
 
-- Godot **4.3+** (Forward Plus)
+- Godot **4.3+**
 - No external 3D assets or Blender required — ships are built from primitives at runtime
 
 ## Run
@@ -15,17 +15,28 @@ A playable Godot 4.x MVP: you are one fighter pilot inside a continuous 3D space
 Or from CLI:
 
 ```bash
-godot --path . 
+godot --path . --rendering-driver opengl3
 ```
+
+## Flight model
+
+BSGO-inspired Newtonian flight:
+
+- **Mouse** turns the nose (attitude). Turning does **not** change your velocity by itself.
+- **Space** lights the main engines. Release Space to cut engines and **coast**.
+- While coasting you can flip around and keep your momentum (classic Raider slide).
+- **C** reverse thrust, **WASD** strafe/vertical thrusters, **Shift** boost, **Q/E** roll.
 
 ## Controls
 
 | Input | Action |
 |-------|--------|
-| Mouse | Aim |
-| W/A/S/D | Manoeuvre (strafe / vertical) |
-| Space | Thrust |
-| Shift | Boost |
+| Mouse | Aim / turn nose |
+| Space | Main thrusters (hold) |
+| C | Reverse thrusters |
+| W/A/S/D | Strafe / vertical thrusters |
+| Q / E | Roll |
+| Shift | Boost (with Space) |
 | Left Mouse | Fire |
 | R | Target nearest enemy |
 | Tab | Cycle targets |
@@ -38,6 +49,7 @@ Debug (with F3 overlay on): F5/F6 spawn fighters, F7 destroy target, F8 respawn,
 
 ```bash
 godot --headless --path . -s res://tests/run_tests.gd
+godot --path . --rendering-driver opengl3 -s res://tests/integration_battle.gd
 ```
 
 ## Architecture
