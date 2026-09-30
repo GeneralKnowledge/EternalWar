@@ -112,11 +112,11 @@ static func make_mesh(mesh: Mesh, color: Color, emissive: bool = false, emission
 	mi.mesh = mesh
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
-	mat.roughness = 0.55
-	mat.metallic = 0.35
-	if emissive:
-		mat.emission_enabled = true
-		mat.emission = color
-		mat.emission_energy_multiplier = emission_energy
+	mat.roughness = 0.4
+	mat.metallic = 0.25
+	# Mild self-illumination so dark-space lighting never eats the silhouette.
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = emission_energy if emissive else 0.35
 	mi.material_override = mat
 	return mi

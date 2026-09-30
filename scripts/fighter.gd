@@ -74,11 +74,15 @@ func _setup_weapon() -> void:
 func _build_model() -> void:
 	model_root = Node3D.new()
 	model_root.name = "Model"
+	# Slightly larger silhouette so fighters read at combat ranges.
+	model_root.scale = Vector3(1.35, 1.35, 1.35)
 	add_child(model_root)
 
-	var hull_color := Color(0.35, 0.55, 0.85) if team == Teams.Side.FRIENDLY else Color(0.85, 0.32, 0.28)
-	var accent := Color(0.15, 0.2, 0.3) if team == Teams.Side.FRIENDLY else Color(0.3, 0.12, 0.1)
-	var engine_col := Color(0.4, 0.75, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.45, 0.2)
+	# High-contrast hulls: bright pale / hot amber against near-black void.
+	var hull_color := Color(0.92, 0.94, 0.98) if team == Teams.Side.FRIENDLY else Color(1.0, 0.72, 0.28)
+	var accent := Color(0.25, 0.55, 0.95) if team == Teams.Side.FRIENDLY else Color(0.85, 0.2, 0.1)
+	var stripe := Color(0.2, 0.95, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.95, 0.25)
+	var engine_col := Color(0.45, 0.95, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.55, 0.15)
 
 	var body := BoxMesh.new()
 	body.size = Vector3(1.6, 0.7, 5.5)
@@ -86,7 +90,7 @@ func _build_model() -> void:
 
 	var nose := PrismMesh.new()
 	nose.size = Vector3(1.2, 0.6, 2.0)
-	var nose_mi := Ship.make_mesh(nose, hull_color.lightened(0.1))
+	var nose_mi := Ship.make_mesh(nose, hull_color.lightened(0.08))
 	nose_mi.rotation_degrees = Vector3(90, 0, 0)
 	nose_mi.position = Vector3(0, 0, -3.5)
 	model_root.add_child(nose_mi)
@@ -94,7 +98,7 @@ func _build_model() -> void:
 	var canopy := SphereMesh.new()
 	canopy.radius = 0.45
 	canopy.height = 0.7
-	var canopy_mi := Ship.make_mesh(canopy, Color(0.2, 0.35, 0.5, 0.85))
+	var canopy_mi := Ship.make_mesh(canopy, Color(0.05, 0.08, 0.12))
 	canopy_mi.position = Vector3(0, 0.45, -0.8)
 	model_root.add_child(canopy_mi)
 
@@ -104,11 +108,18 @@ func _build_model() -> void:
 	wing_mi.position = Vector3(0, -0.1, 0.6)
 	model_root.add_child(wing_mi)
 
+	# Bright wing leading-edge stripes for readability
+	var stripe_mesh := BoxMesh.new()
+	stripe_mesh.size = Vector3(6.2, 0.08, 0.25)
+	var stripe_mi := Ship.make_mesh(stripe_mesh, stripe, true, 2.2)
+	stripe_mi.position = Vector3(0, 0.02, -0.3)
+	model_root.add_child(stripe_mi)
+
 	for side in [-1.0, 1.0]:
 		var tip := BoxMesh.new()
-		tip.size = Vector3(0.2, 0.8, 1.2)
-		var tip_mi := Ship.make_mesh(tip, hull_color)
-		tip_mi.position = Vector3(side * 3.2, 0.2, 0.4)
+		tip.size = Vector3(0.25, 0.9, 1.2)
+		var tip_mi := Ship.make_mesh(tip, stripe, true, 1.4)
+		tip_mi.position = Vector3(side * 3.2, 0.25, 0.4)
 		model_root.add_child(tip_mi)
 
 	for side in [-1.0, 1.0]:
@@ -116,15 +127,15 @@ func _build_model() -> void:
 		eng.top_radius = 0.35
 		eng.bottom_radius = 0.4
 		eng.height = 1.4
-		var eng_mi := Ship.make_mesh(eng, accent)
+		var eng_mi := Ship.make_mesh(eng, accent.darkened(0.15))
 		eng_mi.rotation_degrees = Vector3(90, 0, 0)
 		eng_mi.position = Vector3(side * 0.9, 0.0, 2.6)
 		model_root.add_child(eng_mi)
 
 		var glow := SphereMesh.new()
-		glow.radius = 0.28
-		glow.height = 0.56
-		var glow_mi := Ship.make_mesh(glow, engine_col, true, 4.0)
+		glow.radius = 0.32
+		glow.height = 0.64
+		var glow_mi := Ship.make_mesh(glow, engine_col, true, 6.0)
 		glow_mi.position = Vector3(side * 0.9, 0.0, 3.4)
 		glow_mi.name = "EngineGlow"
 		model_root.add_child(glow_mi)
@@ -141,6 +152,15 @@ func _build_model() -> void:
 
 
 func _setup_engine_fx() -> void:
+	# Fill light so the hull stays readable from the chase camera, even coasting.
+	var fill := OmniLight3D.new()
+	fill.name = "HullFill"
+	fill.light_color = Color(0.75, 0.85, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.75, 0.45)
+	fill.light_energy = 2.8
+	fill.omni_range = 14.0
+	fill.position = Vector3(0, 2.5, -1.0)
+	add_child(fill)
+
 	engine_light = OmniLight3D.new()
 	engine_light.light_color = Color(0.5, 0.8, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.5, 0.25)
 	engine_light.light_energy = 1.5

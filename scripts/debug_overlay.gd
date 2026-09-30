@@ -22,7 +22,7 @@ func _ready() -> void:
 	_help.position = Vector2(24, 320)
 	_help.add_theme_font_size_override("font_size", 12)
 	_help.add_theme_color_override("font_color", Color(0.5, 0.85, 0.5, 0.8))
-	_help.text = "F3 debug | F5 spawn ally | F6 spawn enemy | F7 kill target | F8 respawn | F9 reset"
+	_help.text = "F3 debug | F4 spectate AI dogfight | F5/F6 spawn | F7 kill target | F8 respawn | F9 reset"
 	add_child(_help)
 
 	_set_visible(false)

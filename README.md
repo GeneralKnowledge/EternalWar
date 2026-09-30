@@ -42,6 +42,7 @@ BSGO-inspired Newtonian flight:
 | Tab | Cycle targets |
 | Esc | Pause |
 | F3 | Debug overlay |
+| F4 | Spectate / leave AI dogfight camera |
 
 Debug (with F3 overlay on): F5/F6 spawn fighters, F7 destroy target, F8 respawn, F9 reset battle.
 
