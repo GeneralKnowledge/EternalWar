@@ -1,22 +1,26 @@
 class_name PlayerFighter
 extends Fighter
 
-## Player-controlled fighter using the shared Fighter flight and weapon systems.
+## Player fighter with BSGO-like mouse aim + Newtonian thrusters.
+## Release Space to cut main engines and coast — turn freely without losing momentum.
 
 signal request_respawn
 
-@export var mouse_sensitivity: float = 0.0025
-@export var aim_assist_strength: float = 0.0
+@export var mouse_sensitivity: float = 0.0028
+@export var pitch_limit_deg: float = 89.0
 
 var _look_yaw: float = 0.0
 var _look_pitch: float = 0.0
-var _aim_basis: Basis = Basis.IDENTITY
 var input_enabled: bool = true
 
 
 func _ready() -> void:
 	is_player = true
 	ship_name = "Player Fighter"
+	# Raider-leaning agility
+	turn_rate = 3.1
+	acceleration = 340.0
+	max_speed = 540.0
 	super._ready()
 	add_to_group("player_fighter")
 	_sync_look_from_transform()
@@ -26,7 +30,6 @@ func _sync_look_from_transform() -> void:
 	var fwd := get_forward()
 	_look_yaw = atan2(-fwd.x, -fwd.z)
 	_look_pitch = asin(clampf(fwd.y, -1.0, 1.0))
-	_aim_basis = global_transform.basis
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -36,7 +39,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var motion := event as InputEventMouseMotion
 		_look_yaw -= motion.relative.x * mouse_sensitivity
 		_look_pitch -= motion.relative.y * mouse_sensitivity
-		_look_pitch = clampf(_look_pitch, deg_to_rad(-80.0), deg_to_rad(80.0))
+		_look_pitch = clampf(_look_pitch, deg_to_rad(-pitch_limit_deg), deg_to_rad(pitch_limit_deg))
 
 
 func _physics_process(delta: float) -> void:
@@ -53,13 +56,10 @@ func _physics_process(delta: float) -> void:
 
 func _handle_targeting_input() -> void:
 	if Input.is_action_just_pressed("target_nearest"):
-		var nearest := TargetSystem.find_nearest_enemy(self)
-		set_target(nearest)
+		set_target(TargetSystem.find_nearest_enemy(self))
 	elif Input.is_action_just_pressed("target_cycle"):
-		var next := TargetSystem.cycle_enemy_target(self, current_target)
-		set_target(next)
+		set_target(TargetSystem.cycle_enemy_target(self, current_target))
 
-	# Drop dead targets
 	if current_target != null and (not is_instance_valid(current_target) or not current_target.is_alive):
 		clear_target()
 
@@ -70,12 +70,21 @@ func _handle_combat_input() -> void:
 
 
 func _apply_player_flight(delta: float) -> void:
+	# Mouse sets nose direction — independent of velocity vector.
 	var aim_forward := Vector3(
 		-sin(_look_yaw) * cos(_look_pitch),
 		sin(_look_pitch),
 		-cos(_look_yaw) * cos(_look_pitch)
 	).normalized()
 
+	var roll := 0.0
+	if Input.is_action_pressed("roll_left"):
+		roll -= 1.0
+	if Input.is_action_pressed("roll_right"):
+		roll += 1.0
+	apply_attitude(aim_forward, roll, delta)
+
+	# WASD = translational thrusters (strafe / vertical). Not automatic forward drive.
 	var strafe := Vector3.ZERO
 	if Input.is_action_pressed("move_left"):
 		strafe.x -= 1.0
@@ -85,18 +94,16 @@ func _apply_player_flight(delta: float) -> void:
 		strafe.y += 1.0
 	if Input.is_action_pressed("move_back"):
 		strafe.y -= 1.0
-	if strafe.length_squared() > 1.0:
-		strafe = strafe.normalized()
 
+	# Space = main engines. Release = engines off, keep momentum, flip freely.
 	var thrust := 0.0
 	if Input.is_action_pressed("thrust"):
 		thrust = 1.0
-	# Mild forward from W as well for comfort
-	if Input.is_action_pressed("move_forward") and not Input.is_action_pressed("thrust"):
-		thrust = maxf(thrust, 0.35)
+	elif Input.is_action_pressed("reverse_thrust"):
+		thrust = -1.0
 
-	var boost := Input.is_action_pressed("boost") and thrust > 0.1
-	apply_steering(aim_forward, thrust, strafe, boost, delta)
+	var boost := Input.is_action_pressed("boost") and thrust > 0.05
+	apply_thrusters(thrust, strafe, boost, delta)
 	_update_engine_fx()
 
 
