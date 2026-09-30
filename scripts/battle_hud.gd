@@ -6,12 +6,14 @@ extends CanvasLayer
 var _shield_label: Label
 var _hull_label: Label
 var _speed_label: Label
+var _engine_label: Label
 var _target_label: Label
 var _target_dist_label: Label
 var _target_health_label: Label
 var _fleet_label: Label
 var _message_label: Label
 var _pause_label: Label
+var _spectate_label: Label
 var _crosshair: Label
 
 var _message_timer: float = 0.0
@@ -37,7 +39,8 @@ func _build_ui() -> void:
 	_shield_label = _make_label(root, Vector2(24, 24), font_color)
 	_hull_label = _make_label(root, Vector2(24, 48), font_color)
 	_speed_label = _make_label(root, Vector2(24, 72), font_color)
-	_fleet_label = _make_label(root, Vector2(24, 110), Color(0.65, 0.8, 0.95))
+	_engine_label = _make_label(root, Vector2(24, 96), Color(0.55, 0.95, 0.7))
+	_fleet_label = _make_label(root, Vector2(24, 132), Color(0.65, 0.8, 0.95))
 
 	_target_label = _make_label(root, Vector2(24, -140), Color(1.0, 0.55, 0.45))
 	_target_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
@@ -65,6 +68,15 @@ func _build_ui() -> void:
 	_pause_label.position = Vector2(-80, -80)
 	_pause_label.size = Vector2(160, 40)
 	_pause_label.visible = false
+
+	_spectate_label = _make_label(root, Vector2(0, 24), Color(1.0, 0.85, 0.35))
+	_spectate_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_spectate_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_spectate_label.add_theme_font_size_override("font_size", 20)
+	_spectate_label.position = Vector2(-180, 24)
+	_spectate_label.size = Vector2(360, 28)
+	_spectate_label.text = "SPECTATING AI DOGFIGHT  (F4)"
+	_spectate_label.visible = false
 
 	_crosshair = _make_label(root, Vector2(0, 0), Color(0.8, 0.95, 1.0, 0.7))
 	_crosshair.set_anchors_preset(Control.PRESET_CENTER)
@@ -94,16 +106,38 @@ func _process(delta: float) -> void:
 
 	_pause_label.visible = BattleManager != null and BattleManager.paused
 
+	var spectating := false
+	var cam := get_tree().current_scene.get_node_or_null("ChaseCamera") as ChaseCamera if get_tree().current_scene else null
+	if cam:
+		spectating = cam.is_spectating()
+	_spectate_label.visible = spectating
+	_crosshair.visible = not spectating
+
 	var p: PlayerFighter = BattleManager.player if BattleManager else null
-	if p != null and is_instance_valid(p) and p.is_alive:
+	if spectating and cam and cam.target is Fighter:
+		var f := cam.target as Fighter
+		_shield_label.text = "SHIELD: %d%%" % int(f.get_shield_ratio() * 100.0)
+		_hull_label.text = "HULL:   %d%%" % int(f.get_health_ratio() * 100.0)
+		_speed_label.text = "SPEED:  %d m/s" % int(f.get_speed())
+		_engine_label.text = "ENGINES: ON" if f.engines_lit else "ENGINES: OFF  (coasting)"
+		_engine_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.7) if f.engines_lit else Color(1.0, 0.75, 0.35))
+		_update_target_info_for_ship(f)
+	elif p != null and is_instance_valid(p) and p.is_alive:
 		_shield_label.text = "SHIELD: %d%%" % int(p.get_shield_ratio() * 100.0)
 		_hull_label.text = "HULL:   %d%%" % int(p.get_health_ratio() * 100.0)
 		_speed_label.text = "SPEED:  %d m/s" % int(p.get_speed())
+		if p.engines_lit:
+			_engine_label.text = "ENGINES: BURN" if p.boosting else "ENGINES: ON"
+			_engine_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.7))
+		else:
+			_engine_label.text = "ENGINES: OFF  (coasting)"
+			_engine_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.35))
 		_update_target_info(p)
 	else:
 		_shield_label.text = "SHIELD: --"
 		_hull_label.text = "HULL:   --"
 		_speed_label.text = "SPEED:  --"
+		_engine_label.text = "ENGINES: --"
 		_target_label.text = ""
 		_target_dist_label.text = ""
 		_target_health_label.text = ""
@@ -117,7 +151,11 @@ func _process(delta: float) -> void:
 
 
 func _update_target_info(p: PlayerFighter) -> void:
-	var t := p.current_target
+	_update_target_info_for_ship(p)
+
+
+func _update_target_info_for_ship(from: Fighter) -> void:
+	var t := from.current_target
 	if t == null or not is_instance_valid(t) or not t.is_alive:
 		_target_label.text = "TARGET: NONE"
 		_target_dist_label.text = ""
@@ -125,7 +163,7 @@ func _update_target_info(p: PlayerFighter) -> void:
 		_clear_target_marker()
 		return
 
-	var dist := p.global_position.distance_to(t.global_position)
+	var dist := from.global_position.distance_to(t.global_position)
 	var dist_str := "%.2f km" % (dist / 1000.0) if dist >= 1000.0 else "%d m" % int(dist)
 	_target_label.text = "TARGET: %s" % t.ship_name.to_upper()
 	_target_dist_label.text = "DISTANCE: %s" % dist_str

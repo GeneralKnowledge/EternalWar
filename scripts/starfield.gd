@@ -28,10 +28,11 @@ func _build_layer(count: int, rad: float, scale_min: float, scale_max: float, en
 
 	var mat := StandardMaterial3D.new()
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_color = Color(0.9, 0.93, 1.0)
+	# Dim cool-white points — must not compete with bright fighter hulls.
+	mat.albedo_color = Color(0.7, 0.72, 0.78)
 	mat.emission_enabled = true
-	mat.emission = Color(0.85, 0.9, 1.0)
-	mat.emission_energy_multiplier = energy
+	mat.emission = Color(0.65, 0.68, 0.75)
+	mat.emission_energy_multiplier = energy * 0.55
 	mat.disable_receive_shadows = true
 	mmi.material_override = mat
 	mmi.multimesh = mm
