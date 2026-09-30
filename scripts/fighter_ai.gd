@@ -10,10 +10,10 @@ enum State {
 	DESTROYED,
 }
 
-@export var preferred_range: float = 350.0
-@export var attack_range: float = 900.0
-@export var disengage_range: float = 120.0
-@export var fire_angle_deg: float = 18.0
+@export var preferred_range: float = 280.0
+@export var attack_range: float = 750.0
+@export var disengage_range: float = 100.0
+@export var fire_angle_deg: float = 22.0
 
 var fighter: Fighter = null
 var state: State = State.SEARCHING

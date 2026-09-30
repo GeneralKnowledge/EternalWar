@@ -22,11 +22,11 @@ near = 0.5
 script = ExtResource("2_cam")
 
 [node name="FriendlyBattleship" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3000, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2200, 0, 0)
 script = ExtResource("3_bs")
 
 [node name="EnemyBattleship" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3000, 0, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2200, 0, 0)
 script = ExtResource("3_bs")
 
 [node name="FriendlyFighterContainer" type="Node3D" parent="."]

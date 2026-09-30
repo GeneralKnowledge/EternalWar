@@ -60,6 +60,10 @@ func setup(
 	active_projectiles = 0
 	battle_running = true
 	_initial_spawn_done = false
+	if friendly_battleship:
+		friendly_battleship.enable_spawning(true)
+	if enemy_battleship:
+		enemy_battleship.enable_spawning(true)
 	battle_started.emit()
 
 
@@ -68,17 +72,29 @@ func start_initial_launches() -> void:
 		return
 	_initial_spawn_done = true
 	# Stagger initial fighter cloud so battle isn't empty at t=0
+	# Concentrate most fighters in the midfield engagement zone
 	if friendly_battleship:
 		for i in range(friendly_battleship.fighter_capacity):
 			var f := friendly_battleship.launch_fighter()
 			if f:
-				# Spread initial positions toward midfield
-				f.global_position += Vector3(randf_range(200, 1800), randf_range(-300, 300), randf_range(-400, 400))
+				f.global_position = Vector3(
+					randf_range(-800, 1200),
+					randf_range(-250, 250),
+					randf_range(-500, 500)
+				)
+				f.basis = Basis.looking_at(Vector3(1, randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)).normalized(), Vector3.UP)
+				f.velocity = f.get_forward() * randf_range(80, 200)
 	if enemy_battleship:
 		for i in range(enemy_battleship.fighter_capacity):
 			var f := enemy_battleship.launch_fighter()
 			if f:
-				f.global_position += Vector3(randf_range(-1800, -200), randf_range(-300, 300), randf_range(-400, 400))
+				f.global_position = Vector3(
+					randf_range(-1200, 800),
+					randf_range(-250, 250),
+					randf_range(-500, 500)
+				)
+				f.basis = Basis.looking_at(Vector3(-1, randf_range(-0.2, 0.2), randf_range(-0.3, 0.3)).normalized(), Vector3.UP)
+				f.velocity = f.get_forward() * randf_range(80, 200)
 	# Player launches after a brief moment from hangar
 	await get_tree().create_timer(0.3).timeout
 	respawn_player()
@@ -150,10 +166,10 @@ func respawn_player() -> void:
 	var fighter := friendly_battleship.launch_fighter(true) as PlayerFighter
 	if fighter == null:
 		return
-	# Nudge out of hangar toward battle
-	fighter.global_position = friendly_battleship.get_launch_position() + Vector3(60, 30, 0)
-	fighter.look_at(fighter.global_position + Vector3(1, 0, 0), Vector3.UP)
-	fighter.velocity = Vector3(150, 0, 0)
+	# Nudge out of hangar toward battle — start close enough to see the mothership
+	fighter.global_position = friendly_battleship.global_position + Vector3(180, 60, 40)
+	fighter.basis = Basis.looking_at(Vector3(1, 0, 0), Vector3.UP)
+	fighter.velocity = Vector3(180, 0, 0)
 	if fighter is PlayerFighter:
 		(fighter as PlayerFighter)._sync_look_from_transform()
 	bind_player(fighter)

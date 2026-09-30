@@ -94,9 +94,9 @@ func launch(
 	visible = true
 	set_process(true)
 
-	# Orient cylinder along flight direction
+	# Orient without look_at() so this works before entering the tree
 	if direction.length_squared() > 0.0001:
-		look_at(global_position + direction, Vector3.UP)
+		basis = Basis.looking_at(direction, Vector3.UP)
 
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color

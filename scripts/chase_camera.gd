@@ -16,7 +16,12 @@ enum Mode {
 @export var rotation_lerp: float = 8.0
 
 var target: Node3D = null
-var _fallback_position: Vector3 = Vector3(-2800, 200, 400)
+var _fallback_position: Vector3 = Vector3(-2000, 200, 400)
+
+
+func _ready() -> void:
+	fov = 78.0
+	far = 25000.0
 
 
 func set_follow_target(node: Node3D) -> void:

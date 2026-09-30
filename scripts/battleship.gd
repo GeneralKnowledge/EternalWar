@@ -14,7 +14,7 @@ var active_fighters: Array[Fighter] = []
 var _spawn_timer: float = 0.0
 var _hangar_points: Array[Vector3] = []
 var model_root: Node3D = null
-var spawning_enabled: bool = true
+var spawning_enabled: bool = false
 
 
 func _ready() -> void:
@@ -26,6 +26,12 @@ func _ready() -> void:
 	_build_model()
 	_setup_hangars()
 	_spawn_timer = randf_range(0.5, 2.0)
+
+
+func enable_spawning(enabled: bool = true) -> void:
+	spawning_enabled = enabled
+	if enabled:
+		_spawn_timer = randf_range(1.0, fighter_spawn_interval)
 
 
 func _process(delta: float) -> void:
@@ -102,10 +108,9 @@ func launch_fighter(as_player: bool = false) -> Fighter:
 		container = get_parent()
 	container.add_child(fighter)
 	fighter.global_position = launch_pos
-	# Orient after entering the tree
-	var look_target := launch_pos + launch_dir
-	if not look_target.is_equal_approx(launch_pos):
-		fighter.look_at(look_target, Vector3.UP)
+	# Orient without look_at() (safe even if tree state is edge-casey)
+	if launch_dir.length_squared() > 0.0001:
+		fighter.basis = Basis.looking_at(launch_dir, Vector3.UP)
 
 	if not as_player:
 		var ai := FighterAI.new()
@@ -151,97 +156,97 @@ func _build_model() -> void:
 	var accent := Color(0.4, 0.7, 1.0) if team == Teams.Side.FRIENDLY else Color(1.0, 0.4, 0.25)
 	var facing := 1.0 if team == Teams.Side.FRIENDLY else -1.0
 
-	# Main hull — long capital silhouette
+	# Main hull — long capital silhouette (readable at combat distances)
 	var main := BoxMesh.new()
-	main.size = Vector3(280, 36, 55)
+	main.size = Vector3(420, 48, 78)
 	var main_mi := Ship.make_mesh(main, hull)
 	model_root.add_child(main_mi)
 
 	# Lower hull bulge
 	var lower := BoxMesh.new()
-	lower.size = Vector3(200, 22, 40)
+	lower.size = Vector3(300, 30, 55)
 	var lower_mi := Ship.make_mesh(lower, dark)
-	lower_mi.position = Vector3(0, -22, 0)
+	lower_mi.position = Vector3(0, -28, 0)
 	model_root.add_child(lower_mi)
 
 	# Bow wedge
 	var bow := PrismMesh.new()
-	bow.size = Vector3(50, 30, 70)
+	bow.size = Vector3(70, 42, 100)
 	var bow_mi := Ship.make_mesh(bow, hull.lightened(0.08))
 	bow_mi.rotation_degrees = Vector3(0, 0, -90 * facing)
-	bow_mi.position = Vector3(facing * 160, 0, 0)
+	bow_mi.position = Vector3(facing * 240, 0, 0)
 	model_root.add_child(bow_mi)
 
 	# Bridge superstructure
 	var bridge := BoxMesh.new()
-	bridge.size = Vector3(40, 28, 30)
+	bridge.size = Vector3(55, 40, 42)
 	var bridge_mi := Ship.make_mesh(bridge, dark)
-	bridge_mi.position = Vector3(-facing * 40, 28, 0)
+	bridge_mi.position = Vector3(-facing * 60, 40, 0)
 	model_root.add_child(bridge_mi)
 
 	var bridge_top := BoxMesh.new()
-	bridge_top.size = Vector3(18, 12, 18)
+	bridge_top.size = Vector3(24, 16, 24)
 	var bridge_top_mi := Ship.make_mesh(bridge_top, accent.darkened(0.2), true, 0.8)
-	bridge_top_mi.position = Vector3(-facing * 40, 48, 0)
+	bridge_top_mi.position = Vector3(-facing * 60, 68, 0)
 	model_root.add_child(bridge_top_mi)
 
 	# Hangar bays (indented boxes)
 	for side in [-1.0, 1.0]:
 		var hangar := BoxMesh.new()
-		hangar.size = Vector3(50, 18, 8)
+		hangar.size = Vector3(70, 24, 10)
 		var hangar_mi := Ship.make_mesh(hangar, Color(0.05, 0.05, 0.08))
-		hangar_mi.position = Vector3(facing * 20, -5, side * 28)
+		hangar_mi.position = Vector3(facing * 30, -8, side * 40)
 		model_root.add_child(hangar_mi)
 		# Hangar glow
 		var glow := BoxMesh.new()
-		glow.size = Vector3(40, 10, 1)
+		glow.size = Vector3(55, 14, 1.5)
 		var glow_mi := Ship.make_mesh(glow, accent, true, 2.5)
-		glow_mi.position = Vector3(facing * 20, -5, side * 32)
+		glow_mi.position = Vector3(facing * 30, -8, side * 46)
 		model_root.add_child(glow_mi)
 
 	# Weapon mounts
 	for i in range(3):
-		var x := (i - 1) * 60.0
+		var x := (i - 1) * 90.0
 		var mount := CylinderMesh.new()
-		mount.top_radius = 3.0
-		mount.bottom_radius = 4.0
-		mount.height = 16.0
+		mount.top_radius = 4.0
+		mount.bottom_radius = 5.5
+		mount.height = 22.0
 		var mount_mi := Ship.make_mesh(mount, dark)
-		mount_mi.position = Vector3(x, 22, 0)
+		mount_mi.position = Vector3(x, 30, 0)
 		model_root.add_child(mount_mi)
 		var barrel := CylinderMesh.new()
-		barrel.top_radius = 1.2
-		barrel.bottom_radius = 1.5
-		barrel.height = 28.0
+		barrel.top_radius = 1.6
+		barrel.bottom_radius = 2.0
+		barrel.height = 40.0
 		var barrel_mi := Ship.make_mesh(barrel, hull.darkened(0.1))
 		barrel_mi.rotation_degrees = Vector3(0, 0, 90)
-		barrel_mi.position = Vector3(x + facing * 14, 28, 0)
+		barrel_mi.position = Vector3(x + facing * 20, 38, 0)
 		model_root.add_child(barrel_mi)
 
 	# Engines at stern
 	for i in range(3):
-		var z := (i - 1) * 16.0
+		var z := (i - 1) * 22.0
 		var eng := CylinderMesh.new()
-		eng.top_radius = 8.0
-		eng.bottom_radius = 10.0
-		eng.height = 30.0
+		eng.top_radius = 12.0
+		eng.bottom_radius = 14.0
+		eng.height = 40.0
 		var eng_mi := Ship.make_mesh(eng, dark)
 		eng_mi.rotation_degrees = Vector3(0, 0, 90)
-		eng_mi.position = Vector3(-facing * 150, 0, z)
+		eng_mi.position = Vector3(-facing * 220, 0, z)
 		model_root.add_child(eng_mi)
 		var glow := SphereMesh.new()
-		glow.radius = 9.0
-		glow.height = 18.0
+		glow.radius = 13.0
+		glow.height = 26.0
 		var glow_mi := Ship.make_mesh(glow, accent, true, 5.0)
-		glow_mi.position = Vector3(-facing * 168, 0, z)
+		glow_mi.position = Vector3(-facing * 245, 0, z)
 		model_root.add_child(glow_mi)
 
 	# Engine light
 	var light := OmniLight3D.new()
 	light.light_color = accent
-	light.light_energy = 4.0
-	light.omni_range = 120.0
-	light.position = Vector3(-facing * 170, 0, 0)
+	light.light_energy = 6.0
+	light.omni_range = 200.0
+	light.position = Vector3(-facing * 250, 0, 0)
 	model_root.add_child(light)
 
 

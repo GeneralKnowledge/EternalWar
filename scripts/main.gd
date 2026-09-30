@@ -63,13 +63,12 @@ func _add_starfield() -> void:
 func _setup_fleets() -> void:
 	friendly_battleship.team = Teams.Side.FRIENDLY
 	friendly_battleship.ship_name = "Friendly Battleship"
-	friendly_battleship.global_position = Vector3(-3000, 0, 0)
-	# Orient broadside toward enemy (+X)
+	friendly_battleship.global_position = Vector3(-2200, 0, 0)
 	friendly_battleship.rotation_degrees = Vector3(0, 0, 0)
 
 	enemy_battleship.team = Teams.Side.ENEMY
 	enemy_battleship.ship_name = "Enemy Battleship"
-	enemy_battleship.global_position = Vector3(3000, 0, 0)
+	enemy_battleship.global_position = Vector3(2200, 0, 0)
 	enemy_battleship.rotation_degrees = Vector3(0, 180, 0)
 
 
