@@ -98,7 +98,7 @@ F3 inspect shows system / object / design / hull / engine / module / detail seed
 
 ## Performance
 
-Headless `_test_perf_benchmarks` times system gen + mesh builds + 60 ticks for 400 and 1000 ships. Larger populations (5k / 10k / 50k) should be measured locally. Prefer shaders, MultiMesh, MeshCache, LOD before any Rust/GDExtension. Candidates for future native kernels: bulk mesh build, spatial queries, galaxy generation — keep the boundary at explicit data structures.
+Headless `_test_perf_benchmarks` times system gen + mesh builds + 60 ticks for 400 and 1000 ships, and reports the native backend (`rust` / `gdscript`). Far-field ship sync and TRAVEL batches call `NativeBridge` (Rust GDExtension when loaded). Prefer shaders, MultiMesh, MeshCache, and LOD for rendering cost; extend native kernels for additional CPU SoA loops (mesh build, spatial queries, galaxy gen) at an explicit packed-array boundary. See [`native-kernels.md`](native-kernels.md).
 
 ## Limit Theory mapping
 

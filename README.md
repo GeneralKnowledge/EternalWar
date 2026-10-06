@@ -66,7 +66,10 @@ Game
 │   ├── seeded_rng.gd / seed_hash.gd
 │   ├── system_generator.gd
 │   ├── economy_system.gd / ship_ai.gd
+│   ├── native_bridge.gd   # Rust GDExtension ↔ GDScript fallback
 │   └── star_system_sim.gd
+├── native/ew_kernels/     # Rust hot-path kernels (GDExtension)
+├── bin/                   # libew_kernels.so + .gdextension
 ├── presentation/   # Rendering + design grammar — active
 │   ├── style_profile.gd / materials.gd / visual_lod.gd / stellar_colour.gd
 │   └── generators/ # ShipDesign, StationDesign, meshes, starfield
@@ -104,9 +107,24 @@ Each exit criterion is **screenshot proof**, not new sim features. Living system
 | E | Showcase pass — cinematic presets, acceptance checklist | In progress |
 | F | Systems resume — factions, conflict, galaxy, fleets | Blocked on E |
 
-## Rust policy
+## Rust / native kernels
 
-Start in GDScript. Profile. Optimise algorithms. Only then consider a tiny Rust GDExtension for proven hot paths.
+Native code is **in use**, not deferred. Hot paths call a Rust GDExtension when present and fall back to identical GDScript SoA math when missing.
+
+| Kernel | Path | Purpose |
+|--------|------|---------|
+| `integrate_travel` | ship TRAVEL batch | Bulk position/heading/velocity integration |
+| `apply_ship_transforms` | MultiMesh sync | `Basis.looking_at` + scale for far-field ships |
+
+```bash
+# Requires Rust toolchain (rustc 1.78+)
+./native/build.sh          # release → bin/libew_kernels.so
+./native/build.sh debug    # debug build
+```
+
+Godot loads `bin/ew_kernels.gdextension`. Headless tests print `native_backend=rust|gdscript`. Simulation ownership stays in GDScript; Rust only runs packed-array kernels.
+
+See [`docs/native-kernels.md`](docs/native-kernels.md).
 
 ## License note
 

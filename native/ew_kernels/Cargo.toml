@@ -1,0 +1,17 @@
+[package]
+name = "ew_kernels"
+version = "0.1.0"
+edition = "2021"
+description = "Native hot-path kernels for EternalWar / Limit Theory Prototype (GDExtension)"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+godot = { version = "0.2.4", features = ["api-4-3"] }
+
+[profile.release]
+lto = true
+codegen-units = 1

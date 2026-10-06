@@ -652,6 +652,15 @@ func sync_ships() -> void:
 	var nearest: Dictionary = {}
 	var near_candidates: Array = [] # {dist, index}
 
+	# SoA buckets per ship class for native MultiMesh apply.
+	var batch_local: Dictionary = {} # sc -> PackedInt32Array
+	var batch_pos: Dictionary = {}
+	var batch_head: Dictionary = {}
+	var batch_scale: Dictionary = {}
+	var batch_hidden: Dictionary = {}
+	var batch_color_i: Dictionary = {} # sc -> Array of local indices needing color
+	var batch_color_c: Dictionary = {} # sc -> Array of Color
+
 	for i in ships.size():
 		var s: Dictionary = ships[i]
 		var meta: Dictionary = _ship_index_map[i]
@@ -659,35 +668,77 @@ func sync_ships() -> void:
 		var local_i: int = int(meta["local"])
 		if not _ship_mm.has(sc):
 			continue
-		var mm: MultiMesh = _ship_mm[sc].multimesh
 		var pos: Vector3 = s["position"]
 		var dist := cam_pos.distance_to(pos) if _camera != null else 800.0
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = s
 
-		if int(s.get("docked_station_id", -1)) >= 0 and not s.get("is_player", false):
-			mm.set_instance_transform(local_i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), pos))
-			continue
+		if not batch_local.has(sc):
+			batch_local[sc] = PackedInt32Array()
+			batch_pos[sc] = PackedFloat32Array()
+			batch_head[sc] = PackedFloat32Array()
+			batch_scale[sc] = PackedFloat32Array()
+			batch_hidden[sc] = PackedInt32Array()
+			batch_color_i[sc] = []
+			batch_color_c[sc] = []
 
-		if dist < VisualLOD.DIST_LOW or s.get("is_player", false):
+		var locals: PackedInt32Array = batch_local[sc]
+		var positions: PackedFloat32Array = batch_pos[sc]
+		var headings: PackedFloat32Array = batch_head[sc]
+		var scales: PackedFloat32Array = batch_scale[sc]
+		var hidden: PackedInt32Array = batch_hidden[sc]
+
+		locals.append(local_i)
+		positions.append(pos.x)
+		positions.append(pos.y)
+		positions.append(pos.z)
+		var heading: Vector3 = s.get("heading", Vector3(0, 0, -1))
+		headings.append(heading.x)
+		headings.append(heading.y)
+		headings.append(heading.z)
+
+		var hide := false
+		if int(s.get("docked_station_id", -1)) >= 0 and not s.get("is_player", false):
+			hide = true
+		elif dist < VisualLOD.DIST_LOW or s.get("is_player", false):
 			near_candidates.append({"dist": dist, "index": i, "lod": VisualLOD.for_distance(dist)})
-			# Hide MultiMesh for now; may restore if over cap.
-			mm.set_instance_transform(local_i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), pos))
-		else:
-			var heading: Vector3 = s["heading"]
-			if heading.length_squared() < 0.001:
-				heading = Vector3(0, 0, -1)
-			var basis := Basis.looking_at(heading.normalized(), Vector3.UP)
-			var scale := _ship_scale(s)
-			if dist > VisualLOD.DIST_BATCH * 0.5:
-				scale *= 0.85
-			mm.set_instance_transform(local_i, Transform3D(basis.scaled(Vector3.ONE * scale), pos))
+			hide = true
+
+		var scale := _ship_scale(s)
+		if not hide and dist > VisualLOD.DIST_BATCH * 0.5:
+			scale *= 0.85
+		scales.append(scale)
+		hidden.append(1 if hide else 0)
+
+		if not hide:
 			var design: Dictionary = s.get("design", {})
 			var col: Color = design.get("color", Color(0.7, 0.75, 0.85))
 			if s.get("is_player", false):
 				col = Color(1.0, 0.95, 0.55)
-			mm.set_instance_color(local_i, col)
+			batch_color_i[sc].append(local_i)
+			batch_color_c[sc].append(col)
+
+		batch_local[sc] = locals
+		batch_pos[sc] = positions
+		batch_head[sc] = headings
+		batch_scale[sc] = scales
+		batch_hidden[sc] = hidden
+
+	for sc2 in batch_local.keys():
+		var mm: MultiMesh = _ship_mm[sc2].multimesh
+		NativeBridge.apply_ship_transforms(
+			mm,
+			batch_local[sc2],
+			batch_pos[sc2],
+			batch_head[sc2],
+			batch_scale[sc2],
+			batch_hidden[sc2],
+		)
+		var cols_i: Array = batch_color_i[sc2]
+		var cols_c: Array = batch_color_c[sc2]
+		for ci in cols_i.size():
+			mm.set_instance_color(int(cols_i[ci]), cols_c[ci])
 
 	near_candidates.sort_custom(func(a, b): return float(a["dist"]) < float(b["dist"]))
 	var keep: Dictionary = {}
@@ -699,19 +750,19 @@ func sync_ships() -> void:
 		if n_keep >= NEAR_SHIP_CAP and not is_player:
 			# Over cap — restore MultiMesh archetype
 			var meta2: Dictionary = _ship_index_map[idx]
-			var sc2: int = int(meta2["class"])
+			var sc3: int = int(meta2["class"])
 			var local2: int = int(meta2["local"])
-			if _ship_mm.has(sc2):
+			if _ship_mm.has(sc3):
 				var heading2: Vector3 = s["heading"]
 				if heading2.length_squared() < 0.001:
 					heading2 = Vector3(0, 0, -1)
 				var basis2 := Basis.looking_at(heading2.normalized(), Vector3.UP)
 				var scale2 := _ship_scale(s) * 1.05
-				_ship_mm[sc2].multimesh.set_instance_transform(
+				_ship_mm[sc3].multimesh.set_instance_transform(
 					local2, Transform3D(basis2.scaled(Vector3.ONE * scale2), s["position"])
 				)
 				var design2: Dictionary = s.get("design", {})
-				_ship_mm[sc2].multimesh.set_instance_color(
+				_ship_mm[sc3].multimesh.set_instance_color(
 					local2, design2.get("color", Color(0.7, 0.75, 0.85))
 				)
 			continue

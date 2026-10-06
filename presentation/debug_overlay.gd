@@ -59,6 +59,9 @@ func _process(_dt: float) -> void:
 		"  Mining: %d   Dock/Trade: %d" % [p.get("ships_mining", 0), p.get("ships_trading", 0)],
 		"  Jobs: %d   MeshCache: %d (hits %d)" % [m.get("job_count", 0), cache.get("entries", 0), cache.get("hits", 0)],
 		"  Economy: %.2f ms   AI: %.2f ms   Tick: %.2f ms" % [p.get("economy_ms", 0.0), p.get("ai_ms", 0.0), p.get("sim_ms", 0.0)],
+		"  Travel batch: %.2f ms (n=%d)   Native: %s" % [
+			p.get("travel_batch_ms", 0.0), int(p.get("travel_batch_n", 0)), str(p.get("native_backend", NativeBridge.backend_name()))
+		],
 		"",
 		"Economy",
 		"  Ore: %.0f @ %.1f   Metal: %.0f @ %.1f" % [m.get("total_ore", 0.0), prices.get(Commodities.ORE, 0.0), m.get("total_metal", 0.0), prices.get(Commodities.METAL, 0.0)],

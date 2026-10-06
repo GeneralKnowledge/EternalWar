@@ -24,13 +24,13 @@ Iterate gameplay without recompiling the engine. Keep the majority of simulation
 - `ltheory/script/Game/*` (Entity, Jobs, Actions, Economy)
 
 ### Proposed Godot implementation
-GDScript owns simulation data and AI. Godot Nodes handle rendering, camera, audio, and player input. Reserve Rust (via GDExtension) only after profiling proves a hot path.
+GDScript owns simulation data and AI. Godot Nodes handle rendering, camera, audio, and player input. Rust GDExtension kernels accelerate proven packed-array hot paths (`native/ew_kernels`) behind `NativeBridge`.
 
 ### Why it differs
 Godot already provides the “native core.” We do not rebuild an engine. The LT split maps to **simulation RefCounteds / dictionaries** vs **presentation Nodes**.
 
 ### Performance implications
-GDScript is fine for hundreds of agents. Profile before adding native code. Keep the Godot↔Rust surface tiny if introduced later.
+GDScript remains the simulation owner. A Rust GDExtension (`native/ew_kernels`) accelerates proven bulk loops (`integrate_travel`, MultiMesh transforms) behind `NativeBridge`, with a mandatory GDScript fallback. See [`native-kernels.md`](native-kernels.md).
 
 ---
 
@@ -279,7 +279,7 @@ Instrumentation cost should stay tiny (timestamps around major phases only).
 | ShapeLib upgrade beyond boxes | Yes | Milestone C — tapers, bells, bevels, symmetry |
 | Full galaxy | Deferred | Blocked until visual milestone E clears |
 | Factions / conflict / fleets | Deferred | Milestone F — after showcase pass |
-| Rust | No | Profile first |
+| Rust GDExtension | Yes | `native/ew_kernels` — travel + MultiMesh transforms; see native-kernels.md |
 
 ---
 

@@ -1,0 +1,2 @@
+[build]
+# Prefer the system Godot when regenerating API (api-custom not required for api-4-3).
