@@ -108,6 +108,8 @@ func _make_planet(id: int, index: int, total: int) -> Dictionary:
 	# Content from independent child seed — regenerating planet i does not affect j.
 	var child := SeedHash.derive_i(seed_value, "planet", index)
 	var prng := SeededRNG.new(child)
+	var terrain_seed := SeedHash.derive(child, "terrain")
+	var atmosphere_seed := SeedHash.derive(child, "atmosphere")
 	var habit_jitter := prng.randf_range(-0.15, 0.15)
 	var habit := clampf(1.0 - absf(t - 0.45) * 2.2 + habit_jitter, 0.0, 1.0)
 	var pclass := _classify_planet(t, habit, prng)
@@ -126,6 +128,8 @@ func _make_planet(id: int, index: int, total: int) -> Dictionary:
 	rng = old
 	return SimEntities.make_planet(id, pname, pos, radius, colors["a"], habit, resources, {
 		"seed": child,
+		"terrain_seed": terrain_seed,
+		"atmosphere_seed": atmosphere_seed,
 		"planet_class": pclass,
 		"ocean_level": float(colors["ocean"]),
 		"cloud_level": float(colors["cloud"]),

@@ -78,25 +78,34 @@ func _process(_dt: float) -> void:
 					SimEntities.class_name_of(int(target.get("ship_class", 0))),
 					str(design.get("style", "?")),
 				])
-				lines.append("  Design seed: %d" % int(desc.get("seed", 0)))
-				lines.append("  Hull L/W/H: %.1f / %.1f / %.1f  engines=%d cargo=%d" % [
+				lines.append("  Seeds  system=%d  object=%d  design=%d" % [
+					sim.seed_value, int(target.get("seed", 0)), int(desc.get("seed", 0)),
+				])
+				lines.append("  Child  hull=%d  engine=%d  module=%d  detail=%d" % [
+					int(desc.get("hull_seed", 0)), int(desc.get("engine_seed", 0)),
+					int(desc.get("module_seed", 0)), int(desc.get("detail_seed", 0)),
+				])
+				lines.append("  Hull L/W/H: %.1f / %.1f / %.1f  engines=%d cargo=%d  sym=%s" % [
 					float(desc.get("length", 0)), float(desc.get("width", 0)), float(desc.get("height", 0)),
 					int(desc.get("engines", 0)), int(desc.get("cargo_modules", 0)),
+					str(desc.get("symmetric", true)),
 				])
+				lines.append("  Modules: %s" % str(desc.get("module_types", [])))
 				lines.append("  Activity: %d  credits: %.0f" % [int(target.get("activity", 0)), float(target.get("credits", 0))])
 
 	# Sample planet / station identity
 	if not sim.world["planets"].is_empty():
 		var pl: Dictionary = sim.world["planets"][0]
 		lines.append("")
-		lines.append("Planet[0]: %s  class=%s  seed=%d  rings=%s" % [
+		lines.append("Planet[0]: %s  class=%s  seed=%d  terrain=%d  atmo=%d" % [
 			pl.get("name", "?"), pl.get("planet_class", "?"), int(pl.get("seed", 0)),
-			str(pl.get("has_rings", false)),
+			int(pl.get("terrain_seed", 0)), int(pl.get("atmosphere_seed", 0)),
 		])
 	if not sim.world["stations"].is_empty():
 		var st: Dictionary = sim.world["stations"][0]
-		lines.append("Station[0]: %s  role=%s  modules=%s" % [
-			st.get("name", "?"), st.get("role", "?"), str(st.get("modules", [])),
+		var sd := StationMeshGen.describe(st)
+		lines.append("Station[0]: %s  role=%s  layout=%d  modules=%s" % [
+			st.get("name", "?"), st.get("role", "?"), int(sd.get("layout_seed", 0)), str(sd.get("modules", [])),
 		])
 
 	if player != null and not player.ship.is_empty() and not player.observe_mode:

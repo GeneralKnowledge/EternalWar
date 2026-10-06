@@ -17,8 +17,6 @@ var _dust: GPUParticles3D
 var _engine_fx: GPUParticles3D
 var _env_node: WorldEnvironment
 
-const LOD_NEAR := 420.0
-const LOD_MID := 1400.0
 const NEAR_SHIP_CAP := 28
 
 
@@ -75,7 +73,7 @@ func _clear_visuals() -> void:
 func _build_environment() -> void:
 	var star: Dictionary = sim.world["star"]
 	var light := DirectionalLight3D.new()
-	light.light_color = star["color"]
+	light.light_color = StellarColour.from_temperature(float(star.get("temperature", 5800.0)))
 	light.light_energy = float(star.get("luminosity", 1.2)) * 1.15
 	light.shadow_enabled = false
 	light.rotation_degrees = Vector3(-38, 42, 0)
@@ -111,11 +109,19 @@ func _build_environment() -> void:
 
 func _build_starfield() -> void:
 	var stars := MultiMeshInstance3D.new()
-	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 3600)
+	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 3800)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/starfield.gdshader")
 	stars.material_override = mat
 	add_child(stars)
+
+	# Layer 2 — faint galactic dust band
+	var dust := MultiMeshInstance3D.new()
+	dust.multimesh = StarfieldGen.build_galactic_dust(sim.seed_value, 420)
+	var dmat := ShaderMaterial.new()
+	dmat.shader = load("res://shaders/starfield.gdshader")
+	dust.material_override = dmat
+	add_child(dust)
 
 
 func _build_nebula_layers(nebula: Color) -> void:
@@ -191,8 +197,8 @@ func _build_star() -> void:
 	mi.mesh = sphere
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/star.gdshader")
-	mat.set_shader_parameter("star_color", star["color"])
-	mat.set_shader_parameter("emission_energy", 3.2 + float(star.get("luminosity", 1.0)) * 1.8)
+	mat.set_shader_parameter("star_color", StellarColour.from_temperature(float(star.get("temperature", 5800.0))))
+	mat.set_shader_parameter("emission_energy", StellarColour.luminosity_energy(float(star.get("luminosity", 1.0))))
 	mat.set_shader_parameter("corona", 0.55)
 	mat.set_shader_parameter("core_hot", 1.4)
 	mi.material_override = mat
@@ -261,12 +267,20 @@ func _build_planets() -> void:
 		mat.set_shader_parameter("ocean_level", float(p.get("ocean_level", 0.3)))
 		mat.set_shader_parameter("cloud_level", float(p.get("cloud_level", 0.1)))
 		mat.set_shader_parameter("roughness_val", 0.88)
-		mat.set_shader_parameter("seed_offset", float(int(p.get("seed", 1)) % 1000) * 0.01)
+		mat.set_shader_parameter("seed_offset", float(int(p.get("terrain_seed", p.get("seed", 1))) % 1000) * 0.01)
 		mat.set_shader_parameter("atmosphere_tint", float(p.get("atmosphere", 0.3)))
 		var pclass := str(p.get("planet_class", "rocky"))
 		mat.set_shader_parameter("gas_giant", 1.0 if pclass == "gas_giant" else 0.0)
 		mat.set_shader_parameter("desert", 1.0 if pclass == "desert" else 0.0)
 		mat.set_shader_parameter("ice_world", 1.0 if pclass == "ice" else 0.0)
+		# Volcanic / lava: boost emission via atmosphere_tint side channel
+		if pclass == "lava":
+			mat.set_shader_parameter("atmosphere_tint", 0.85)
+			mat.set_shader_parameter("desert", 0.0)
+			mat.set_shader_parameter("ocean_level", 0.0)
+		elif pclass == "habitable" or pclass == "ocean":
+			mat.set_shader_parameter("ocean_level", float(p.get("ocean_level", 0.45)))
+			mat.set_shader_parameter("cloud_level", float(p.get("cloud_level", 0.28)))
 		mi.material_override = mat
 		root.add_child(mi)
 
@@ -398,16 +412,18 @@ func _build_yields() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), 1 if composition != "ice" else 1)
+		# Family mesh from field seed + composition — not one rock scaled forever
+		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), 1, composition)
 		mm.instance_count = count
 		var rng := SeededRNG.new(SeedHash.derive(int(y.get("seed", 1)), "field"))
 		var base_col: Color = pal["color"]
+		# Secondary family variants as vertex-tint only (shared mesh, design language via family)
 		for i in count:
 			var p: Vector3 = rng.dir3() * rng.randf_range(spread * 0.12, spread)
 			p.y *= 0.4 if composition != "ice" else 0.55
 			var s := rng.randf_range(3.5, 13.0) * (0.55 + float(y.get("richness", 1.0)) * 0.45) * float(pal["size_mul"])
 			if composition == "iron" and rng.randf() < 0.2:
-				s *= 1.45 # chunky industrial ore
+				s *= 1.45
 			var basis := Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU))
 			mm.set_instance_transform(i, Transform3D(basis.scaled(Vector3.ONE * s), p))
 			var c := base_col.lightened(rng.randf_range(-0.12, 0.18))
@@ -415,14 +431,9 @@ func _build_yields() -> void:
 				c = c.lerp(Color(0.85, 0.92, 1.0), rng.randf() * 0.35)
 			mm.set_instance_color(i, c)
 		mm_i.multimesh = mm
-		var mat := StandardMaterial3D.new()
+		var mat_name := "ice" if composition == "ice" else ("rock" if composition != "iron" else "industrial")
+		var mat := VisualMaterials.make(mat_name, base_col, 0.55)
 		mat.vertex_color_use_as_albedo = true
-		mat.roughness = float(pal["roughness"])
-		mat.metallic = float(pal["metallic"])
-		if float(pal["emission_energy"]) > 0.01:
-			mat.emission_enabled = true
-			mat.emission = pal["emission"]
-			mat.emission_energy_multiplier = float(pal["emission_energy"])
 		mm_i.material_override = mat
 		root.add_child(mm_i)
 		add_child(root)
@@ -440,11 +451,9 @@ func _build_stations() -> void:
 			"style": str(st.get("style", "industrial")),
 			"color": st.get("color", Color(0.55, 0.6, 0.65)),
 		}
-		mi.mesh = StationMeshGen.build(design)
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.metallic = 0.5
-		mat.roughness = 0.45
+		mi.mesh = StationMeshGen.build(design, VisualLOD.LOD_FULL)
+		var profile := StyleProfile.of(str(design["style"]))
+		var mat := VisualMaterials.make(str(profile["material"]), design["color"], 0.45)
 		mat.emission_enabled = true
 		mat.emission = design["color"]
 		mat.emission_energy_multiplier = 0.15
@@ -498,20 +507,25 @@ func _build_ships() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		var design := {
+		# Archetype from first ship in bucket when available (faction-aware), else class default
+		var sample: Dictionary = list[0]
+		var design: Dictionary = sample.get("design", {
 			"seed": 50 + int(sc) * 17,
 			"ship_class": int(sc),
 			"style": styles[int(sc) % styles.size()],
 			"color": Color(0.75, 0.78, 0.85),
 			"accent": Color(0.45, 0.48, 0.55),
-		}
-		mm.mesh = ShipMeshGen.build(design)
+		})
+		# Force class archetype seed for batch mesh stability
+		var arch := design.duplicate()
+		arch["seed"] = 50 + int(sc) * 17
+		arch["ship_class"] = int(sc)
+		arch["style"] = styles[int(sc) % styles.size()]
+		mm.mesh = ShipMeshGen.build(arch, VisualLOD.LOD_BATCH)
 		mm.instance_count = list.size()
 		mmi.multimesh = mm
-		var mat := StandardMaterial3D.new()
-		mat.vertex_color_use_as_albedo = true
-		mat.roughness = 0.42
-		mat.metallic = 0.4
+		var profile := StyleProfile.of(str(arch["style"]))
+		var mat := VisualMaterials.make(str(profile["material"]), arch.get("color", Color(0.7, 0.75, 0.85)), 0.4)
 		mmi.material_override = mat
 		add_child(mmi)
 		_ship_mm[sc] = mmi
@@ -566,9 +580,15 @@ func _ship_scale(s: Dictionary) -> float:
 	return scale
 
 
-func _ensure_near_ship(index: int, s: Dictionary) -> MeshInstance3D:
+func _ensure_near_ship(index: int, s: Dictionary, lod: int = VisualLOD.LOD_FULL) -> MeshInstance3D:
+	var key := "%d:%d" % [index, lod]
+	# Reuse node if same index; rebuild mesh if LOD tier changed
 	if _near_ship_nodes.has(index):
-		return _near_ship_nodes[index]
+		var existing: MeshInstance3D = _near_ship_nodes[index]
+		if existing.get_meta("lod_tier", -1) == lod:
+			return existing
+		existing.queue_free()
+		_near_ship_nodes.erase(index)
 	var mi := MeshInstance3D.new()
 	var design: Dictionary = s.get("design", {})
 	if design.is_empty():
@@ -579,12 +599,11 @@ func _ensure_near_ship(index: int, s: Dictionary) -> MeshInstance3D:
 			"color": Color(0.75, 0.78, 0.85),
 			"accent": Color(0.45, 0.5, 0.55),
 		}
-	mi.mesh = ShipMeshGen.build(design)
-	var mat := StandardMaterial3D.new()
-	mat.vertex_color_use_as_albedo = true
-	mat.roughness = 0.4
-	mat.metallic = 0.45
+	mi.mesh = ShipMeshGen.build(design, lod)
+	var profile := StyleProfile.of(str(design.get("style", "civilian")))
+	var mat := VisualMaterials.make(str(profile["material"]), design.get("color", Color(0.7, 0.75, 0.85)), 0.4)
 	mi.material_override = mat
+	mi.set_meta("lod_tier", lod)
 	add_child(mi)
 	_near_ship_nodes[index] = mi
 	return mi
@@ -631,8 +650,8 @@ func sync_ships() -> void:
 			mm.set_instance_transform(local_i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), pos))
 			continue
 
-		if dist < LOD_NEAR or s.get("is_player", false):
-			near_candidates.append({"dist": dist, "index": i})
+		if dist < VisualLOD.DIST_LOW or s.get("is_player", false):
+			near_candidates.append({"dist": dist, "index": i, "lod": VisualLOD.for_distance(dist)})
 			# Hide MultiMesh for now; may restore if over cap.
 			mm.set_instance_transform(local_i, Transform3D(Basis.IDENTITY.scaled(Vector3.ZERO), pos))
 		else:
@@ -641,7 +660,7 @@ func sync_ships() -> void:
 				heading = Vector3(0, 0, -1)
 			var basis := Basis.looking_at(heading.normalized(), Vector3.UP)
 			var scale := _ship_scale(s)
-			if dist > LOD_MID:
+			if dist > VisualLOD.DIST_BATCH * 0.5:
 				scale *= 0.85
 			mm.set_instance_transform(local_i, Transform3D(basis.scaled(Vector3.ONE * scale), pos))
 			var design: Dictionary = s.get("design", {})
@@ -676,14 +695,17 @@ func sync_ships() -> void:
 					local2, design2.get("color", Color(0.7, 0.75, 0.85))
 				)
 			continue
+		var lod: int = int(c.get("lod", VisualLOD.LOD_FULL))
+		if lod > VisualLOD.LOD_LOW:
+			lod = VisualLOD.LOD_LOW
 		keep[idx] = true
 		n_keep += 1
-		var mi := _ensure_near_ship(idx, s)
+		var mi := _ensure_near_ship(idx, s, lod)
 		var heading3: Vector3 = s["heading"]
 		if heading3.length_squared() < 0.001:
 			heading3 = Vector3(0, 0, -1)
 		var basis3 := Basis.looking_at(heading3.normalized(), Vector3.UP)
-		var scale3 := _ship_scale(s) * 1.08
+		var scale3 := _ship_scale(s) * (1.08 if lod == VisualLOD.LOD_FULL else 1.02)
 		mi.transform = Transform3D(basis3.scaled(Vector3.ONE * scale3), s["position"])
 		mi.visible = true
 

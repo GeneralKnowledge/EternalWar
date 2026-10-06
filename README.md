@@ -63,20 +63,22 @@ godot --headless --path . -s res://tests/run_tests.gd
 ```
 Game
 ├── simulation/     # Data-oriented world (no Nodes) — foundation, frozen
-│   ├── seeded_rng.gd
+│   ├── seeded_rng.gd / seed_hash.gd
 │   ├── system_generator.gd
-│   ├── economy_system.gd
-│   ├── ship_ai.gd
+│   ├── economy_system.gd / ship_ai.gd
 │   └── star_system_sim.gd
-├── presentation/   # Rendering + HUD — active development
-│   └── generators/ # Starfield, ShapeLib-lite ships/stations, asteroids
-├── shaders/        # Star, planet, nebula, atmosphere, starfield
-├── player/         # Fly / observe / cinematic presets
+├── presentation/   # Rendering + design grammar — active
+│   ├── style_profile.gd / materials.gd / visual_lod.gd / stellar_colour.gd
+│   └── generators/ # ShipDesign, StationDesign, meshes, starfield
+├── shaders/
+├── player/
 ├── scenes/main.tscn
-└── docs/
+└── docs/procedural-visuals.md
 ```
 
 Ships, stations, and markets live as dictionaries inside `StarSystemSim`. Godot Nodes render and interact; they are not the source of truth.
+
+See [`docs/procedural-visuals.md`](docs/procedural-visuals.md) for the full visual architecture.
 
 ## Milestones
 

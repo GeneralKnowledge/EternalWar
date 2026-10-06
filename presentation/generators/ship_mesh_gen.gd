@@ -1,4 +1,4 @@
-## Procedural ship mesh — ShapeLib-lite composition from class + style + design seed.
+## Procedural ship mesh from ShipDesign grammar (role silhouette + style constraints).
 class_name ShipMeshGen
 extends RefCounted
 
@@ -10,74 +10,59 @@ const STYLE_MINING := "mining"
 const STYLE_LUXURY := "luxury"
 
 
-static func build(design: Dictionary) -> ArrayMesh:
+static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMesh:
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s" % [seed, ship_class, style]
+	var key := "ship:%d:%d:%s:lod%d" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
 
-	var rng := SeededRNG.new(seed)
-	var dims: Dictionary = _class_dims(ship_class, rng, style)
-	var length: float = float(dims["length"])
-	var width: float = float(dims["width"])
-	var height: float = float(dims["height"])
-	var color: Color = design.get("color", Color(0.7, 0.75, 0.8))
-	var accent: Color = design.get("accent", color.darkened(0.2))
+	var desc: Dictionary = ShipDesign.build(design, {"lod": lod})
+	var length: float = float(desc["length"])
+	var width: float = float(desc["width"])
+	var height: float = float(desc["height"])
+	var color: Color = desc["color"]
+	var accent: Color = desc["accent"]
+	var nose: float = float(desc["nose_taper"])
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 
-	var nose := 0.42 if style == STYLE_MILITARY or style == STYLE_PIRATE else 0.55
-	if style == STYLE_INDUSTRIAL or style == STYLE_MINING:
-		nose = 0.7
+	# LOD: skip detail modules at lower tiers
+	var include_detail := lod <= VisualLOD.LOD_SIMPLE
+	var include_wings := lod <= VisualLOD.LOD_LOW
+	var include_engines := true
+
 	ShapePrims.taper(st, Vector3.ZERO, Vector3(width, height, length), color, nose)
-	ShapePrims.bevel_box(st, Vector3(0, height * 0.05, -length * 0.05), Vector3(width * 0.92, height * 0.85, length * 0.4), color.lightened(0.03), 0.06)
+	if include_detail:
+		ShapePrims.bevel_box(st, Vector3(0, height * 0.05, -length * 0.05), Vector3(width * 0.92, height * 0.85, length * 0.4), color.lightened(0.03), 0.06)
 
-	# Engines aft
-	var engine_count: int = int(dims["engines"])
-	for i in engine_count:
-		var t := 0.0
-		if engine_count > 1:
-			t = (float(i) / float(engine_count - 1) - 0.5) * width * 0.75
-		var epos := Vector3(t, -height * 0.12, length * 0.48)
-		ShapePrims.engine_bell(st, epos, width * 0.1, length * 0.2, accent)
+	if include_engines:
+		for e in desc["engines"]:
+			var ep: Vector3 = e["pos"]
+			ShapePrims.engine_bell(st, ep, float(e["radius"]), float(e["length"]), accent)
 
-	match ship_class:
-		SimEntities.ShipClass.MINER:
-			ShapePrims.box(st, Vector3(0, -height * 0.4, 0.05 * length), Vector3(width * 0.6, height * 0.3, length * 0.4), Color(0.45, 0.4, 0.32))
-			ShapePrims.cylinder(st, Vector3(0, -height * 0.55, -length * 0.1), width * 0.12, height * 0.4, Color(0.35, 0.35, 0.3), 6)
-			ShapePrims.mirrored_x(st, Vector3(width * 0.55, -height * 0.15, length * 0.05), Vector3(width * 0.25, height * 0.2, length * 0.2), accent.darkened(0.1))
-		SimEntities.ShipClass.HAULER, SimEntities.ShipClass.TRADER:
-			var cargo_n: int = int(dims["cargo"])
-			for i in cargo_n:
-				var side := 1.0 if i % 2 == 0 else -1.0
-				var z := -length * 0.12 + float(i / 2) * length * 0.2
-				ShapePrims.bevel_box(st, Vector3(side * width * 0.55, 0.0, z), Vector3(width * 0.38, height * 0.55, length * 0.16), accent, 0.05)
-			if ship_class == SimEntities.ShipClass.HAULER:
-				ShapePrims.box(st, Vector3(0, height * 0.35, length * 0.05), Vector3(width * 0.5, height * 0.2, length * 0.35), color.darkened(0.1))
-		SimEntities.ShipClass.PATROL:
-			ShapePrims.mirrored_x(st, Vector3(width * 0.4, height * 0.1, -length * 0.05), Vector3(width * 0.18, height * 0.12, length * 0.28), Color(0.85, 0.28, 0.22))
-			ShapePrims.box(st, Vector3(0, height * 0.42, length * 0.05), Vector3(width * 0.22, height * 0.18, length * 0.18), color.lightened(0.12))
-			ShapePrims.wing(st, Vector3(width * 0.45, 0, length * 0.05), width * 0.7, length * 0.35, height * 0.07, accent.darkened(0.1), 0.2)
-			ShapePrims.wing(st, Vector3(-width * 0.45, 0, length * 0.05), -width * 0.7, length * 0.35, height * 0.07, accent.darkened(0.1), 0.2)
+	if include_detail or lod <= VisualLOD.LOD_LOW:
+		for m in desc["modules"]:
+			_emit_module(st, m, accent, color, lod)
 
-	if style == STYLE_MILITARY or style == STYLE_PIRATE:
-		if ship_class != SimEntities.ShipClass.PATROL:
-			var wing_w := width * rng.randf_range(0.7, 1.2)
-			ShapePrims.wing(st, Vector3(wing_w * 0.4, 0, length * 0.02), wing_w * 0.55, length * 0.32, height * 0.08, accent.darkened(0.1), 0.18)
-			ShapePrims.wing(st, Vector3(-wing_w * 0.4, 0, length * 0.02), -wing_w * 0.55, length * 0.32, height * 0.08, accent.darkened(0.1), 0.18)
-	elif style == STYLE_LUXURY or style == STYLE_CIVILIAN:
-		ShapePrims.bevel_box(st, Vector3(0, height * 0.42, -length * 0.02), Vector3(width * 0.42, height * 0.28, length * 0.28), color.lightened(0.18), 0.05)
+	for hp in desc["hardpoints"]:
+		ShapePrims.box(st, hp["pos"], hp["size"], Color(0.85, 0.28, 0.22))
 
-	if style == STYLE_PIRATE:
-		ShapePrims.box(st, Vector3(width * 0.55, height * 0.18, length * 0.08), Vector3(width * 0.35, height * 0.32, length * 0.18), Color(0.55, 0.25, 0.2))
-	if style == STYLE_INDUSTRIAL or style == STYLE_MINING:
+	if include_wings:
+		for w in desc["wings"]:
+			ShapePrims.wing(st, w["root"], float(w["span"]), float(w["chord"]), float(w["thickness"]), accent.darkened(0.1), float(w["sweep"]))
+
+	# Style plating ridges for industrial/mining
+	if include_detail and (style == STYLE_INDUSTRIAL or style == STYLE_MINING):
 		for i in 3:
 			var z := -length * 0.18 + float(i) * length * 0.16
 			ShapePrims.box(st, Vector3(0, height * 0.5, z), Vector3(width * 0.95, height * 0.07, length * 0.07), color.darkened(0.18))
+
+	if include_detail and style == STYLE_PIRATE and not bool(desc["symmetric"]):
+		ShapePrims.box(st, Vector3(width * 0.55, height * 0.18, length * 0.08), Vector3(width * 0.35, height * 0.32, length * 0.18), Color(0.55, 0.25, 0.2))
 
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
@@ -85,60 +70,61 @@ static func build(design: Dictionary) -> ArrayMesh:
 
 
 static func describe(design: Dictionary) -> Dictionary:
-	var rng := SeededRNG.new(int(design.get("seed", 1)))
-	var ship_class: int = int(design.get("ship_class", 0))
-	var style: String = str(design.get("style", ""))
-	var dims := _class_dims(ship_class, rng, style)
+	var desc := ShipDesign.build(design)
 	return {
-		"seed": int(design.get("seed", 1)),
-		"ship_class": ship_class,
-		"style": style,
-		"length": dims["length"],
-		"width": dims["width"],
-		"height": dims["height"],
-		"engines": dims["engines"],
-		"cargo_modules": dims["cargo"],
+		"seed": int(desc["seed"]),
+		"hull_seed": int(desc["hull_seed"]),
+		"engine_seed": int(desc["engine_seed"]),
+		"module_seed": int(desc["module_seed"]),
+		"detail_seed": int(desc["detail_seed"]),
+		"ship_class": int(desc["ship_class"]),
+		"style": str(desc["style"]),
+		"length": float(desc["length"]),
+		"width": float(desc["width"]),
+		"height": float(desc["height"]),
+		"engines": (desc["engines"] as Array).size(),
+		"cargo_modules": _count_type(desc["modules"], "cargo") + _count_type(desc["modules"], "ore_bay"),
+		"symmetric": bool(desc["symmetric"]),
+		"module_types": _module_types(desc["modules"]),
+		"role_name": str(desc["role_name"]),
 	}
 
 
-static func _class_dims(ship_class: int, rng: SeededRNG, style: String = STYLE_CIVILIAN) -> Dictionary:
-	var stretch := 1.0
-	if style == STYLE_MILITARY:
-		stretch = 1.08
-	elif style == STYLE_LUXURY:
-		stretch = 0.95
-	elif style == STYLE_INDUSTRIAL or style == STYLE_MINING:
-		stretch = 1.05
-	match ship_class:
-		SimEntities.ShipClass.MINER:
-			return {
-				"length": rng.randf_range(2.4, 3.2) * stretch,
-				"width": rng.randf_range(1.25, 1.85),
-				"height": rng.randf_range(0.95, 1.35),
-				"engines": 2,
-				"cargo": 2,
-			}
-		SimEntities.ShipClass.HAULER:
-			return {
-				"length": rng.randf_range(3.3, 4.4) * stretch,
-				"width": rng.randf_range(1.65, 2.25),
-				"height": rng.randf_range(1.25, 1.75),
-				"engines": 3,
-				"cargo": 6,
-			}
-		SimEntities.ShipClass.PATROL:
-			return {
-				"length": rng.randf_range(1.85, 2.5) * stretch,
-				"width": rng.randf_range(1.0, 1.45),
-				"height": rng.randf_range(0.48, 0.78),
-				"engines": 2,
-				"cargo": 0,
-			}
+static func _emit_module(st: SurfaceTool, m: Dictionary, accent: Color, color: Color, lod: int) -> void:
+	var t: String = str(m["type"])
+	var pos: Vector3 = m["pos"]
+	var size: Vector3 = m["size"]
+	match t:
+		"drill":
+			ShapePrims.cylinder(st, pos - Vector3(0, size.y * 0.5, 0), size.x * 0.25, size.y, Color(0.35, 0.35, 0.3), 6)
+			ShapePrims.box(st, pos, size, Color(0.45, 0.4, 0.32))
+		"ore_bay", "cargo", "spine":
+			if lod <= VisualLOD.LOD_SIMPLE:
+				ShapePrims.bevel_box(st, pos, size, accent, 0.05)
+			else:
+				ShapePrims.box(st, pos, size, accent)
+		"crane":
+			ShapePrims.cylinder(st, pos, size.x * 0.4, size.y, Color(0.4, 0.38, 0.32), 5)
+		"cockpit", "fin":
+			ShapePrims.bevel_box(st, pos, size, color.lightened(0.15), 0.04)
+		"sensor":
+			ShapePrims.box(st, pos, size, Color(0.6, 0.75, 0.9))
 		_:
-			return {
-				"length": rng.randf_range(2.2, 3.05) * stretch,
-				"width": rng.randf_range(1.1, 1.65),
-				"height": rng.randf_range(0.7, 1.1),
-				"engines": 2,
-				"cargo": 4,
-			}
+			ShapePrims.box(st, pos, size, accent)
+
+
+static func _count_type(modules: Array, type_name: String) -> int:
+	var n := 0
+	for m in modules:
+		if str(m.get("type", "")) == type_name:
+			n += 1
+	return n
+
+
+static func _module_types(modules: Array) -> Array:
+	var out: Array = []
+	for m in modules:
+		var t: String = str(m.get("type", ""))
+		if not out.has(t):
+			out.append(t)
+	return out
