@@ -20,14 +20,14 @@ void vertex() {
 void fragment() {
 	vec2 uv = UV * 2.0 - 1.0;
 	float d = length(uv);
-	float core = exp(-d * d * 14.0);
-	float halo = exp(-d * d * 4.0);
-	float a = core * 0.95 + halo * 0.35;
-	if (a < 0.04 || d > soft_radius) {
+	float core = exp(-d * d * 22.0);
+	float halo = exp(-d * d * 7.0);
+	float a = core * 0.95 + halo * 0.22;
+	if (a < 0.05 || d > soft_radius) {
 		discard;
 	}
 	vec3 col = COLOR.rgb;
 	ALBEDO = col;
-	EMISSION = col * (2.0 + core * 5.0);
+	EMISSION = col * (1.6 + core * 2.8);
 	ALPHA = clamp(a, 0.0, 1.0);
 }

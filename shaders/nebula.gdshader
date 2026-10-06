@@ -52,8 +52,8 @@ void fragment() {
 	float n2 = fbm(uv * 5.5 - vec2(seed_offset * 0.05, 0.3));
 	float veil = smoothstep(1.0 - density, 1.0, n * 0.65 + n2 * 0.45);
 	float alpha = veil * radial * brightness;
-	vec3 col = nebula_color.rgb * (0.55 + n2 * 0.8);
+	vec3 col = nebula_color.rgb * (0.65 + n2 * 0.6);
 	ALBEDO = col;
-	EMISSION = col * (1.2 + n * 0.8);
-	ALPHA = clamp(alpha, 0.0, 0.85);
+	EMISSION = col * (0.75 + n * 0.55);
+	ALPHA = clamp(alpha, 0.0, 0.65);
 }
