@@ -10,6 +10,9 @@ uniform float cloud_level : hint_range(-0.2, 1.0) = 0.1;
 uniform float roughness_val : hint_range(0.0, 1.0) = 0.85;
 uniform float seed_offset = 0.0;
 uniform float atmosphere_tint : hint_range(0.0, 1.0) = 0.35;
+uniform float gas_giant : hint_range(0.0, 1.0) = 0.0;
+uniform float desert : hint_range(0.0, 1.0) = 0.0;
+uniform float ice_world : hint_range(0.0, 1.0) = 0.0;
 
 varying vec3 v_obj;
 
@@ -47,9 +50,9 @@ float noise(vec3 p) {
 float fbm(vec3 p) {
 	float v = 0.0;
 	float a = 0.5;
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 5; i++) {
 		v += a * noise(p);
-		p *= 2.05;
+		p *= 2.07;
 		a *= 0.5;
 	}
 	return v;
@@ -57,18 +60,47 @@ float fbm(vec3 p) {
 
 void fragment() {
 	vec3 nrm = normalize(v_obj);
-	float n = fbm(nrm * 3.5);
 	float lat = abs(nrm.y);
-	vec3 land = mix(color_a.rgb, color_b.rgb, smoothstep(0.3, 0.7, n));
-	land = mix(land, color_c.rgb, smoothstep(0.55, 0.9, lat * 0.5 + n * 0.5));
-	float ocean = step(n, ocean_level);
-	vec3 col = mix(land, color_a.rgb * 0.55 + vec3(0.05, 0.12, 0.25), ocean);
-	float ice = smoothstep(0.65, 0.9, lat);
-	col = mix(col, color_d.rgb, ice * (1.0 - ocean * 0.3));
-	float clouds = smoothstep(cloud_level, cloud_level + 0.25, fbm(nrm * 6.0 + vec3(seed_offset)));
-	col = mix(col, vec3(0.92, 0.94, 0.97), clouds * 0.55 * clamp(1.0 - ocean * 0.2, 0.0, 1.0));
+	float n = fbm(nrm * 3.8);
+	float n_fine = fbm(nrm * 9.0 + vec3(seed_offset));
+
+	// Gas giant banding
+	float bands = sin(nrm.y * 18.0 + n * 3.0 + seed_offset) * 0.5 + 0.5;
+	vec3 gas = mix(color_a.rgb, color_b.rgb, bands);
+	gas = mix(gas, color_c.rgb, smoothstep(0.35, 0.85, n_fine) * 0.45);
+
+	vec3 land = mix(color_a.rgb, color_b.rgb, smoothstep(0.22, 0.78, n));
+	land = mix(land, color_c.rgb, smoothstep(0.45, 0.95, lat * 0.4 + n_fine * 0.6));
+	// Extra crater / roughness variation for rocky surfaces
+	float craters = smoothstep(0.62, 0.78, n_fine) * (1.0 - gas_giant);
+	land *= 1.0 - craters * 0.28;
+	// Desert washes greens toward sand
+	land = mix(land, mix(color_c.rgb, color_a.rgb, n), desert * 0.85);
+
+	float ocean = step(n, ocean_level) * (1.0 - gas_giant) * (1.0 - desert * 0.7);
+	vec3 ocean_col = color_a.rgb * 0.45 + vec3(0.04, 0.1, 0.28);
+	// Specular-ish ocean: brighter toward view via NORMAL/VIEW
+	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.4);
+	ocean_col += vec3(0.35, 0.45, 0.55) * fres * 0.55;
+
+	vec3 col = mix(land, ocean_col, ocean);
+	col = mix(col, gas, gas_giant);
+
+	float ice = smoothstep(0.58, 0.88, lat);
+	ice = max(ice, ice_world * smoothstep(0.35, 0.7, n));
+	col = mix(col, color_d.rgb, ice * (1.0 - ocean * 0.25) * (1.0 - gas_giant * 0.5));
+
+	float cloud_n = fbm(nrm * 6.2 + vec3(seed_offset * 1.3, 0.2, -seed_offset));
+	float clouds = smoothstep(cloud_level, cloud_level + 0.22, cloud_n);
+	clouds *= (1.0 - gas_giant * 0.7);
+	col = mix(col, vec3(0.93, 0.95, 0.98), clouds * 0.6 * clamp(1.0 - ocean * 0.15, 0.0, 1.0));
+
+	// Soft limb atmosphere tint on the sphere itself
+	float limb = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.8);
+	col += color_a.rgb * limb * atmosphere_tint * 0.35;
+
 	ALBEDO = col;
-	ROUGHNESS = mix(0.25, roughness_val, 1.0 - ocean * 0.7);
-	METALLIC = 0.05;
-	EMISSION = col * atmosphere_tint * 0.08;
+	ROUGHNESS = mix(0.18, roughness_val, 1.0 - ocean * 0.75);
+	METALLIC = 0.04 + ocean * 0.08;
+	EMISSION = col * atmosphere_tint * 0.06 + ocean_col * ocean * fres * 0.12;
 }

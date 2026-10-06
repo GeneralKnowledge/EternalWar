@@ -16,11 +16,17 @@ var observe_distance: float = 900.0
 var observe_yaw: float = 0.4
 var observe_pitch: float = -0.35
 var _capture_mouse: bool = false
+## Cinematic observe presets: 0 system orbit, 1 planet approach, 2 station flyby
+var cinematic_preset: int = 0
+var _cinematic_focus: Vector3 = Vector3.ZERO
+var _cinematic_blend: float = 0.0
+var presenter: SystemPresenter
 
 
-func setup(p_sim: StarSystemSim, p_camera: Camera3D) -> void:
+func setup(p_sim: StarSystemSim, p_camera: Camera3D, p_presenter: SystemPresenter = null) -> void:
 	sim = p_sim
 	camera = p_camera
+	presenter = p_presenter
 	# Reuse first ship as player vessel, or spawn dedicated one.
 	if sim.world["ships"].is_empty():
 		return
@@ -34,6 +40,7 @@ func setup(p_sim: StarSystemSim, p_camera: Camera3D) -> void:
 	ship["job"] = {}
 	ship["docked_station_id"] = -1
 	_place_near_station()
+	apply_cinematic_preset(0)
 
 
 func _place_near_station() -> void:
@@ -42,6 +49,44 @@ func _place_near_station() -> void:
 	var st: Dictionary = sim.world["stations"][0]
 	ship["position"] = st["position"] + Vector3(80, 40, 80)
 	ship["heading"] = Vector3(0, 0, -1)
+
+
+func apply_cinematic_preset(preset: int) -> void:
+	cinematic_preset = clampi(preset, 0, 2)
+	_cinematic_blend = 1.0
+	match cinematic_preset:
+		0:
+			# Wide system orbit — deep space / nebula readable
+			_cinematic_focus = Vector3.ZERO
+			observe_distance = 1600.0
+			observe_yaw = 0.55
+			observe_pitch = -0.28
+		1:
+			# Planet approach
+			if presenter != null:
+				_cinematic_focus = presenter.get_planet_focus()
+			elif not sim.world["planets"].is_empty():
+				_cinematic_focus = sim.world["planets"][0]["position"]
+			else:
+				_cinematic_focus = Vector3.ZERO
+			observe_distance = 280.0
+			observe_yaw = 0.9
+			observe_pitch = -0.15
+		2:
+			# Station flyby
+			if presenter != null:
+				_cinematic_focus = presenter.get_station_focus()
+			elif not sim.world["stations"].is_empty():
+				_cinematic_focus = sim.world["stations"][0]["position"]
+			else:
+				_cinematic_focus = Vector3.ZERO
+			observe_distance = 160.0
+			observe_yaw = 1.2
+			observe_pitch = -0.2
+	observe_mode = true
+	mode_changed.emit(true)
+	_capture_mouse = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -57,6 +102,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 			KEY_F2:
 				_try_dock_trade()
+			KEY_1:
+				apply_cinematic_preset(0)
+			KEY_2:
+				apply_cinematic_preset(1)
+			KEY_3:
+				apply_cinematic_preset(2)
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if not observe_mode:
 			_capture_mouse = true
@@ -77,7 +128,8 @@ func _process(dt: float) -> void:
 
 
 func _update_observe_camera(dt: float) -> void:
-	# Orbit the star / system center, optionally follow mouse drag via arrows.
+	# Slow cinematic drift + manual orbit.
+	observe_yaw += dt * 0.04
 	if Input.is_action_pressed("ui_left"):
 		observe_yaw -= dt * 0.7
 	if Input.is_action_pressed("ui_right"):
@@ -87,19 +139,24 @@ func _update_observe_camera(dt: float) -> void:
 	if Input.is_action_pressed("ui_down"):
 		observe_pitch = clampf(observe_pitch + dt * 0.5, -1.2, 0.2)
 	if Input.is_physical_key_pressed(KEY_EQUAL) or Input.is_physical_key_pressed(KEY_KP_ADD):
-		observe_distance = maxf(200.0, observe_distance - dt * 400.0)
+		observe_distance = maxf(80.0, observe_distance - dt * 400.0)
 	if Input.is_physical_key_pressed(KEY_MINUS) or Input.is_physical_key_pressed(KEY_KP_SUBTRACT):
 		observe_distance = minf(5000.0, observe_distance + dt * 400.0)
 
-	var focus := Vector3.ZERO
-	# Soft focus on densest activity: average of first 32 ships.
+	var activity := Vector3.ZERO
 	var ships: Array = sim.world["ships"]
 	var n := mini(32, ships.size())
 	if n > 0:
 		var acc := Vector3.ZERO
 		for i in n:
 			acc += ships[i]["position"]
-		focus = acc / float(n)
+		activity = acc / float(n)
+
+	var focus := _cinematic_focus
+	if cinematic_preset == 0:
+		focus = activity.lerp(Vector3.ZERO, 0.35)
+	elif _cinematic_blend > 0.0:
+		_cinematic_blend = maxf(0.0, _cinematic_blend - dt * 0.15)
 
 	var cp := cos(observe_pitch)
 	var offset := Vector3(

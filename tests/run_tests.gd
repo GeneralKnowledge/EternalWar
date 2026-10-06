@@ -14,9 +14,15 @@ func _init() -> void:
 	_test_hierarchical_independence()
 	_test_visual_metadata()
 	_test_mesh_generators()
+	_test_ship_design_grammar()
+	_test_station_design_graph()
+	_test_asteroid_families()
+	_test_lod_consistency()
+	_test_stellar_colour()
 	_test_economy_runs()
 	_test_ships_become_active()
 	_test_prices_respond_to_supply()
+	_test_perf_benchmarks()
 	print("=== Results: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
 
@@ -101,6 +107,8 @@ func _test_visual_metadata() -> void:
 	_ok("Ship has design dict", sh.has("design") and sh["design"].has("style"))
 	var y: Dictionary = w["yields"][0]
 	_ok("Yield has composition", y.has("composition") and y.has("asteroid_count"))
+	_ok("Planet has terrain/atmosphere seeds", w["planets"][0].has("terrain_seed") and w["planets"][0].has("atmosphere_seed"))
+	_ok("Ship design has child seeds", sh["design"].has("hull_seed") and sh["design"].has("engine_seed"))
 
 
 func _test_mesh_generators() -> void:
@@ -121,6 +129,14 @@ func _test_mesh_generators() -> void:
 		"accent": Color(0.4, 0.3, 0.2),
 	})
 	_ok("Ship mesh cache hit", ship_mesh == ship_mesh2)
+	var patrol := ShipMeshGen.build({
+		"seed": 99,
+		"ship_class": SimEntities.ShipClass.PATROL,
+		"style": "military",
+		"color": Color(0.7, 0.7, 0.8),
+		"accent": Color(0.5, 0.2, 0.2),
+	})
+	_ok("Patrol mesh distinct from miner", patrol != null and patrol != ship_mesh)
 	var st_mesh := StationMeshGen.build({
 		"seed": 99,
 		"role": "mining",
@@ -128,12 +144,154 @@ func _test_mesh_generators() -> void:
 		"color": Color(0.6, 0.5, 0.3),
 	})
 	_ok("Station mesh builds", st_mesh != null and st_mesh.get_surface_count() > 0)
+	var trade_st := StationMeshGen.build({
+		"seed": 99,
+		"role": "trade",
+		"style": "civilian",
+		"color": Color(0.6, 0.5, 0.3),
+	})
+	_ok("Trade station mesh differs by role", trade_st != null and trade_st != st_mesh)
 	var ast := AsteroidMeshGen.build(42, 1)
 	_ok("Asteroid mesh builds", ast != null and ast.get_surface_count() > 0)
 	var desc := ShipMeshGen.describe({"seed": 12345, "ship_class": SimEntities.ShipClass.MINER, "style": "mining"})
 	_ok("Ship describe has hull dims", float(desc.get("length", 0)) > 0.0 and int(desc.get("engines", 0)) >= 1)
 	var mm := StarfieldGen.build_multimesh(42, 100)
 	_ok("Starfield MultiMesh", mm != null and mm.instance_count == 100)
+	_ok("Starfield uses QuadMesh billboards", mm.mesh is QuadMesh)
+	# Seed → mesh key stability across styles
+	MeshCache.clear()
+	var a := ShipMeshGen.build({"seed": 7, "ship_class": 0, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
+	var b := ShipMeshGen.build({"seed": 7, "ship_class": 0, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
+	_ok("Design seed mesh stable", a == b)
+
+
+func _test_ship_design_grammar() -> void:
+	var d1 := {
+		"seed": 4242,
+		"ship_class": SimEntities.ShipClass.MINER,
+		"style": "mining",
+		"color": Color(0.8, 0.5, 0.2),
+		"accent": Color(0.4, 0.3, 0.2),
+	}
+	var a := ShipDesign.build(d1)
+	var b := ShipDesign.build(d1)
+	_ok("ShipDesign deterministic", int(a["hull_seed"]) == int(b["hull_seed"]) and float(a["length"]) == float(b["length"]))
+	_ok("ShipDesign hierarchical child seeds", int(a["hull_seed"]) != int(a["engine_seed"]) and int(a["module_seed"]) != int(a["detail_seed"]))
+	var d2 := d1.duplicate()
+	d2["seed"] = 9999
+	var c := ShipDesign.build(d2)
+	_ok("Different design seed → different hull", int(a["hull_seed"]) != int(c["hull_seed"]))
+	# Role consistency: miners look industrial
+	var miner_types: Array = []
+	for seed in [10, 20, 30, 40, 50]:
+		var md := ShipDesign.build({"seed": seed, "ship_class": SimEntities.ShipClass.MINER, "style": "mining", "color": Color.WHITE, "accent": Color.GRAY})
+		for m in md["modules"]:
+			var t: String = str(m["type"])
+			if not miner_types.has(t):
+				miner_types.append(t)
+	_ok("Miners share mining module vocabulary", miner_types.has("drill") or miner_types.has("ore_bay"))
+	var patrol := ShipDesign.build({"seed": 11, "ship_class": SimEntities.ShipClass.PATROL, "style": "military", "color": Color.WHITE, "accent": Color.GRAY})
+	var hauler := ShipDesign.build({"seed": 11, "ship_class": SimEntities.ShipClass.HAULER, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
+	_ok("Patrol vs hauler different silhouette dims", float(patrol["length"]) < float(hauler["length"]))
+	# Isolation: changing one design seed does not alter another object's seed derivation from parent
+	var parent := 100
+	var ship_a := SeedHash.derive_i(parent, "ship", 0)
+	var ship_b := SeedHash.derive_i(parent, "ship", 1)
+	var hull_a := SeedHash.derive(SeedHash.derive(ship_a, "design"), "hull")
+	var hull_b1 := SeedHash.derive(SeedHash.derive(ship_b, "design"), "hull")
+	# "regenerate" A with extra work — B unchanged
+	var _ignored := ShipDesign.build({"seed": SeedHash.derive(ship_a, "design"), "ship_class": 0, "style": "mining", "color": Color.WHITE, "accent": Color.GRAY})
+	var hull_b2 := SeedHash.derive(SeedHash.derive(ship_b, "design"), "hull")
+	_ok("Hierarchical isolation ship B hull stable", hull_b1 == hull_b2 and hull_a != hull_b1)
+
+
+func _test_station_design_graph() -> void:
+	var st := {
+		"seed": 77,
+		"role": "industrial",
+		"style": "mining",
+		"modules": ["core", "docking", "factories", "cargo", "power", "habitation"],
+		"color": Color(0.6, 0.5, 0.3),
+	}
+	var a := StationDesign.build(st)
+	var b := StationDesign.build(st)
+	_ok("StationDesign deterministic", int(a["layout_seed"]) == int(b["layout_seed"]) and (a["nodes"] as Array).size() == (b["nodes"] as Array).size())
+	_ok("StationDesign has edges from core", (a["edges"] as Array).size() >= 1)
+	var types: Array = []
+	for n in a["nodes"]:
+		types.append(str(n["type"]))
+	_ok("StationDesign includes factories module", types.has("factories"))
+	var mesh := StationMeshGen.build(st, VisualLOD.LOD_FULL)
+	var mesh_low := StationMeshGen.build(st, VisualLOD.LOD_BATCH)
+	_ok("Station LOD meshes build", mesh != null and mesh_low != null)
+
+
+func _test_asteroid_families() -> void:
+	var ice := AsteroidMeshGen.build(42, 1, "ice")
+	var iron := AsteroidMeshGen.build(42, 1, "iron")
+	_ok("Ice vs iron asteroid families differ", ice != null and iron != null and ice != iron)
+	_ok("Asteroid family name stable", AsteroidMeshGen.family_name(42, "ice") == AsteroidMeshGen.family_name(42, "ice"))
+	var families: Dictionary = {}
+	for s in range(20):
+		families[AsteroidMeshGen.family_name(s, "silicate")] = true
+	_ok("Silicate uses multiple families across seeds", families.size() >= 2)
+
+
+func _test_lod_consistency() -> void:
+	var design := {
+		"seed": 555,
+		"ship_class": SimEntities.ShipClass.TRADER,
+		"style": "civilian",
+		"color": Color(0.7, 0.7, 0.8),
+		"accent": Color(0.4, 0.4, 0.5),
+	}
+	var full := ShipMeshGen.describe(design)
+	var mesh0 := ShipMeshGen.build(design, VisualLOD.LOD_FULL)
+	var mesh3 := ShipMeshGen.build(design, VisualLOD.LOD_BATCH)
+	_ok("LOD meshes both build", mesh0 != null and mesh3 != null)
+	_ok("LOD meshes are distinct cache entries", mesh0 != mesh3)
+	# Same underlying design dims regardless of LOD mesh
+	var full2 := ShipMeshGen.describe(design)
+	_ok("LOD does not change design descriptor", float(full["length"]) == float(full2["length"]))
+	_ok("VisualLOD distance tiers ordered", VisualLOD.for_distance(100) < VisualLOD.for_distance(800) and VisualLOD.for_distance(800) < VisualLOD.for_distance(5000))
+
+
+func _test_stellar_colour() -> void:
+	var cool := StellarColour.from_temperature(3000.0)
+	var hot := StellarColour.from_temperature(12000.0)
+	_ok("Cool stars redder than hot", cool.r >= hot.r * 0.9 and cool.b < hot.b)
+	_ok("Hot stars bluish", hot.b > 0.85)
+
+
+func _test_perf_benchmarks() -> void:
+	print("--- Perf benchmarks ---")
+	var sizes := [400, 1000]
+	for n in sizes:
+		MeshCache.clear()
+		var t0 := Time.get_ticks_usec()
+		var sim := StarSystemSim.new()
+		sim.generate(42, n)
+		var gen_ms := (Time.get_ticks_usec() - t0) / 1000.0
+		t0 = Time.get_ticks_usec()
+		# Build a sample of visual meshes (ships by class + stations + asteroids)
+		for sc in [0, 1, 2, 3]:
+			ShipMeshGen.build({"seed": 50 + sc * 17, "ship_class": sc, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY}, VisualLOD.LOD_BATCH)
+		for st in sim.world["stations"]:
+			StationMeshGen.build(st, VisualLOD.LOD_FULL)
+		for y in sim.world["yields"]:
+			AsteroidMeshGen.build(int(y["seed"]), 1, str(y.get("composition", "iron")))
+		var mesh_ms := (Time.get_ticks_usec() - t0) / 1000.0
+		t0 = Time.get_ticks_usec()
+		for _i in 60:
+			sim.tick(0.05)
+		var tick_ms := (Time.get_ticks_usec() - t0) / 1000.0
+		print("  ships=%d  gen=%.1fms  mesh=%.1fms  60ticks=%.1fms  econ=%.2f ai=%.2f" % [
+			n, gen_ms, mesh_ms, tick_ms, float(sim.perf.get("economy_ms", 0)), float(sim.perf.get("ai_ms", 0)),
+		])
+		_ok("Perf gen ships=%d under 5s" % n, gen_ms < 5000.0)
+		_ok("Perf mesh ships=%d under 10s" % n, mesh_ms < 10000.0)
+	# Document larger targets without failing CI on soft hardware
+	print("  (5000/10000/50000 ship targets: measure locally; Rust candidate if mesh_ms dominates)")
 
 
 func _test_economy_runs() -> void:

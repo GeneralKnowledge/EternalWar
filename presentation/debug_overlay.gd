@@ -40,11 +40,15 @@ func _process(_dt: float) -> void:
 	var p := sim.perf
 	var m: Dictionary = sim.economy.metrics
 	var prices: Dictionary = m.get("avg_prices", {})
-	var mode := "OBSERVE (F1 fly)" if player == null or player.observe_mode else "FLY (F1 observe, F2 dock/trade)"
+	var mode := "OBSERVE (F1 fly, 1/2/3 cinema)" if player == null or player.observe_mode else "FLY (F1 observe, F2 dock/trade)"
+	var cinema := ""
+	if player != null and player.observe_mode:
+		var names := ["system orbit", "planet approach", "station flyby"]
+		cinema = "  Cinema: %s" % names[clampi(player.cinematic_preset, 0, 2)]
 	var star: Dictionary = sim.world.get("star", {})
 	var cache := MeshCache.stats()
 	var lines: PackedStringArray = PackedStringArray([
-		"Limit Theory Prototype  |  seed %d  |  %s%s" % [sim.seed_value, mode, "  [PAUSED F3]" if paused else ""],
+		"Limit Theory Prototype  |  seed %d  |  %s%s%s" % [sim.seed_value, mode, cinema, "  [PAUSED F3]" if paused else ""],
 		"System: %s   t=%.1fs   Star: %s (%.0fK)" % [
 			str(sim.world.get("name", "?")), float(sim.world.get("sim_time", 0.0)),
 			str(star.get("star_type", "?")), float(star.get("temperature", 0.0))
@@ -74,25 +78,34 @@ func _process(_dt: float) -> void:
 					SimEntities.class_name_of(int(target.get("ship_class", 0))),
 					str(design.get("style", "?")),
 				])
-				lines.append("  Design seed: %d" % int(desc.get("seed", 0)))
-				lines.append("  Hull L/W/H: %.1f / %.1f / %.1f  engines=%d cargo=%d" % [
+				lines.append("  Seeds  system=%d  object=%d  design=%d" % [
+					sim.seed_value, int(target.get("seed", 0)), int(desc.get("seed", 0)),
+				])
+				lines.append("  Child  hull=%d  engine=%d  module=%d  detail=%d" % [
+					int(desc.get("hull_seed", 0)), int(desc.get("engine_seed", 0)),
+					int(desc.get("module_seed", 0)), int(desc.get("detail_seed", 0)),
+				])
+				lines.append("  Hull L/W/H: %.1f / %.1f / %.1f  engines=%d cargo=%d  sym=%s" % [
 					float(desc.get("length", 0)), float(desc.get("width", 0)), float(desc.get("height", 0)),
 					int(desc.get("engines", 0)), int(desc.get("cargo_modules", 0)),
+					str(desc.get("symmetric", true)),
 				])
+				lines.append("  Modules: %s" % str(desc.get("module_types", [])))
 				lines.append("  Activity: %d  credits: %.0f" % [int(target.get("activity", 0)), float(target.get("credits", 0))])
 
 	# Sample planet / station identity
 	if not sim.world["planets"].is_empty():
 		var pl: Dictionary = sim.world["planets"][0]
 		lines.append("")
-		lines.append("Planet[0]: %s  class=%s  seed=%d  rings=%s" % [
+		lines.append("Planet[0]: %s  class=%s  seed=%d  terrain=%d  atmo=%d" % [
 			pl.get("name", "?"), pl.get("planet_class", "?"), int(pl.get("seed", 0)),
-			str(pl.get("has_rings", false)),
+			int(pl.get("terrain_seed", 0)), int(pl.get("atmosphere_seed", 0)),
 		])
 	if not sim.world["stations"].is_empty():
 		var st: Dictionary = sim.world["stations"][0]
-		lines.append("Station[0]: %s  role=%s  modules=%s" % [
-			st.get("name", "?"), st.get("role", "?"), str(st.get("modules", [])),
+		var sd := StationMeshGen.describe(st)
+		lines.append("Station[0]: %s  role=%s  layout=%d  modules=%s" % [
+			st.get("name", "?"), st.get("role", "?"), int(sd.get("layout_seed", 0)), str(sd.get("modules", [])),
 		])
 
 	if player != null and not player.ship.is_empty() and not player.observe_mode:

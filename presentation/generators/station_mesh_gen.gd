@@ -1,5 +1,4 @@
-## Modular procedural station mesh — composition driven by role + faction style.
-## Inspired by LT Station.lua: assemble primitives on joints rather than unique sculptures.
+## Modular procedural station from StationDesign graph (role → modules → geometry).
 class_name StationMeshGen
 extends RefCounted
 
@@ -10,145 +9,93 @@ const ROLE_MILITARY := "military"
 const ROLE_HABITAT := "habitat"
 
 
-static func build(design: Dictionary) -> ArrayMesh:
+static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMesh:
 	var seed: int = int(design.get("seed", 1))
 	var role: String = str(design.get("role", ROLE_TRADE))
-	var key := "station:%d:%s" % [seed, role]
+	var style: String = str(design.get("style", "industrial"))
+	var key := "station:%d:%s:%s:lod%d" % [seed, role, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
 
-	var rng := SeededRNG.new(seed)
+	var desc: Dictionary = StationDesign.build(design)
+	var accent: Color = desc["color"]
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var style: String = str(design.get("style", "industrial"))
-	var accent: Color = design.get("color", Color(0.6, 0.65, 0.7))
 
-	# Core
-	_box(st, Vector3.ZERO, Vector3(1.2, 1.0, 1.2), accent)
+	var include_connectors := lod <= VisualLOD.LOD_SIMPLE
+	var include_extras := lod <= VisualLOD.LOD_LOW
 
-	# Spire / command
-	_box(st, Vector3(0, 1.4, 0), Vector3(0.35, 1.6, 0.35), accent.lightened(0.1))
+	# Core + modules from graph
+	for node in desc["nodes"]:
+		var ntype: String = str(node["type"])
+		var pos: Vector3 = node["pos"]
+		var size: Vector3 = node["size"]
+		match ntype:
+			"core":
+				ShapePrims.bevel_box(st, pos, size, accent, 0.08)
+			"power", "command", "communications":
+				ShapePrims.cylinder(st, pos - Vector3(0, size.y * 0.5, 0), size.x * 0.45, size.y, accent.lightened(0.08), 8)
+			"docking":
+				ShapePrims.bevel_box(st, pos, size, Color(0.82, 0.75, 0.4), 0.04)
+				ShapePrims.box(st, pos + Vector3(0, 0, -size.z * 0.6), Vector3(0.28, 0.2, size.z), accent.darkened(0.05))
+			"weapons", "armour":
+				ShapePrims.box(st, pos, size, Color(0.72, 0.22, 0.22))
+			"habitation":
+				ShapePrims.bevel_box(st, pos, size, accent.lightened(0.12), 0.05)
+			"factories", "manufacturing", "processing", "refinery":
+				ShapePrims.bevel_box(st, pos, size, accent.darkened(0.1), 0.06)
+				if include_extras:
+					ShapePrims.cylinder(st, pos + Vector3(size.x * 0.3, size.y * 0.4, 0), 0.18, size.y * 0.8, Color(0.4, 0.4, 0.42), 6)
+			_:
+				ShapePrims.box(st, pos, size, accent.darkened(0.05))
 
-	match role:
-		ROLE_MINING:
-			_box(st, Vector3(1.6, 0, 0), Vector3(1.4, 0.7, 0.9), accent.darkened(0.15))
-			_box(st, Vector3(-1.6, 0, 0), Vector3(1.4, 0.7, 0.9), accent.darkened(0.15))
-			_box(st, Vector3(0, -0.2, 1.8), Vector3(0.8, 0.5, 1.5), Color(0.45, 0.4, 0.3))
-			for i in 3:
-				var y := -0.8 - float(i) * 0.55
-				_box(st, Vector3(0, y, 2.4), Vector3(0.35, 0.25, 0.35), Color(0.35, 0.32, 0.28))
-		ROLE_TRADE:
-			for i in 4:
-				var a := float(i) * TAU * 0.25 + 0.2
-				var p := Vector3(cos(a) * 2.0, 0.0, sin(a) * 2.0)
-				_box(st, p, Vector3(0.9, 0.45, 0.9), accent.lightened(0.05))
-			_box(st, Vector3(0, 0.1, 0), Vector3(2.4, 0.25, 2.4), accent.darkened(0.2))
-		ROLE_INDUSTRIAL:
-			_box(st, Vector3(1.8, 0.2, 0), Vector3(1.6, 1.4, 1.1), accent.darkened(0.1))
-			_box(st, Vector3(-1.8, 0.2, 0), Vector3(1.6, 1.4, 1.1), accent.darkened(0.1))
-			_box(st, Vector3(0, 0, 2.0), Vector3(1.0, 0.8, 1.3), Color(0.5, 0.45, 0.4))
-			for i in 2:
-				_cyl_approx(st, Vector3(1.2 + float(i) * 0.7, 1.6, 0.8), 0.2, 1.2, Color(0.4, 0.4, 0.42))
-		ROLE_MILITARY:
-			_box(st, Vector3(0, 0, 0), Vector3(1.6, 0.7, 2.2), accent.darkened(0.25))
-			for i in 3:
-				var z := -1.2 + float(i) * 1.1
-				_box(st, Vector3(1.5, 0.3, z), Vector3(0.5, 0.35, 0.5), Color(0.7, 0.25, 0.25))
-				_box(st, Vector3(-1.5, 0.3, z), Vector3(0.5, 0.35, 0.5), Color(0.7, 0.25, 0.25))
-			_box(st, Vector3(0, 2.0, 0), Vector3(0.5, 0.9, 0.5), accent)
-		_:
-			_box(st, Vector3(1.4, 0.3, 0), Vector3(1.0, 1.1, 1.0), accent.lightened(0.15))
-			_box(st, Vector3(-1.4, 0.3, 0), Vector3(1.0, 1.1, 1.0), accent.lightened(0.15))
-			_box(st, Vector3(0, 0.5, 1.6), Vector3(1.2, 0.9, 0.8), accent)
+	# Structural connectors (edges → thin beams)
+	if include_connectors:
+		for e in desc["edges"]:
+			var a: Dictionary = (desc["nodes"] as Array)[int(e["from"])]
+			var b: Dictionary = (desc["nodes"] as Array)[int(e["to"])]
+			var mid: Vector3 = (a["pos"] + b["pos"]) * 0.5
+			var delta: Vector3 = b["pos"] - a["pos"]
+			var beam := Vector3(0.12, 0.12, maxf(delta.length(), 0.2))
+			# Orient roughly along Z by placing box along average; good enough for silhouette
+			ShapePrims.box(st, mid, Vector3(maxf(absf(delta.x), 0.12), maxf(absf(delta.y), 0.12), maxf(absf(delta.z), 0.12)), accent.darkened(0.35))
 
-	# Docking arm — all roles
-	var dock_len := rng.randf_range(1.4, 2.2)
-	_box(st, Vector3(0, -0.9, dock_len * 0.5), Vector3(0.35, 0.25, dock_len), accent.darkened(0.05))
-	_box(st, Vector3(0, -0.9, dock_len), Vector3(0.9, 0.4, 0.5), Color(0.8, 0.75, 0.4))
+	if include_extras:
+		for x in desc["extras"]:
+			match str(x["type"]):
+				"ring":
+					ShapePrims.ring(st, Vector3(0, float(x.get("y", 0)), 0), float(x["radius"]), float(x["tube"]), accent.darkened(0.15), 12)
+				"spine":
+					ShapePrims.cylinder(st, Vector3(0, 0.5, 0), 0.22, float(x["height"]), accent.lightened(0.05), 8)
 
-	# Style tweak: exposed industrial scaffolding
-	if style == "industrial" or style == "pirate":
+	# Style scaffolding
+	if include_detail_style(style) and include_extras:
+		var det := SeededRNG.new(int(desc["detail_seed"]))
 		for i in 4:
 			var a := float(i) * TAU * 0.25
-			_box(st, Vector3(cos(a) * 1.1, rng.randf_range(-0.5, 1.0), sin(a) * 1.1), Vector3(0.12, 1.4, 0.12), accent.darkened(0.3))
+			ShapePrims.box(st, Vector3(cos(a) * 1.15, det.randf_range(-0.4, 1.1), sin(a) * 1.15), Vector3(0.1, 1.5, 0.1), accent.darkened(0.35))
 
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh
 
 
-static func _box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
-	var hx := size.x * 0.5
-	var hy := size.y * 0.5
-	var hz := size.z * 0.5
-	var v := [
-		center + Vector3(-hx, -hy, -hz),
-		center + Vector3(hx, -hy, -hz),
-		center + Vector3(hx, hy, -hz),
-		center + Vector3(-hx, hy, -hz),
-		center + Vector3(-hx, -hy, hz),
-		center + Vector3(hx, -hy, hz),
-		center + Vector3(hx, hy, hz),
-		center + Vector3(-hx, hy, hz),
-	]
-	var faces := [
-		[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7],
-		[1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0],
-	]
-	for f in faces:
-		var a: Vector3 = v[f[0]]
-		var b: Vector3 = v[f[1]]
-		var c: Vector3 = v[f[2]]
-		var d: Vector3 = v[f[3]]
-		var n: Vector3 = (b - a).cross(c - a).normalized()
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(a)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(b)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(c)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(a)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(c)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(d)
+static func include_detail_style(style: String) -> bool:
+	return style == "industrial" or style == "pirate" or style == "mining"
 
 
-static func _cyl_approx(st: SurfaceTool, base: Vector3, radius: float, height: float, color: Color) -> void:
-	# Low-segment prism as chimney/tank.
-	var seg := 6
-	var top := base + Vector3(0, height, 0)
-	for i in seg:
-		var a0 := float(i) / float(seg) * TAU
-		var a1 := float(i + 1) / float(seg) * TAU
-		var p0 := base + Vector3(cos(a0) * radius, 0, sin(a0) * radius)
-		var p1 := base + Vector3(cos(a1) * radius, 0, sin(a1) * radius)
-		var p2 := top + Vector3(cos(a1) * radius, 0, sin(a1) * radius)
-		var p3 := top + Vector3(cos(a0) * radius, 0, sin(a0) * radius)
-		var n: Vector3 = (p1 - p0).cross(p3 - p0).normalized()
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p0)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p1)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p2)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p0)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p2)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p3)
+static func describe(design: Dictionary) -> Dictionary:
+	var desc := StationDesign.build(design)
+	var types: Array = []
+	for n in desc["nodes"]:
+		types.append(str(n["type"]))
+	return {
+		"seed": int(desc["seed"]),
+		"layout_seed": int(desc["layout_seed"]),
+		"role": str(desc["role"]),
+		"style": str(desc["style"]),
+		"module_count": (desc["nodes"] as Array).size(),
+		"modules": types,
+		"edge_count": (desc["edges"] as Array).size(),
+	}

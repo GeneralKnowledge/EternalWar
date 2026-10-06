@@ -30,6 +30,8 @@ static func make_planet(
 		"resources": resources.duplicate(),
 		"seed": int(extra.get("seed", id)),
 		"planet_class": str(extra.get("planet_class", "rocky")),
+		"terrain_seed": int(extra.get("terrain_seed", SeedHash.derive(int(extra.get("seed", id)), "terrain"))),
+		"atmosphere_seed": int(extra.get("atmosphere_seed", SeedHash.derive(int(extra.get("seed", id)), "atmosphere"))),
 		"ocean_level": float(extra.get("ocean_level", 0.3)),
 		"cloud_level": float(extra.get("cloud_level", 0.1)),
 		"atmosphere": float(extra.get("atmosphere", 0.3)),
@@ -129,6 +131,10 @@ static func make_ship(
 		"style": str(extra.get("style", "civilian")),
 		"color": extra.get("color", Color(0.7, 0.75, 0.85)),
 		"accent": extra.get("accent", Color(0.5, 0.55, 0.6)),
+		"hull_seed": SeedHash.derive(int(extra.get("design_seed", id)), "hull"),
+		"engine_seed": SeedHash.derive(int(extra.get("design_seed", id)), "engine"),
+		"module_seed": SeedHash.derive(int(extra.get("design_seed", id)), "module"),
+		"detail_seed": SeedHash.derive(int(extra.get("design_seed", id)), "detail"),
 	}
 	return {
 		"id": id,

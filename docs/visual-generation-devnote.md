@@ -1,42 +1,59 @@
 # Visual Generation — Development Note
 
-## Current generation system (pre-phase)
+## Focus
 
-- `SystemGenerator` uses a single `SeededRNG` stream for the whole system.
-- Planets, yields, stations, and ships are plain dictionaries (`SimEntities`).
-- Visual identity was minimal: random colours, simple radii, faction colours on stations/ships.
-- Order-dependent RNG: advancing the stream for object N changed later objects (mitigated for reproducibility only when regenerating the entire system from the same seed).
+Come close to how **Limit Theory looked** in Godot. Simulation (economy, AI, seeds) is the inhabited canvas; it does not drive the roadmap until visual milestones clear a screenshot bar.
 
-## Current rendering system
+Constraint: visual systems **read** simulation data; they never own world state. Headless tests must stay green.
 
-- `SystemPresenter` builds Node3D spheres/boxes and one MultiMesh for all ships.
-- Flat colour background + ~400 MultiMesh star points.
-- No mesh cache, no visual LOD, no design-driven geometry.
+Full architecture: [`procedural-visuals.md`](procedural-visuals.md).
 
-## Reusable components to keep
+## Current stack
 
-- `StarSystemSim` / `EconomySystem` / `ShipAI` — simulation source of truth
-- `SeededRNG` (with `_rng.*` GlobalScope footgun fix)
-- MultiMesh ship sync path
-- Observe / fly player modes
-- Headless tests in `tests/run_tests.gd`
+| Layer | Path | Role |
+|-------|------|------|
+| Seeds | `simulation/seed_hash.gd` | Hierarchical child seeds |
+| World gen | `simulation/system_generator.gd` | Star, planets (+terrain/atmo seeds), yields, stations, ships |
+| Style | `presentation/style_profile.gd` | Faction/style visual profiles |
+| Materials | `presentation/materials.gd` | Shared material vocabulary |
+| LOD | `presentation/visual_lod.gd` | Tiers 0–4 |
+| Design | `generators/ship_design.gd`, `station_design.gd` | Semantic descriptors |
+| Generators | `generators/*` | Starfield, ships, stations, asteroids, ShapePrims |
+| Presenter | `system_presenter.gd` | Env, bodies, fields, LOD ships |
+| Shaders | `shaders/*` | Star, starfield, nebula, planet, atmosphere |
+| Colour | `stellar_colour.gd` | Temperature → stellar RGB |
 
-## Shortcomings
+## Limit Theory look pillars
 
-- Placeholders do not communicate industry/faction/role
-- No hierarchical seeds → cannot lazily regenerate one object
-- Starfield too sparse; planets identical spheres; stations are boxes; ships are prisms
-- Simulation↔visual coupling weak (ore fields not looking like ore fields)
+1. Atmospheric space — dark sky, structured nebulae, dust, soft star glow
+2. Believable starfield — clusters + galactic plane bias + temperature colours
+3. Painterly planets — class archetypes, fresnel atmosphere, rings
+4. Intentional ships — design grammar, role silhouettes, style constraints
+5. Architectural stations — module graphs, role patterns
+6. Field identity — composition-driven asteroid families
 
-## Extension points
+## Milestone acceptance
 
-1. `simulation/seed_hash.gd` — parent+tag → child seed
-2. Enrich entity dictionaries with `seed`, `design`, `planet_class`, `modules`, `composition`
-3. `presentation/generators/*` — mesh builders driven by those fields
-4. `presentation/mesh_cache.gd` — cache ArrayMesh by design seed
-5. `SystemPresenter` — starfield / star / planet shaders / asteroid MultiMesh / modular stations / LOD ships
-6. Debug overlay — inspect selected generated object
+| Milestone | Done when |
+|-----------|-----------|
+| **A** Sky | Observe orbit stills = place in space, not black void |
+| **B** Bodies | Planet classes recognisable at mid orbit |
+| **C** Shapes | F3 ship inspect memorable silhouette; roles distinct at ~200 m |
+| **D** Fields | Two yield compositions distinguishable without labels |
+| **E** Showcase | Presets 1–3 + stills read as LT-inspired Godot |
+| **F** Systems | Only after E |
 
-## Constraint
+## Screenshot checklist (E)
 
-All existing simulation behaviour and tests must keep working. Visual systems read simulation data; they do not own world state.
+- [x] Deep-space wide shot (preset 1)
+- [x] Planet approach (preset 2)
+- [x] Station flyby (preset 3)
+- [x] Near ship (fly / F3)
+- [x] Yield fields differ by composition family
+
+## Out of scope until F
+
+- Full ShapeLib joint/warp port
+- Galaxy / multi-system LOD
+- Faction politics, conflict, fleets
+- Offline planet cubemap bake

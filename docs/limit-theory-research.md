@@ -160,7 +160,7 @@ Simulate more than you draw. Distant detail collapses visually without deleting 
 `StarSystemSim.tick(dt)` is headless-safe. `SystemPresenter` reads state and drives MultiMeshInstance3D for ships, MeshInstance3D for planets/stations. Distance LOD later; prototype always draws simplified primitives.
 
 ### Why it differs
-Godot MultiMesh / VisibilityNotifier replace custom mesh LOD for early milestones. Shader nebulae are out of scope.
+Godot MultiMesh / VisibilityNotifier replace custom mesh LOD for early milestones. Shader nebulae are **in scope** for visual milestone A (layered billboards + noise), not deferred.
 
 ### Performance implications
 500 ships as MultiMesh instances is cheap. Avoid per-ship Node3D until player interaction requires it.
@@ -274,8 +274,11 @@ Instrumentation cost should stay tiny (timestamps around major phases only).
 | Procedural stations | Yes | Role-driven module kits |
 | Starfield clusters | Yes | MultiMesh + temperature colours |
 | Planet shader materials | Yes | Godot `planet.gdshader` |
-| Visual LOD meshes | Partial | Distance scale + class MultiMeshes |
-| Full galaxy | Deferred | Single system first |
+| Visual LOD meshes | Yes | Near-field per-design meshes; far class MultiMeshes |
+| Shader nebulae / dust | Yes | Milestone A — layered billboards + noise shader |
+| ShapeLib upgrade beyond boxes | Yes | Milestone C — tapers, bells, bevels, symmetry |
+| Full galaxy | Deferred | Blocked until visual milestone E clears |
+| Factions / conflict / fleets | Deferred | Milestone F — after showcase pass |
 | Rust | No | Profile first |
 
 ---
@@ -314,10 +317,10 @@ Compose intentional designs from primitives, joints, extrusion, symmetry, and st
 Recognisable vehicle silhouettes with variety; design language instead of noise.
 
 ### EternalWar implementation
-`ShipMeshGen` / `StationMeshGen` build `ArrayMesh` via `SurfaceTool` boxes/prisms. Inputs: class, faction style, design seed. Results cached in `MeshCache`. Far field uses MultiMesh per ship class; stations instantiate modular meshes once.
+`shape_prims.gd` shared toolkit (box, bevelled box, taper, cylinder, mirrored pair). `ShipMeshGen` / `StationMeshGen` compose intentional silhouettes from class + faction style + design seed. Cached in `MeshCache`. Near field: per-design MeshInstance3D; far field: MultiMesh per ship class.
 
 ### Reason for differences
-No native BoxMesh CSG bevel stack like LT’s `BoxMesh`. GDScript SurfaceTool is enough for prototype silhouettes. Full ShapeLib port deferred until profiling demands richer geometry.
+No native BoxMesh CSG bevel stack like LT’s `BoxMesh`. SurfaceTool primitives approximate ShapeLib for visual milestone C. Full joint/warp ShapeLib port still deferred.
 
 ### Performance considerations
 Mesh builds are cached by design key. Never regenerate per frame. MultiMesh keeps 400+ ships cheap.
@@ -336,10 +339,10 @@ Grow star positions from cluster seeds; colour by approximate temperature; rende
 Believable sky without uniform random dots; cheap distant stars.
 
 ### EternalWar implementation
-`StarfieldGen.build_multimesh` — cluster growth + MultiMesh spheres, temperature palette, nebula tint on `Environment` from system seed.
+`StarfieldGen.build_multimesh` — cluster growth + MultiMesh **billboard quads** with temperature palette and magnitude. Nebula layers use `shaders/nebula.gdshader` (soft IFS-like noise on large planes) plus a subtle Environment tint. Near-camera dust motes add depth.
 
 ### Reason for differences
-Godot MultiMesh + unshaded materials instead of custom mesh billboards. Nebula is ambient/fog tint for now, not LT’s TexCube IFS shader.
+Godot MultiMesh + vertex billboard shader instead of LibPHX custom mesh billboards. Nebula approximates LT’s TexCube IFS look with layered shader planes (no cubemap bake yet).
 
 ### Performance considerations
 ~2800 instances is fine on MultiMesh. Avoid Node3D-per-star.
@@ -368,10 +371,14 @@ One draw call per planet (+ atmo/rings). Fine for <20 planets.
 
 ---
 
-## Open questions for later milestones
+## Open questions (parked until milestone F)
+
+Visual milestones A–E closed the ShapeLib / per-design / nebula questions for the prototype. Remaining systems questions stay parked:
 
 1. How to preserve economic state when demoting a system to aggregate LOD?
 2. When do we need spatial partitioning for job search?
 3. Should factions own station inventories or only ships?
-4. When to upgrade ShapeLib-style hull extrusion beyond box kits?
-5. Per-design ship MultiMesh (many unique meshes) vs atlas of class archetypes?
+
+## Visual milestone ladder
+
+See [`visual-generation-devnote.md`](visual-generation-devnote.md) and the README. Systems features (factions, conflict, galaxy) resume only after showcase pass E.
