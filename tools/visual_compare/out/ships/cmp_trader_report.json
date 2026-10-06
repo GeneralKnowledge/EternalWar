@@ -1,0 +1,93 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_asteroid_patrol.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_trader_s42_three_quarter.png",
+  "score": 63.7650957435511,
+  "lt_stats": {
+    "mean_Y": 0.15111899375915527,
+    "dark_frac": 0.3966753472222222,
+    "mean_sat": 0.4479842185974121,
+    "mask_frac": 0.3421788215637207,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.17321977019309998,
+      0.15029412508010864,
+      0.09256994724273682
+    ],
+    "emissive_frac": 0.021302083333333333
+  },
+  "ew_stats": {
+    "mean_Y": 0.11131799966096878,
+    "dark_frac": 0.003676215277777778,
+    "mean_sat": 0.5827975869178772,
+    "mask_frac": 0.04021267220377922,
+    "aspect": 0.8675847457627118,
+    "bbox": [
+      0.3390625,
+      0.35833333333333334,
+      0.284375,
+      0.3277777777777778
+    ],
+    "mean_rgb": [
+      0.08131895214319229,
+      0.11184176802635193,
+      0.1911279708147049
+    ],
+    "emissive_frac": 0.00016059027777777778
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.1401357489423896,
+      "weighted": 0.12612217404815063,
+      "category": "colour"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.1348133683204651,
+      "weighted": 0.10785069465637208,
+      "category": "colour"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.715625,
+      "weighted": 0.10734374999999999,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.6722222222222223,
+      "weighted": 0.10083333333333334,
+      "category": "proportion"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.3019661493599415,
+      "weighted": 0.07549153733998537,
+      "category": "silhouette"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.046345338983050856,
+      "weighted": 0.05561440677966103,
+      "category": "proportion"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.021141493055555554,
+      "weighted": 0.021141493055555554,
+      "category": "engine"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.03980099409818649,
+      "weighted": 0.019900497049093246,
+      "category": "lighting"
+    }
+  ]
+}

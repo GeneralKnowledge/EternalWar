@@ -1,0 +1,85 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_patrol_s42_sil.png",
+  "score": 0.0,
+  "lt_stats": {
+    "mean_Y": 0.20996809005737305,
+    "dark_frac": 0.2696484375,
+    "mean_sat": 0.5676810145378113,
+    "mask_frac": 0.6366102695465088,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.31079795956611633,
+      0.175770565867424,
+      0.24848590791225433
+    ],
+    "emissive_frac": 0.042421875
+  },
+  "ew_stats": {
+    "mean_Y": 0.9647839069366455,
+    "dark_frac": 0.020538194444444446,
+    "mean_sat": 0.0010535723995417356,
+    "mask_frac": 0.045234374701976776,
+    "aspect": 1.5425257731958764,
+    "bbox": [
+      0.325,
+      0.40555555555555556,
+      0.415625,
+      0.26944444444444443
+    ],
+    "mean_rgb": [
+      0.964775025844574,
+      0.964775025844574,
+      0.9650252461433411
+    ],
+    "emissive_frac": 0.9591015625
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 1.2504569821927725,
+      "category": "colour"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.9166796875000001,
+      "category": "engine"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.7548158168792725,
+      "category": "lighting"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.7305555555555556,
+      "category": "proportion"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.591375894844532,
+      "category": "silhouette"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.584375,
+      "category": "proportion"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.5666274421382695,
+      "category": "colour"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.2712628865979382,
+      "category": "proportion"
+    }
+  ]
+}

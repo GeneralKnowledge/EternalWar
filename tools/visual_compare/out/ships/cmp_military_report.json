@@ -1,0 +1,93 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_engines.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_military_s77_three_quarter.png",
+  "score": 63.53422340197017,
+  "lt_stats": {
+    "mean_Y": 0.15111899375915527,
+    "dark_frac": 0.3966753472222222,
+    "mean_sat": 0.4479842185974121,
+    "mask_frac": 0.3421788215637207,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.17321977019309998,
+      0.15029412508010864,
+      0.09256994724273682
+    ],
+    "emissive_frac": 0.021302083333333333
+  },
+  "ew_stats": {
+    "mean_Y": 0.10832329839468002,
+    "dark_frac": 0.019774305555555555,
+    "mean_sat": 0.5858416557312012,
+    "mask_frac": 0.05321180447936058,
+    "aspect": 1.2410714285714286,
+    "bbox": [
+      0.2890625,
+      0.35833333333333334,
+      0.434375,
+      0.35
+    ],
+    "mean_rgb": [
+      0.07852057367563248,
+      0.10873282700777054,
+      0.18867340683937073
+    ],
+    "emissive_frac": 0.000390625
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.1411777399767878,
+      "weighted": 0.12705996597910904,
+      "category": "colour"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.13785743713378906,
+      "weighted": 0.11028594970703126,
+      "category": "colour"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.084375,
+      "weighted": 0.10125,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.65,
+      "weighted": 0.0975,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.565625,
+      "weighted": 0.08484375000000001,
+      "category": "proportion"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.2889670170843601,
+      "weighted": 0.07224175427109003,
+      "category": "silhouette"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.04279569536447525,
+      "weighted": 0.021397847682237625,
+      "category": "lighting"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.020911458333333334,
+      "weighted": 0.020911458333333334,
+      "category": "engine"
+    }
+  ]
+}

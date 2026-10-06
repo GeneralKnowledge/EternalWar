@@ -1,0 +1,93 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_nebula_mining.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_miner_s42_three_quarter.png",
+  "score": 57.771814990371645,
+  "lt_stats": {
+    "mean_Y": 0.20996809005737305,
+    "dark_frac": 0.2696484375,
+    "mean_sat": 0.5676810145378113,
+    "mask_frac": 0.6186110973358154,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.31079795956611633,
+      0.175770565867424,
+      0.24848590791225433
+    ],
+    "emissive_frac": 0.042421875
+  },
+  "ew_stats": {
+    "mean_Y": 0.11130611598491669,
+    "dark_frac": 0.003676215277777778,
+    "mean_sat": 0.5878649950027466,
+    "mask_frac": 0.05629774183034897,
+    "aspect": 0.898320895522388,
+    "bbox": [
+      0.3390625,
+      0.33611111111111114,
+      0.334375,
+      0.37222222222222223
+    ],
+    "mean_rgb": [
+      0.08344041556119919,
+      0.11144079267978668,
+      0.18877530097961426
+    ],
+    "emissive_frac": 0.0
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.2437111591917468,
+      "weighted": 0.21934004327257212,
+      "category": "colour"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.5623133555054665,
+      "weighted": 0.14057833887636662,
+      "category": "silhouette"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.665625,
+      "weighted": 0.09984375,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.6277777777777778,
+      "weighted": 0.09416666666666666,
+      "category": "proportion"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.09866197407245636,
+      "weighted": 0.04933098703622818,
+      "category": "lighting"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.035587686567164184,
+      "weighted": 0.04270522388059702,
+      "category": "proportion"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.042421875,
+      "weighted": 0.042421875,
+      "category": "engine"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.020183980464935303,
+      "weighted": 0.01614718437194824,
+      "category": "colour"
+    }
+  ]
+}

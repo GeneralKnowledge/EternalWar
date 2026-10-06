@@ -39,10 +39,10 @@ func generate(ship_count: int = 400) -> Dictionary:
 		ships.append(_make_ship(3000 + i, i, stations))
 
 	var factions: Array = [
-		{"id": 0, "name": "Aegis Combine", "color": Color(0.35, 0.65, 0.95), "style": "military", "accent": Color(0.2, 0.4, 0.7)},
-		{"id": 1, "name": "Veldt Mining Guild", "color": Color(0.85, 0.55, 0.2), "style": "mining", "accent": Color(0.55, 0.35, 0.15)},
-		{"id": 2, "name": "Nadir Free Traders", "color": Color(0.45, 0.85, 0.5), "style": "civilian", "accent": Color(0.25, 0.55, 0.35)},
-		{"id": 3, "name": "Ashen Pact", "color": Color(0.8, 0.35, 0.4), "style": "pirate", "accent": Color(0.45, 0.15, 0.18)},
+		{"id": 0, "name": "Aegis Combine", "color": Color(0.42, 0.45, 0.5), "style": "military", "accent": Color(0.55, 0.25, 0.22)},
+		{"id": 1, "name": "Veldt Mining Guild", "color": Color(0.55, 0.42, 0.28), "style": "mining", "accent": Color(0.45, 0.32, 0.18)},
+		{"id": 2, "name": "Nadir Free Traders", "color": Color(0.5, 0.52, 0.48), "style": "civilian", "accent": Color(0.35, 0.4, 0.32)},
+		{"id": 3, "name": "Ashen Pact", "color": Color(0.38, 0.28, 0.28), "style": "pirate", "accent": Color(0.5, 0.35, 0.2)},
 	]
 
 	var nebula_rng := SeedHash.make_rng(seed_value, "nebula")
@@ -293,17 +293,18 @@ func _make_ship(id: int, index: int, stations: Array) -> Dictionary:
 		style = "mining"
 	elif ship_class == SimEntities.ShipClass.PATROL and faction_id == 0:
 		style = "military"
+	# Desaturated faction hulls — LT ships read as matte neutrals, not neon faction paint.
 	var colors := [
-		Color(0.45, 0.7, 0.95),
-		Color(0.9, 0.65, 0.35),
-		Color(0.5, 0.85, 0.55),
-		Color(0.85, 0.4, 0.45),
+		Color(0.42, 0.45, 0.5),   # military grey
+		Color(0.55, 0.42, 0.28),  # warm industrial
+		Color(0.5, 0.52, 0.48),   # civilian cream-grey
+		Color(0.38, 0.28, 0.28),  # pirate charcoal-red
 	]
 	var accents := [
-		Color(0.25, 0.4, 0.65),
-		Color(0.55, 0.35, 0.15),
-		Color(0.3, 0.5, 0.35),
-		Color(0.45, 0.15, 0.2),
+		Color(0.55, 0.25, 0.22),  # military warning red
+		Color(0.45, 0.32, 0.18),  # mining ochre
+		Color(0.35, 0.4, 0.32),   # trader muted green
+		Color(0.5, 0.35, 0.2),    # pirate copper
 	]
 	return SimEntities.make_ship(id, faction_id, ship_class, pos, capacity, speed, srng.randf_range(200.0, 1200.0), {
 		"seed": child,

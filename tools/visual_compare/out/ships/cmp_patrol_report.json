@@ -1,0 +1,93 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_patrol_s42_three_quarter.png",
+  "score": 56.17505419733348,
+  "lt_stats": {
+    "mean_Y": 0.20996809005737305,
+    "dark_frac": 0.2696484375,
+    "mean_sat": 0.5676810145378113,
+    "mask_frac": 0.6186110973358154,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.31079795956611633,
+      0.175770565867424,
+      0.24848590791225433
+    ],
+    "emissive_frac": 0.042421875
+  },
+  "ew_stats": {
+    "mean_Y": 0.10735177248716354,
+    "dark_frac": 0.03268663194444445,
+    "mean_sat": 0.5843796133995056,
+    "mask_frac": 0.0757942721247673,
+    "aspect": 1.2525,
+    "bbox": [
+      0.2640625,
+      0.33611111111111114,
+      0.521875,
+      0.4166666666666667
+    ],
+    "mean_rgb": [
+      0.07836899906396866,
+      0.10769181698560715,
+      0.18606515228748322
+    ],
+    "emissive_frac": 0.00033420138888888887
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.2501085533567171,
+      "weighted": 0.2250976980210454,
+      "category": "colour"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.5428168252110481,
+      "weighted": 0.13570420630276203,
+      "category": "silhouette"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.08837499999999998,
+      "weighted": 0.10604999999999998,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.5833333333333333,
+      "weighted": 0.08749999999999998,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.478125,
+      "weighted": 0.07171875,
+      "category": "proportion"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.1026163175702095,
+      "weighted": 0.05130815878510475,
+      "category": "lighting"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.04208767361111111,
+      "weighted": 0.04208767361111111,
+      "category": "engine"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.016698598861694336,
+      "weighted": 0.01335887908935547,
+      "category": "colour"
+    }
+  ]
+}

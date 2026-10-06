@@ -660,7 +660,9 @@ func _build_ships() -> void:
 		mm.instance_count = list.size()
 		mmi.multimesh = mm
 		var profile := StyleProfile.of(str(arch["style"]))
-		var mat := VisualMaterials.make(str(profile["material"]), arch.get("color", Color(0.7, 0.75, 0.85)), 0.4)
+		var mat := VisualMaterials.make(str(profile["material"]), arch.get("color", Color(0.45, 0.45, 0.48)), 0.55)
+		mat.roughness = float(profile.get("roughness", mat.roughness))
+		mat.metallic = float(profile.get("metallic", mat.metallic))
 		mmi.material_override = mat
 		add_child(mmi)
 		_ship_mm[sc] = mmi
@@ -682,7 +684,8 @@ func _build_life_fx() -> void:
 	mat.gravity = Vector3.ZERO
 	mat.scale_min = 0.3
 	mat.scale_max = 1.2
-	mat.color = Color(0.45, 0.75, 1.0, 0.55)
+	# Warm amber default — style-specific exhaust lives on the mesh; FX stays neutral-warm.
+	mat.color = Color(1.0, 0.55, 0.25, 0.5)
 	_engine_fx.process_material = mat
 	var draw := SphereMesh.new()
 	draw.radius = 0.6
@@ -690,9 +693,9 @@ func _build_life_fx() -> void:
 	draw.radial_segments = 4
 	draw.rings = 2
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.5, 0.8, 1.0, 0.4)
+	dm.albedo_color = Color(1.0, 0.6, 0.3, 0.4)
 	dm.emission_enabled = true
-	dm.emission = Color(0.4, 0.7, 1.0)
+	dm.emission = Color(1.0, 0.5, 0.2)
 	dm.emission_energy_multiplier = 2.0
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -736,7 +739,9 @@ func _ensure_near_ship(index: int, s: Dictionary, lod: int = VisualLOD.LOD_FULL)
 		}
 	mi.mesh = ShipMeshGen.build(design, lod)
 	var profile := StyleProfile.of(str(design.get("style", "civilian")))
-	var mat := VisualMaterials.make(str(profile["material"]), design.get("color", Color(0.7, 0.75, 0.85)), 0.4)
+	var mat := VisualMaterials.make(str(profile["material"]), design.get("color", Color(0.45, 0.45, 0.48)), 0.55)
+	mat.roughness = float(profile.get("roughness", mat.roughness))
+	mat.metallic = float(profile.get("metallic", mat.metallic))
 	mi.material_override = mat
 	mi.set_meta("lod_tier", lod)
 	add_child(mi)
