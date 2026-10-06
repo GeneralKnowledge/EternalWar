@@ -1,0 +1,67 @@
+{
+  "lt": "tools/visual_compare/reference/lt_nebula_ship.jpg",
+  "ew": "tools/visual_compare/eternalwar/ew_nebula.png",
+  "score": 69.98632427748339,
+  "lt_stats": {
+    "mean_Y": 0.2096705287694931,
+    "p10_Y": 0.011141960509121418,
+    "p50_Y": 0.16711609065532684,
+    "p90_Y": 0.49251532554626465,
+    "dark_frac": 0.2719039351851852,
+    "bright_frac": 0.08275655864197531,
+    "mid_frac": 0.6453395061728395,
+    "mean_sat": 0.5655237436294556,
+    "mean_rgb": [
+      0.31148430705070496,
+      0.17595729231834412,
+      0.24898096919059753
+    ]
+  },
+  "ew_stats": {
+    "mean_Y": 0.26270896196365356,
+    "p10_Y": 0.10724236071109772,
+    "p50_Y": 0.24541883170604706,
+    "p90_Y": 0.4371553063392639,
+    "dark_frac": 0.06747106481481481,
+    "bright_frac": 0.019812885802469135,
+    "mid_frac": 0.912716049382716,
+    "mean_sat": 0.7172908186912537,
+    "mean_rgb": [
+      0.1280573159456253,
+      0.2911333739757538,
+      0.37906011939048767
+    ]
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.2526491166985209,
+      "category": "colour"
+    },
+    {
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.2044328703703704,
+      "category": "composition/luminance"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.1517670750617981,
+      "category": "colour"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.06294367283950618,
+      "category": "luminance"
+    },
+    {
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.05536001920700073,
+      "category": "luminance"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.05303843319416046,
+      "category": "luminance"
+    }
+  ]
+}

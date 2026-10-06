@@ -169,14 +169,16 @@ static func _build_population(
 		if rng.randf() < 0.72:
 			temp_k = lerpf(3400.0, 7200.0, rng.randf())
 		var col := StellarColour.from_temperature(temp_k)
+		# LT Starfield.lua: brightness * Exp^2.5 with low baseline (0.015 scale).
+		var exp_m := pow(maxf(mag, 1e-4), 2.5)
 		var bright: float
 		match mode:
 			1:
-				bright = 0.12 + mag * 0.55
+				bright = 0.02 + exp_m * 0.55
 			2:
-				bright = 0.7 + mag * 1.1
+				bright = 0.45 + exp_m * 1.35
 			_:
-				bright = 0.22 + mag * mag * 1.35
+				bright = 0.03 + exp_m * 1.55
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
 		var pos := dir * dist
 		var i3 := i * 3
@@ -208,7 +210,7 @@ static func _build_gems(system_seed: int, gem_defs: Array) -> MultiMesh:
 		var mag := float(g.get("mag", 0.8))
 		var size := lerpf(18.0, 34.0, mag)
 		var col := StellarColour.from_temperature(float(g.get("temp", 6000.0)))
-		var bright := 1.35 + mag * 1.7
+		var bright := 0.8 + pow(mag, 2.5) * 2.2
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
 		var pos := dir * dist
 		var i3 := i * 3

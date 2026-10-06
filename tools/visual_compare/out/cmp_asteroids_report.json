@@ -1,0 +1,67 @@
+{
+  "lt": "tools/visual_compare/reference/lt_asteroids.jpg",
+  "ew": "tools/visual_compare/eternalwar/ew_asteroids.png",
+  "score": 63.380994292247436,
+  "lt_stats": {
+    "mean_Y": 0.15106616914272308,
+    "p10_Y": 0.01904156804084778,
+    "p50_Y": 0.07838431000709534,
+    "p90_Y": 0.4523294270038605,
+    "dark_frac": 0.3973167438271605,
+    "bright_frac": 0.06952932098765433,
+    "mid_frac": 0.5331539351851852,
+    "mean_sat": 0.45125633478164673,
+    "mean_rgb": [
+      0.1734396368265152,
+      0.15049698948860168,
+      0.0923982784152031
+    ]
+  },
+  "ew_stats": {
+    "mean_Y": 0.24012653529644012,
+    "p10_Y": 0.0,
+    "p50_Y": 0.25131136178970337,
+    "p90_Y": 0.4091317653656006,
+    "dark_frac": 0.1413773148148148,
+    "bright_frac": 0.009814814814814814,
+    "mid_frac": 0.8488078703703704,
+    "mean_sat": 0.6167616844177246,
+    "mean_rgb": [
+      0.11985360831022263,
+      0.2653471827507019,
+      0.3447358310222626
+    ]
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.28237611407520147,
+      "category": "colour"
+    },
+    {
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.2559394290123457,
+      "category": "composition/luminance"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.16550534963607788,
+      "category": "colour"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.08906036615371704,
+      "category": "luminance"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.05971450617283951,
+      "category": "luminance"
+    },
+    {
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.04319766163825989,
+      "category": "luminance"
+    }
+  ]
+}
