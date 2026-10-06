@@ -182,7 +182,7 @@ func _build_starfield() -> void:
 	var packs := StarfieldGen.build_from_composition(sky_comp)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/starfield.gdshader")
-	for key in ["micro", "field", "gems", "dust"]:
+	for key in ["micro", "field", "notable", "gems", "dust"]:
 		var mm: MultiMesh = packs.get(key)
 		if mm == null:
 			continue
@@ -271,24 +271,25 @@ func _build_star() -> void:
 	mat.shader = load("res://shaders/star.gdshader")
 	mat.set_shader_parameter("star_color", StellarColour.from_temperature(float(star.get("temperature", 5800.0))))
 	mat.set_shader_parameter("emission_energy", StellarColour.luminosity_energy(float(star.get("luminosity", 1.0))))
-	mat.set_shader_parameter("corona", 0.55)
-	mat.set_shader_parameter("core_hot", 1.4)
+	# Hot core + controlled corona — LT local star is a light event, not two soft spheres.
+	mat.set_shader_parameter("corona", 0.42)
+	mat.set_shader_parameter("core_hot", 1.65)
 	mi.material_override = mat
 	mi.position = star["position"]
 	add_child(mi)
 
 	var corona := MeshInstance3D.new()
 	var cs := SphereMesh.new()
-	cs.radius = float(star["radius"]) * 1.22
+	cs.radius = float(star["radius"]) * 1.14
 	cs.height = cs.radius * 2.0
 	cs.radial_segments = 24
 	cs.rings = 12
 	corona.mesh = cs
 	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.12)
+	cm.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.1)
 	cm.emission_enabled = true
 	cm.emission = star["color"]
-	cm.emission_energy_multiplier = 1.6
+	cm.emission_energy_multiplier = 2.1
 	cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cm.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -296,19 +297,19 @@ func _build_star() -> void:
 	corona.position = star["position"]
 	add_child(corona)
 
-	# Soft outer bloom shell
+	# Thin outer shell — bloom carries the rest (avoid giant soft disc)
 	var outer := MeshInstance3D.new()
 	var os := SphereMesh.new()
-	os.radius = float(star["radius"]) * 1.55
+	os.radius = float(star["radius"]) * 1.38
 	os.height = os.radius * 2.0
 	os.radial_segments = 16
 	os.rings = 8
 	outer.mesh = os
 	var om := StandardMaterial3D.new()
-	om.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.05)
+	om.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.04)
 	om.emission_enabled = true
 	om.emission = star["color"]
-	om.emission_energy_multiplier = 0.7
+	om.emission_energy_multiplier = 0.85
 	om.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	om.cull_mode = BaseMaterial3D.CULL_DISABLED

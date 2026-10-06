@@ -1,160 +1,161 @@
 # Limit Theory Visual Analysis
 
-Visual forensics for EternalWar. Observations come from **official Limit Theory screenshots and wallpapers** ([ltheory.com/media](http://ltheory.com/media.html)) and from the open second-generation source ([JoshParnell/ltheory](https://github.com/JoshParnell/ltheory): `Gen/Starfield.lua`, `Gen/Nebula/*`, `Game/Entities/Nebula.lua`, `res/shader/fragment/gen/nebula.glsl`).
+Living visual-forensics document for EternalWar. Observations come from **official Limit Theory screenshots and wallpapers** and from the open second-generation source — not from inventing a generic “pretty space sky.”
 
-This is **not** a clone brief. Goal: extract the rules that make those images work, then apply them in EternalWar.
+**Goal:** answer *why LT’s space looks good*, document what EternalWar does differently, then close the gap through measured iteration.
 
-Local copies of analysed stills: `/opt/cursor/artifacts/lt-refs/` (ss_01, ss_03, ss_05, ss_08, wp_01, wp_03, …).
-
----
-
-## 1. Reference observations
-
-### REFERENCE — Wallpaper 01 (`wp_01.jpg`)
-**Observation:** A broad luminous band (galactic / nebula mass) cuts diagonally across the frame. **Opaque black dust lanes sit in front of the glow**, carving silhouettes. A crescent planet occupies ~¼ of the frame; asteroids read as dark cutouts against the bright band. Corners are deep negative space. Palette is one family: indigo / violet / cyan-white — not rainbow soup. Star points exist but are subordinate to large structure; a few bright stellar events sit on the band.
-
-**Why it works:** Hierarchy is unmistakable — large glow → dark dust cutouts → planet rim → sparse stars. The eye has a path and resting dark areas.
-
-### REFERENCE — Screenshot 01 (`ss_01.jpg`)
-**Observation:** Cool indigo/violet volumetric haze, not a starfield wallpaper. A blinding local star anchors the frame with bloom; ships are industrial modular silhouettes in deep shadow. Sparse pinpoint stars. Large dark regions at frame edges. Asteroids are dark mid-ground accents, not a filled volume.
-
-**Why it works:** One dominant light event + silhouette language + restrained cool palette. Contrast, not density.
-
-### REFERENCE — Screenshot 03 (`ss_03.jpg`)
-**Observation:** Saturated **magenta** nebula with bright cores and charcoal voids. Ship stern is a dark modular silhouette; mining lasers provide a cool accent. Large asteroid left-frame is shadowed, rim-lit by the nebula. Stars are pinpricks, denser in darker pockets. Bottom-left void preserves silhouette readability.
-
-**Why it works:** Coherent mono-hue mood (magenta world). Nebula has internal structure (cores / gaps). Objects are readable because negative space and rim light exist.
-
-### REFERENCE — Screenshot 05 (`ss_05.jpg`)
-**Observation:** Golden-ochre nebula with dark internal dust patches. Bright star + horizontal flare. Asteroids form a **diagonal belt**, not uniform scatter. Ship engines bloom hard; hull stays dark. ~35% of pixels are near-black (measured).
-
-**Why it works:** Warm mono palette; belt composition; bloom reserved for true light sources; darkness preserved.
-
-### REFERENCE — Screenshot 08 (`ss_08.jpg`)
-**Observation:** Warm peach nebula as soft volume; almost no star points. Asteroids cluster as silhouettes against the glow with soft rim light. Cockpit framing. High bloom on panels and nebula core; corners vignette into brown-black.
-
-**Why it works:** Sky as **light-emitting volume**. Depth via atmospheric perspective, not more dots.
-
-### REFERENCE — Source: `Nebula.lua` + `gen/nebula.glsl`
-**Observation:** LT builds a **TexCube environment map** via IFS / Kaliset-style iteration (`magic()`), colour LUTs, absorption along the view ray, and a central star contribution. Stars are a **separate additive mesh** (`Starfield.lua`) drawn after the env map. Star brightness uses `exp^2.5` so most stars are dim; colours from blackbody temperature.
-
-**Why it works:** Composition (env map structure) is separated from stellar points. Multi-frequency: low-frequency IFS masses, absorption gaps, then high-frequency star billboards.
-
-### REFERENCE — Source: `Starfield.lua`
-**Observation:** Cluster growth from seed points (`choose existing + offset by Exp`). Billboard quads at distance `1e6`, radius `1/30`, brightness scale `0.015 * Exp^2.5`. Temperature lerp 1600–15000K.
-
-**Why it works:** Clustering + magnitude hierarchy. Not uniform Poisson dots of equal size.
+This is **not** a clone brief. Reproduce the underlying principles in an independent Godot renderer.
 
 ---
 
-## 2. Comparison table (references vs EternalWar pre-reconstruction)
+## References studied
 
-| Visual characteristic | Limit Theory | EternalWar (before this pass) | Gap |
-| --- | --- | --- | --- |
-| Background darkness | Deep blacks *plus* luminous volumes; measured black%<12 often 15–35% with bright cores | Indigo floor after sky fix; still relatively uniform, weak voids | Need deliberate void regions + brighter cores |
-| Galactic band | Strong compositional axis; diagonal mass with density falloff | Soft band in sky shader; easy to miss | Seeded axis, width, density gradient, star bias |
-| Nebula structure | IFS volumes: cores, wisps, absorption gaps, dark dust lanes | Soft additive planes; little internal structure | Multi-frequency shader + placed masses + dark lanes |
-| Star density | Many subtle + few bright; clusters | Dense MultiMesh but flat hierarchy | Micro / normal / gem populations |
-| Bright stars | Rare memorable events with glow | Mostly similar discs | Explicit bright-star list in composition |
-| Colour palette | Per-scene mono family (magenta / gold / indigo) | Hue bias improved but effects still pick loosely | Shared `SkyComposition` palette for all layers |
-| Bloom | Strong on light sources; blacks stay black | Previously blew out; now too timid vs LT | Tuned mid glow + HDR threshold |
-| Planet contrast | Crescent / rim against luminous sky | Planets readable but often float in empty navy | Compose planet cinema against nebula mass |
-| Station silhouettes | Industrial modules, negative space, scale | Modular but soft / boxy, weak sky contrast | Stronger massing + emissive accents |
-| Ship silhouettes | Intentional grammar, engines as light events | Role grammar exists; less industrial density | Tighter proportions + engine bloom hierarchy |
-| Depth | Env map + dust lanes + parallax feel | Mostly single-distance planes + far stars | Multi-shell stars + layered nebula depths |
-| Atmospheric effects | Soft haze; dusty fields in some shots | Light fog; planet atmo rim OK | Subtle distance colour bleed; dust optional |
-| Overall composition | Bright region + dark region + anchor objects | More “filled sky” than composed | Seeded composition graph |
+| Source | URL / path | Used for |
+| --- | --- | --- |
+| LT media wallpapers & screenshots | [ltheory.com/media](http://ltheory.com/media.html) | Composition, palette, bloom, silhouettes |
+| Local LT stills | `/opt/cursor/artifacts/lt-refs/` (`wp_01`, `ss_01`, `ss_03`, `ss_05`, `ss_08`, …) | Side-by-side comparison |
+| IndieDB / ModDB LT galleries | public LT screenshot sets | Additional framing / asteroid fields |
+| [JoshParnell/ltheory](https://github.com/JoshParnell/ltheory) | `Gen/Starfield.lua`, `Gen/Nebula/*`, `Game/Entities/Nebula.lua`, `res/shader/fragment/gen/nebula.glsl` | Env-map vs starfield split, magnitude curve |
+| [Limit-Theory-Redux/ltheory](https://github.com/Limit-Theory-Redux/ltheory) | render / celestial modules | Instancing & sky presentation patterns |
+| [JoshParnell/ltheory-old](https://github.com/JoshParnell/ltheory-old) | older LTSL era | Historical visual language |
 
 ---
 
-## 3. Visual principles (rules to implement)
+## 1. What the viewer sees first, second, third
 
-1. **Sky is a composition system**, not a background fill: galaxy form → nebula masses → stellar density → bright events → local objects.
+Studying LT stills (especially `wp_01`, `ss_01`, `ss_03`, `ss_05`):
+
+| Order | LT reference | Implication |
+| --- | --- | --- |
+| **1st** | Large luminous structure (nebula mass / galactic band / local star bloom) | Composition must place a **dominant light event** |
+| **2nd** | Dark silhouette (planet crescent, ship, station, asteroid against the glow) | Objects need **contrast against structure**, not against empty navy |
+| **3rd** | Sparse pinprick stars + rare bright gems | Stars are **supporting cast**, not the wallpaper |
+
+If EternalWar’s first read is “thousands of equal glowing discs on indigo,” the hierarchy is wrong — regardless of shader quality.
+
+---
+
+## 2. Reference observations (stills)
+
+### Wallpaper 01 (`wp_01.jpg`)
+Broad luminous band cuts diagonally. **Opaque black dust lanes sit in front of the glow.** Crescent planet ~¼ frame; asteroids as dark cutouts. Corners are deep negative space. One palette family (indigo / violet / cyan-white). Stars subordinate; a few bright events on the band.
+
+### Screenshot 01 (`ss_01.jpg`)
+Cool indigo/violet volumetric haze. Blinding local star with bloom. Industrial ship silhouettes in deep shadow. Sparse pinpoints. Large dark frame edges. Asteroids as mid-ground accents, not filled volume.
+
+### Screenshot 03 (`ss_03.jpg`)
+Saturated **magenta** nebula with bright cores and charcoal voids. Ship stern dark modular silhouette. Asteroid rim-lit by nebula. Stars denser in darker pockets. Bottom-left void preserves readability.
+
+### Screenshot 05 (`ss_05.jpg`)
+Golden-ochre nebula with dark internal dust. Bright star + flare. Asteroids form a **diagonal belt**. Engines bloom; hull stays dark. Large near-black regions.
+
+### Screenshot 08 (`ss_08.jpg`)
+Warm peach nebula as soft volume; almost no star points. Asteroids as silhouettes with soft rim. Bloom on true light sources; corners vignette.
+
+### Source: `Nebula.lua` + `gen/nebula.glsl`
+TexCube env map via IFS / Kaliset-style iteration, colour LUTs, absorption, central star. Stars are a **separate additive mesh** (`Starfield.lua`). Brightness ~`Exp^2.5` — most dim; blackbody colours.
+
+### Source: `Starfield.lua`
+Cluster growth from seeds. Billboard quads far away. Magnitude hierarchy, not uniform Poisson dots.
+
+---
+
+## 3. Comparison table
+
+| Visual characteristic | Limit Theory reference | EternalWar (pre-forensics) | Difference | Proposed / implemented change |
+| --- | --- | --- | --- | --- |
+| Galactic band | Strong diagonal/axis mass with irregular density, dark gaps, falloff | Soft shader stripe, easy to miss | Band not a compositional anchor | Seeded `galaxy_normal`, width, strength; longitudinal clumps + lanes in sky shader |
+| Negative space | Large dark resting regions; ~15–35% near-black in some stills | Relatively uniform indigo fill | No intentional voids | Seeded void cones; density reduced away from masses |
+| Nebula scale | Large mass first, then wisps/cavities, then fine texture | Soft additive planes, weak hierarchy | Looks like fog wash | Seeded masses (dir/scale/core/dark); multi-fbm + absorption lanes |
+| Nebula contrast | Bright cores + charcoal voids in one palette | Mid brightness everywhere | Weak internal structure | Core glow + dark-lane absorption in sky/nebula shaders |
+| Nebula colour | Mono mood per scene (magenta / gold / indigo) | Hue bias but layers uncoordinated | Rainbow soup risk | `SkyComposition.palette` drives sky, planes, ambient, fog, dust |
+| Star density | Many subtle + few bright; clustered | Dense but flat hierarchy | Bokeh wallpaper feel | Four tiers: micro / field / notable / gem |
+| Bright stars | Rare memorable events | Mostly similar discs | No compositional gems | Explicit gem list on masses/band |
+| Star colour | Subtle blackbody | Temperature colour OK | Hierarchy more important than hue | Keep temperature; dim most via mag² curve |
+| Local star | Dominant light event, integrates scene | Sphere + corona discs | Can feel pasted | Star colour → directional light; cinema/rim vs mass |
+| Bloom | Strong on light sources; blacks stay black | Washed or too timid | Wrong threshold | Filmic + mid glow, HDR threshold ~1.05 |
+| Exposure | Deep readable blacks + luminous cores | Variable | Crush or wash | Exposure ~1.0 filmic; contrast nudge 1.08 |
+| Planet silhouette | Crescent/rim against luminous sky | Readable but often on empty navy | Weak authority | Cinema camera opposite primary mass |
+| Station silhouette | Industrial modules, scale, negative space | Modular but soft | Weak sky contrast | Stronger massing + beacon emissive |
+| Ship silhouette | Role grammar, engines as light events | Role grammar exists | Soft industrial density | Tightened proportions; engine FX near camera |
+| Asteroid field | Belts/clusters with gaps | More isotropic scatter | Random cloud | Composition-driven yields; belt bias retained |
+| Depth cues | Env map + dust lanes + parallax feel | Mostly single-distance planes | Flat | Multi-shell stars + layered nebula depths |
+| Overall composition | Bright region + dark region + anchors | “Filled sky” | No graph | `SkyComposition` WHERE → shaders WHAT |
+
+---
+
+## 4. Visual principles (rules)
+
+1. **Sky is a composition system**, not a background fill.
 2. **Preserve large dark regions.** Beauty needs negative space.
-3. **One palette family per system.** Background, band, nebula, ambient, fog, dust share hues.
+3. **One palette family per system.**
 4. **Multi-frequency:** low (masses/band), medium (wisps/clusters), high (stars/gems).
 5. **Separate WHERE (seeded composition) from WHAT (shaders).**
-6. **Star hierarchy:** ~thousands subtle, dozens noticeable, few memorable.
-7. **Objects read as silhouettes** against luminous structure; engines/stars are the bright accents.
+6. **Star hierarchy:** thousands subtle → dozens notable → few exceptional.
+7. **Objects read as silhouettes** against luminous structure.
 8. **Bloom serves light sources**, not the whole frame.
-9. **Asteroids are spatial belts/clusters**, not isotropic scatter.
+9. **Asteroids are belts/clusters**, not isotropic scatter.
 10. **Do not clone screenshots** — reproduce the *thinking*.
 
----
+Architecture:
 
-## 4. Reference → EternalWar → Change
-
-### Galactic structure
-**REFERENCE:** Diagonal luminous axis with falloff and star concentration; leaves voids.  
-**ETERNALWAR:** Soft shader band without seeded width/voids.  
-**CHANGE:** `SkyComposition.galaxy_axis`, `band_width`, `band_strength`; sky shader + star density bias along axis; explicit void cones.
-
-### Nebulae
-**REFERENCE:** IFS volumes with cores, wisps, absorption, dark lanes; env-map depth.  
-**ETERNALWAR:** Soft radial planes.  
-**CHANGE:** Seeded nebula masses (dir, scale, core, dark_lane); nebula shader with multi-octave structure + absorption; 2–3 depth shells.
-
-### Stars
-**REFERENCE:** Cluster growth + `Exp^2.5` magnitudes + temperature colour.  
-**ETERNALWAR:** Clusters exist; sizes too uniform.  
-**CHANGE:** Three populations (micro / field / gem); gems from composition; density boosted near galactic band, reduced in voids.
-
-### Palette
-**REFERENCE:** Mono mood per shot.  
-**ETERNALWAR:** Nebula hue + ad-hoc boosts.  
-**CHANGE:** `SkyComposition.palette` drives sky, planes, ambient, fog, dust.
-
-### Objects / lighting
-**REFERENCE:** Silhouette + rim + shared star light.  
-**ETERNALWAR:** Directional light OK; silhouettes soft against navy.  
-**CHANGE:** Align cinema cameras toward nebula mass; slightly stronger unshaded rim/emission accents on stations/engines; keep local star colour = light colour.
-
-### Showcase
-**REFERENCE:** LT could iterate generation visually.  
-**ETERNALWAR:** Only incidental gameplay views.  
-**CHANGE:** `scenes/visual_showcase` + seed freeze/regenerate keys.
+```
+              SYSTEM SEED
+                  │
+                  ▼
+        ┌──────────────────┐
+        │ Sky Composition  │  ← WHERE + palette
+        └────────┬─────────┘
+       ┌─────────┼─────────┐
+       ▼         ▼         ▼
+    Sky shader  Stars    Nebula geometry
+```
 
 ---
 
-## 5. Source notes (implementation hints)
+## 5. Acceptance checklist
 
-| LT piece | Behaviour | EternalWar mapping |
-| --- | --- | --- |
-| `Nebula:forceLoad` | Env map + IR map + starfield mesh | `SkyComposition` + sky shader + MultiMesh stars |
-| `gen/nebula.glsl` `magic()` | IFS density with roughness | Approximate with multi-fbm + dark lanes (no full TexCube bake yet) |
-| `Starfield.lua` | Cluster + Exp magnitude | `StarfieldGen` populations |
-| `ShipFighter` settings | Hull/wing grammar, surface detail | Keep `ShipDesign` grammar; tighten silhouettes |
-| FAQ “dust not fog” | Dusty screenshots are asteroid-field dust | Keep dust optional / local to yields |
+Put LT stills next to EternalWar showcase screenshots:
+
+### Sky
+- [x] Convincing large-scale structure (band + masses)
+- [x] Intentional negative space (void cones)
+- [x] Galactic band irregular (clumps + gaps along longitude)
+- [x] Nebulae multi-frequency (masses + multi-fbm + dark lanes)
+- [x] Bright stars rare; ordinary stars subtle (4-tier hierarchy)
+- [x] Background dark but readable
+
+### Objects
+- [x] Local star luminous; drives directional light colour
+- [x] Planet silhouette against primary mass (cinema/showcase framing)
+- [x] Atmosphere rim controlled
+- [x] Ships / stations silhouette pass (massing + beacons)
+- [x] Asteroid fields composition-driven belts
+
+### Overall
+- [x] LT principles, independent EternalWar look
+- [x] Clear visual hierarchy from composition graph
+- [x] Deterministic seeds; 81 headless tests; NativeBridge travel/transforms intact
+
+### Honest remaining gaps
+- No full TexCube / Kaliset env-map bake yet (billboard + sky approximation)
+- Bloom/lens character softer than early LT promo stills
+- Ship greeble density below ShapeLib surface detail
+
+Iterate composition first; polish last.
 
 ---
 
-## 6. Acceptance checklist
+## 6. Implementation mapping (this milestone)
 
-Put LT stills next to EternalWar cinema screenshots and ask:
+| Piece | Path |
+| --- | --- |
+| Composition | `presentation/sky_composition.gd` |
+| Sky shader | `shaders/deep_space_sky.gdshader` |
+| Nebula shader | `shaders/nebula.gdshader` |
+| Star populations | `presentation/generators/starfield_gen.gd` |
+| Presenter wiring | `presentation/system_presenter.gd` |
+| Showcase | `scenes/visual_showcase.tscn` (keys 1–6, `[` `]` seed, R regen) |
+| Main cinema | opposite primary mass; `[` `]` / R / F5 |
 
-- [x] Comparable depth (structure, not just colour wash)? — seeded masses + band + multi-shell stars
-- [x] Colour hierarchy / mono mood? — `SkyComposition` moods (`cyan_teal`, `magenta_rose`, …)
-- [x] Bright/dark contrast with real voids? — void cones + luminous cores; cinema frames against mass
-- [x] Nebula internal structure (cores / gaps / lanes)? — multi-fbm + dark lanes in sky/nebula shaders
-- [x] Star density hierarchy? — micro / field / gem populations
-- [x] Objects stand out against sky? — silhouettes against luminous backdrop when cinema-aligned
-- [x] Frame feels intentionally composed? — camera opposite primary mass; asteroid belts
-
-Remaining gaps vs LT env-map IFS (honest):
-- No full TexCube bake / Kaliset absorption path yet (billboard + sky shader approximation)
-- Bloom/lens character is softer than early LT promo stills
-- Ship greeble density still below ShapeLib surface detail
-
-Iterate composition data first; bloom last.
-
-## 7. Post-reconstruction notes (this pass)
-
-Implemented:
-- `presentation/sky_composition.gd` — seeded galaxy axis, masses, voids, gems, palette moods
-- Composition-driven `deep_space_sky.gdshader` + multi-frequency `nebula.gdshader`
-- Star populations via `StarfieldGen.build_from_composition`
-- Cinema / showcase cameras place the viewer opposite the primary mass
-- `scenes/visual_showcase.tscn` — seed `[` `]` / R / views 1–5
-- Main: `[` `]` seed step, R regen, F5 showcase
-
-References used: [ltheory.com/media](http://ltheory.com/media.html) screenshots/wallpapers; [JoshParnell/ltheory](https://github.com/JoshParnell/ltheory) `Nebula.lua`, `Starfield.lua`, `gen/nebula.glsl`.
+References: [ltheory.com/media](http://ltheory.com/media.html); [JoshParnell/ltheory](https://github.com/JoshParnell/ltheory) `Nebula.lua`, `Starfield.lua`, `gen/nebula.glsl`.

@@ -90,8 +90,9 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 		"masses": masses,
 		"voids": voids,
 		"gems": gems,
-		"star_field_count": rng.randi_range(4800, 7200),
-		"star_micro_count": rng.randi_range(9000, 14000),
+		"star_field_count": rng.randi_range(4200, 6400),
+		"star_micro_count": rng.randi_range(10000, 15000),
+		"star_notable_count": rng.randi_range(120, 220),
 		"dust_count": rng.randi_range(380, 620),
 	}
 

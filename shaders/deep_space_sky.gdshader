@@ -1,7 +1,7 @@
 shader_type sky;
 
-// Composition-driven deep space: indigo floor, galactic band, 3 nebula masses,
-// void cones, and sparse sky sparks. MultiMesh supplies dense star points.
+// Composition-driven deep space: indigo floor, irregular galactic band,
+// 3 nebula masses, void cones, sparse sky sparks. MultiMesh supplies dense stars.
 
 uniform float seed = 42.0;
 uniform vec3 bg_color = vec3(0.03, 0.035, 0.08);
@@ -66,7 +66,6 @@ float mass_field(vec3 dir, vec3 mdir, vec3 params) {
 	float density = lobe * (0.35 + n_lo * 0.55 + n_mid * 0.35);
 	float wisps = smoothstep(0.4, 0.85, n_mid * 0.6 + n_hi * 0.5) * lobe;
 	float core_glow = pow(ang, 18.0) * core * (0.5 + n_lo);
-	// Dark lanes / absorption gaps (LT-style negative structure inside glow)
 	float lane = smoothstep(0.35, 0.7, abs(n_mid - 0.5) * 2.0);
 	density *= mix(1.0, 1.0 - dark * 0.85, lane);
 	return density * 0.7 + wisps * 0.35 + core_glow * 0.9;
@@ -74,25 +73,32 @@ float mass_field(vec3 dir, vec3 mdir, vec3 params) {
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	// Lifted floor — LT stills are dark but not crushed #000 everywhere.
-	vec3 col = bg_color * 1.35 + primary_color * 0.08;
+	vec3 col = bg_color * 1.25 + primary_color * 0.06;
 
-	// Void cones — soft negative space, not total blackout
 	float void_w = 0.0;
 	void_w = max(void_w, smoothstep(void0_radius, void0_radius * 0.25, 1.0 - max(dot(dir, normalize(void0_dir)), 0.0)));
 	void_w = max(void_w, smoothstep(void1_radius, void1_radius * 0.25, 1.0 - max(dot(dir, normalize(void1_dir)), 0.0)));
 	void_w = clamp(void_w, 0.0, 1.0);
 
-	// Galactic band — wide luminous axis
+	// Irregular galactic band — clumps + dark gaps along longitude
 	vec3 gn = normalize(galaxy_normal);
-	float band = 1.0 - abs(dot(dir, gn));
-	band = pow(clamp(band, 0.0, 1.0), max(band_width * 0.85, 2.2));
-	vec2 band_uv = vec2(atan(dir.z, dir.x), dir.y) * 2.0 + seed * 0.01;
-	float band_noise = fbm(band_uv * 1.4);
-	col += band_color * band * (0.55 + band_noise * 0.9) * band_strength;
-	col += primary_color * band * 0.45 * band_strength;
+	float plane = 1.0 - abs(dot(dir, gn));
+	float band_profile = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.85, 2.2));
+	vec3 tangent = normalize(cross(gn, abs(gn.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+	vec3 bitangent = cross(gn, tangent);
+	float lon = atan(dot(dir, bitangent), dot(dir, tangent));
+	vec2 band_uv = vec2(lon * 1.8, plane * 3.0) + seed * 0.013;
+	float n_lo = fbm(band_uv * 1.1);
+	float n_mid = fbm(band_uv * 2.8 + 4.0);
+	float n_hi = fbm(band_uv * 7.0 + 9.0);
+	float clump = smoothstep(0.35, 0.85, n_lo * 0.65 + n_mid * 0.45);
+	float gap = smoothstep(0.25, 0.7, abs(n_mid - 0.48) * 2.1);
+	float band = band_profile * mix(0.35, 1.15, clump) * mix(1.0, 0.35, gap * 0.85);
+	band *= 0.75 + n_hi * 0.35;
+	col += band_color * band * 0.95 * band_strength;
+	col += primary_color * band * 0.55 * band_strength;
+	col += secondary_color * band_profile * n_lo * 0.18 * band_strength;
 
-	// Nebula masses (low + mid frequency) — luminous volumes like LT env maps
 	float m0 = mass_field(dir, mass0_dir, mass0_params);
 	float m1 = mass_field(dir, mass1_dir, mass1_params);
 	float m2 = mass_field(dir, mass2_dir, mass2_params);
@@ -100,18 +106,16 @@ void sky() {
 	col += mix(primary_color, secondary_color, 0.55) * m1 * 1.15;
 	col += mix(secondary_color, band_color, 0.4) * m2 * 0.95;
 
-	// Sparse high-frequency sparks in non-void regions
 	vec2 suv = dir.xy * 95.0 + dir.z * 40.0 + seed;
 	float cell = hash21(floor(suv));
-	if (cell > 0.972 && void_w < 0.65) {
+	if (cell > 0.978 && void_w < 0.55) {
 		vec2 f = fract(suv) - 0.5;
-		float spark = exp(-dot(f, f) * 100.0) * (0.4 + cell);
-		col += mix(vec3(1.0, 0.9, 0.75), vec3(0.7, 0.85, 1.0), hash21(floor(suv) + 2.2)) * spark * 1.25;
+		float spark = exp(-dot(f, f) * 120.0) * (0.35 + cell * 0.4);
+		col += mix(vec3(1.0, 0.9, 0.75), vec3(0.7, 0.85, 1.0), hash21(floor(suv) + 2.2)) * spark * 0.9;
 	}
 
-	// Soft voids — dark resting areas without killing the composition
-	col = mix(col, bg_color * 0.55, void_w * 0.55);
-	col *= 1.0 - void_w * 0.28;
+	col = mix(col, bg_color * 0.5, void_w * 0.58);
+	col *= 1.0 - void_w * 0.32;
 
 	COLOR = col;
 }

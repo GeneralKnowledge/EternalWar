@@ -1,5 +1,7 @@
-## Developer visual showcase — iterate sky / bodies / ships / stations / asteroids by seed.
-## F5 from main, or run this scene directly. Freeze sim; orbit with mouse/arrows.
+## Developer visual showcase — iterate sky / star / bodies / ships by seed.
+## Showcase modes match the forensics brief:
+##   1 Deep space  2 Star  3 Planet  4 Station  5 Ship  6 Asteroid
+## Freeze sim; orbit with mouse/arrows. Esc/F5 → main.
 extends Node3D
 
 @export var world_seed: int = 42
@@ -13,7 +15,7 @@ var yaw: float = 0.6
 var pitch: float = -0.25
 var distance: float = 1400.0
 var focus: Vector3 = Vector3.ZERO
-var view_mode: int = 0 # 0 sky, 1 planet, 2 station, 3 asteroid, 4 ship
+var view_mode: int = 0 # 0 sky, 1 star, 2 planet, 3 station, 4 ship, 5 asteroid
 var dragging := false
 
 
@@ -52,31 +54,35 @@ func _regen() -> void:
 
 func _apply_view() -> void:
 	match view_mode:
-		1:
+		1: # local star against deep space
+			focus = sim.world["star"]["position"] if sim != null else Vector3.ZERO
+			distance = maxf(float(sim.world["star"].get("radius", 40.0)) * 6.5, 220.0)
+			pitch = -0.05
+		2: # planet
 			focus = presenter.get_planet_focus() if presenter else Vector3.ZERO
 			distance = 320.0
-		2:
+		3: # station
 			focus = presenter.get_station_focus() if presenter else Vector3.ZERO
 			distance = 180.0
-		3:
-			if sim != null and not sim.world["yields"].is_empty():
-				focus = sim.world["yields"][0]["position"]
-			else:
-				focus = Vector3.ZERO
-			distance = 220.0
-		4:
+		4: # ship
 			if sim != null and not sim.world["ships"].is_empty():
 				focus = sim.world["ships"][0]["position"]
 			else:
 				focus = Vector3.ZERO
 			distance = 40.0
-		_:
+		5: # asteroid field
+			if sim != null and not sim.world["yields"].is_empty():
+				focus = sim.world["yields"][0]["position"]
+			else:
+				focus = Vector3.ZERO
+			distance = 220.0
+		_: # deep space — face primary luminous mass
 			focus = Vector3.ZERO
 			distance = 1500.0
 			if presenter != null:
 				var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
-				# Sit opposite the mass so the luminous volume fills the backdrop.
 				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.25
+	_refresh_label()
 
 
 func _process(_dt: float) -> void:
@@ -89,7 +95,6 @@ func _process(_dt: float) -> void:
 	) * distance
 	camera.global_position = focus + offset
 	camera.look_at(focus, Vector3.UP)
-	# Frozen sim — still update near-ship LOD visuals
 	if presenter != null and sim != null:
 		presenter.sync_ships()
 
@@ -108,23 +113,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_1:
 				view_mode = 0
 				_apply_view()
-				_refresh_label()
 			KEY_2:
 				view_mode = 1
 				_apply_view()
-				_refresh_label()
 			KEY_3:
 				view_mode = 2
 				_apply_view()
-				_refresh_label()
 			KEY_4:
 				view_mode = 3
 				_apply_view()
-				_refresh_label()
 			KEY_5:
 				view_mode = 4
 				_apply_view()
-				_refresh_label()
+			KEY_6:
+				view_mode = 5
+				_apply_view()
 			KEY_ESCAPE, KEY_F5:
 				get_tree().change_scene_to_file("res://scenes/main.tscn")
 			KEY_LEFT:
@@ -154,7 +157,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _refresh_label() -> void:
 	if label == null or sim == null:
 		return
-	var modes := ["SKY", "PLANET", "STATION", "ASTEROID", "SHIP"]
+	var modes := ["DEEP SPACE", "STAR", "PLANET", "STATION", "SHIP", "ASTEROID"]
 	var sky: Dictionary = sim.world.get("sky_composition", {})
 	var star: Dictionary = sim.world.get("star", {})
 	label.text = "\n".join(PackedStringArray([
@@ -162,11 +165,11 @@ func _refresh_label() -> void:
 		"System %s  star=%s  mood=%s" % [
 			str(sim.world.get("name", "?")), str(star.get("star_type", "?")), str(sky.get("mood", "?")),
 		],
-		"Masses=%s voids=%s gems=%s  ships=%d" % [
+		"Masses=%s voids=%s gems=%s  ships=%d  backend=%s" % [
 			str(sky.get("masses", 0)), str(sky.get("voids", 0)), str(sky.get("gems", 0)),
-			sim.world["ships"].size(),
+			sim.world["ships"].size(), NativeBridge.backend_name(),
 		],
 		"",
-		"[ ] seed   R regen   1 sky 2 planet 3 station 4 asteroid 5 ship",
+		"[ ] seed   R regen   1 sky 2 star 3 planet 4 station 5 ship 6 asteroid",
 		"Arrows / drag orbit   +/- zoom   Esc/F5 back to main",
 	]))

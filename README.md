@@ -11,14 +11,16 @@ See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) and [`docs/
 ## What works in this prototype
 
 - Deterministic seeded star system with **hierarchical child seeds**
-- Deep-space sky: billboard starfield, seeded nebula layers, dust motes, star corona
+- Deep-space sky as a **composition system** (`SkyComposition`): galactic axis, nebula masses, voids, 4-tier stars, mono palette
 - Planet classes with fresnel atmospheres, rings, class-distinct shaders
 - ShapeLib-lite modular ships & stations (near-field per-design meshes)
 - Composition-driven asteroid fields (iron / silicate / carbon / ice)
 - ~400 autonomous ships as **data**, MultiMesh far-field + detailed near-field
 - Mining → delivery and station-to-station trade jobs (foundation)
 - Observe mode with cinematic presets + fly mode
+- **Visual showcase** (`scenes/visual_showcase.tscn`, F5) — repeatable seed/camera views
 - Debug overlay with sim stats + nearest-ship design inspect (F3 pause)
+- Visual forensics: [`docs/limit-theory-visual-analysis.md`](docs/limit-theory-visual-analysis.md)
 
 ## Requirements
 
@@ -49,6 +51,19 @@ godot --path .
 | **F2** | Dock with nearest station & trade (fly, within range) |
 | **F3** | Pause sim (inspect) |
 | Esc | Release mouse |
+| **`[` `]`** | Step system seed / regenerate |
+| **R** | Regenerate current seed |
+| **F5** | Open visual showcase scene |
+
+### Visual showcase (`scenes/visual_showcase.tscn`)
+
+| Input | Action |
+|-------|--------|
+| **1–6** | Deep space / Star / Planet / Station / Ship / Asteroid |
+| **`[` `]`** | Seed step (deterministic) |
+| **R** | Regen |
+| Arrows / drag | Orbit |
+| Esc / F5 | Back to main |
 
 ## Tests
 
@@ -71,12 +86,13 @@ Game
 ├── native/ew_kernels/     # Rust hot-path kernels (GDExtension)
 ├── bin/                   # libew_kernels.so + .gdextension
 ├── presentation/   # Rendering + design grammar — active
+│   ├── sky_composition.gd  # seeded WHERE for sky / palette
 │   ├── style_profile.gd / materials.gd / visual_lod.gd / stellar_colour.gd
 │   └── generators/ # ShipDesign, StationDesign, meshes, starfield
 ├── shaders/
 ├── player/
-├── scenes/main.tscn
-└── docs/procedural-visuals.md
+├── scenes/main.tscn / visual_showcase.tscn
+└── docs/ (research, visual analysis, native kernels)
 ```
 
 Ships, stations, and markets live as dictionaries inside `StarSystemSim`. Godot Nodes render and interact; they are not the source of truth.

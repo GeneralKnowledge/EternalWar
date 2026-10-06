@@ -276,8 +276,10 @@ func _test_sky_composition() -> void:
 	var c := SkyComposition.build(99)
 	_ok("Different seed can change mood or axis", str(a["mood"]) != str(c["mood"]) or not a["galaxy_normal"].is_equal_approx(c["galaxy_normal"]))
 	var packs := StarfieldGen.build_from_composition(a)
-	_ok("Starfield populations build", packs.has("field") and packs.has("micro") and packs.has("gems"))
+	_ok("Starfield populations build", packs.has("field") and packs.has("micro") and packs.has("gems") and packs.has("notable"))
 	_ok("Field MultiMesh count", packs["field"].instance_count == int(a["star_field_count"]))
+	_ok("Notable stars rarer than field", packs["notable"].instance_count < packs["field"].instance_count)
+	_ok("Gems rarer than notable", packs["gems"].instance_count < packs["notable"].instance_count)
 
 
 func _test_perf_benchmarks() -> void:

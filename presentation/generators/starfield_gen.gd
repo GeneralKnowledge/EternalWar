@@ -1,19 +1,21 @@
-## Procedural starfield populations — micro / field / gems + galactic dust.
+## Procedural starfield populations — 4-tier hierarchy + galactic dust.
 ## Magnitude hierarchy mirrors LT Starfield.lua (most faint, few bright).
+## Tiers: micro (bg) → field (visible) → notable → gems (exceptional).
 class_name StarfieldGen
 extends RefCounted
 
 
 static func build_from_composition(comp: Dictionary) -> Dictionary:
-	## Returns {field, micro, gems, dust} MultiMeshes driven by SkyComposition.
+	## Returns {micro, field, notable, gems, dust} MultiMeshes driven by SkyComposition.
 	var seed: int = int(comp.get("seed", 42))
 	var galaxy_n: Vector3 = comp.get("galaxy_normal", Vector3.UP)
 	var voids: Array = comp.get("voids", [])
 	var masses: Array = comp.get("masses", [])
 	var gem_defs: Array = comp.get("gems", [])
 	return {
-		"field": _build_population(seed, "starfield_field", int(comp.get("star_field_count", 5600)), galaxy_n, voids, masses, 0),
 		"micro": _build_population(seed, "starfield_micro", int(comp.get("star_micro_count", 11000)), galaxy_n, voids, masses, 1),
+		"field": _build_population(seed, "starfield_field", int(comp.get("star_field_count", 5600)), galaxy_n, voids, masses, 0),
+		"notable": _build_population(seed, "starfield_notable", int(comp.get("star_notable_count", 180)), galaxy_n, voids, masses, 2),
 		"gems": _build_gems(seed, gem_defs),
 		"dust": build_galactic_dust(seed, int(comp.get("dust_count", 480)), galaxy_n, comp.get("palette", {})),
 	}
@@ -27,13 +29,12 @@ static func build_multimesh(system_seed: int, count: int = 5600) -> MultiMesh:
 
 static func build_galactic_dust(system_seed: int, count: int = 480, galaxy_n: Vector3 = Vector3.UP, palette: Dictionary = {}) -> MultiMesh:
 	var rng := SeedHash.make_rng(system_seed, "galactic_dust")
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(2.0, 2.0)
-	mm.mesh = quad
-	mm.instance_count = count
+	var positions := PackedFloat32Array()
+	var scales := PackedFloat32Array()
+	var colors := PackedFloat32Array()
+	positions.resize(count * 3)
+	scales.resize(count)
+	colors.resize(count * 4)
 	var tint: Color = palette.get("primary", nebula_color(system_seed))
 	var secondary: Color = palette.get("secondary", tint.darkened(0.2))
 	for i in count:
@@ -43,15 +44,42 @@ static func build_galactic_dust(system_seed: int, count: int = 480, galaxy_n: Ve
 		var size := rng.randf_range(35.0, 100.0)
 		var a := rng.randf_range(0.07, 0.18)
 		var c := tint.lerp(secondary, rng.randf())
-		c.a = a
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
-		mm.set_instance_color(i, c)
-	return mm
+		var pos := dir * dist
+		var i3 := i * 3
+		positions[i3] = pos.x
+		positions[i3 + 1] = pos.y
+		positions[i3 + 2] = pos.z
+		scales[i] = size
+		var c4 := i * 4
+		colors[c4] = c.r
+		colors[c4 + 1] = c.g
+		colors[c4 + 2] = c.b
+		colors[c4 + 3] = a
+	return _mm_from_soa(count, positions, scales, colors)
 
 
 static func nebula_color(system_seed: int) -> Color:
 	var comp := SkyComposition.build(system_seed)
 	return comp["palette"]["primary"]
+
+
+static func _mm_from_soa(count: int, positions: PackedFloat32Array, scales: PackedFloat32Array, colors: PackedFloat32Array) -> MultiMesh:
+	## Pack MultiMesh from SoA buffers in GDScript (keeps visuals independent of optional instance kernels).
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.0, 2.0)
+	mm.mesh = quad
+	mm.instance_count = count
+	for i in count:
+		var i3 := i * 3
+		var pos := Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2])
+		var s := scales[i]
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * s), pos))
+		var c4 := i * 4
+		mm.set_instance_color(i, Color(colors[c4], colors[c4 + 1], colors[c4 + 2], colors[c4 + 3]))
+	return mm
 
 
 static func _build_population(
@@ -63,14 +91,14 @@ static func _build_population(
 	masses: Array,
 	mode: int
 ) -> MultiMesh:
+	## mode 0=field, 1=micro, 2=notable
 	var rng := SeedHash.make_rng(system_seed, tag)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(2.0, 2.0)
-	mm.mesh = quad
-	mm.instance_count = count
+	var positions := PackedFloat32Array()
+	var scales := PackedFloat32Array()
+	var colors := PackedFloat32Array()
+	positions.resize(count * 3)
+	scales.resize(count)
+	colors.resize(count * 4)
 
 	var clusters: Array[Vector3] = []
 	clusters.append(rng.dir3())
@@ -80,7 +108,7 @@ static func _build_population(
 
 	for i in count:
 		var dir: Vector3
-		var on_plane := rng.randf() < (0.55 if mode == 0 else 0.4)
+		var on_plane := rng.randf() < (0.55 if mode != 1 else 0.4)
 		if on_plane:
 			dir = rng.dir3()
 			dir = (dir - galaxy_n * dir.dot(galaxy_n) * rng.randf_range(0.45, 0.95)).normalized()
@@ -91,8 +119,7 @@ static func _build_population(
 		else:
 			dir = rng.dir3()
 
-		# Bias toward nebula masses; avoid voids.
-		if not masses.is_empty() and rng.randf() < 0.35:
+		if not masses.is_empty() and rng.randf() < (0.45 if mode == 2 else 0.35):
 			var m: Dictionary = masses[rng.randi_range(0, masses.size() - 1)]
 			dir = (dir * 0.55 + m["dir"] * 0.45).normalized()
 		dir = _avoid_voids(dir, voids, rng)
@@ -100,55 +127,82 @@ static func _build_population(
 		var dist: float
 		var mag: float
 		var size: float
-		if mode == 1:
-			# Micro distant shell — LT-like subtle field
-			dist = rng.randf_range(9000.0, 16000.0)
-			mag = pow(rng.randf(), 3.2)
-			size = lerpf(1.8, 5.5, mag)
-		else:
-			dist = rng.randf_range(3400.0, 8200.0)
-			mag = pow(rng.randf(), 2.6) # Exp-like hierarchy
-			if on_plane:
-				mag = minf(1.0, mag + 0.06)
-			if mag > 0.88:
-				size = lerpf(10.0, 20.0, (mag - 0.88) / 0.12)
-			else:
-				size = lerpf(2.8, 9.0, mag / 0.88)
+		match mode:
+			1: # micro — very numerous, extremely subtle
+				dist = rng.randf_range(9000.0, 16000.0)
+				mag = pow(rng.randf(), 3.4)
+				size = lerpf(1.6, 4.8, mag)
+			2: # notable — rare, clearly visible
+				dist = rng.randf_range(3000.0, 6200.0)
+				mag = lerpf(0.55, 0.92, pow(rng.randf(), 1.2))
+				size = lerpf(9.0, 18.0, mag)
+			_: # field — visible but mostly faint
+				dist = rng.randf_range(3400.0, 8200.0)
+				mag = pow(rng.randf(), 2.6)
+				if on_plane:
+					mag = minf(1.0, mag + 0.06)
+				if mag > 0.88:
+					size = lerpf(9.0, 16.0, (mag - 0.88) / 0.12)
+				else:
+					size = lerpf(2.6, 8.5, mag / 0.88)
 
 		var temp_k := lerpf(2800.0, 14000.0, rng.randf())
 		if rng.randf() < 0.72:
 			temp_k = lerpf(3400.0, 7200.0, rng.randf())
 		var col := StellarColour.from_temperature(temp_k)
-		# LT-ish: brightness * Exp^2.5 — most stars faint
-		var bright := (0.25 + mag * mag * 1.4) if mode == 0 else (0.15 + mag * 0.7)
+		var bright: float
+		match mode:
+			1:
+				bright = 0.12 + mag * 0.55
+			2:
+				bright = 0.7 + mag * 1.1
+			_:
+				bright = 0.22 + mag * mag * 1.35
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
-		mm.set_instance_color(i, col)
-	return mm
+		var pos := dir * dist
+		var i3 := i * 3
+		positions[i3] = pos.x
+		positions[i3 + 1] = pos.y
+		positions[i3 + 2] = pos.z
+		scales[i] = size
+		var c4 := i * 4
+		colors[c4] = col.r
+		colors[c4 + 1] = col.g
+		colors[c4 + 2] = col.b
+		colors[c4 + 3] = col.a
+	return _mm_from_soa(count, positions, scales, colors)
 
 
 static func _build_gems(system_seed: int, gem_defs: Array) -> MultiMesh:
 	var rng := SeedHash.make_rng(system_seed, "starfield_gems")
 	var count := maxi(gem_defs.size(), 1)
-	var mm := MultiMesh.new()
-	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.use_colors = true
-	var quad := QuadMesh.new()
-	quad.size = Vector2(2.0, 2.0)
-	mm.mesh = quad
-	mm.instance_count = count
+	var positions := PackedFloat32Array()
+	var scales := PackedFloat32Array()
+	var colors := PackedFloat32Array()
+	positions.resize(count * 3)
+	scales.resize(count)
+	colors.resize(count * 4)
 	for i in count:
 		var g: Dictionary = gem_defs[i] if i < gem_defs.size() else {"dir": rng.dir3(), "temp": 6000.0, "mag": 0.8}
 		var dir: Vector3 = g.get("dir", rng.dir3())
 		var dist := rng.randf_range(2800.0, 5200.0)
 		var mag := float(g.get("mag", 0.8))
-		var size := lerpf(18.0, 36.0, mag)
+		var size := lerpf(18.0, 34.0, mag)
 		var col := StellarColour.from_temperature(float(g.get("temp", 6000.0)))
-		var bright := 1.4 + mag * 1.8
+		var bright := 1.35 + mag * 1.7
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
-		mm.set_instance_color(i, col)
-	return mm
+		var pos := dir * dist
+		var i3 := i * 3
+		positions[i3] = pos.x
+		positions[i3 + 1] = pos.y
+		positions[i3 + 2] = pos.z
+		scales[i] = size
+		var c4 := i * 4
+		colors[c4] = col.r
+		colors[c4 + 1] = col.g
+		colors[c4 + 2] = col.b
+		colors[c4 + 3] = col.a
+	return _mm_from_soa(count, positions, scales, colors)
 
 
 static func _avoid_voids(dir: Vector3, voids: Array, rng: SeededRNG) -> Vector3:
