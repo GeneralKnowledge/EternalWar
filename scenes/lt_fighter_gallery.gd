@@ -196,16 +196,17 @@ func _apply_mode(design: Dictionary) -> void:
 			rim.light_energy = 0.0
 		"clay":
 			var clay := StandardMaterial3D.new()
-			clay.albedo_color = Color(0.72, 0.7, 0.68)
-			clay.roughness = 0.85
+			clay.albedo_color = Color(0.78, 0.76, 0.74)
+			clay.roughness = 0.88
 			clay.metallic = 0.0
+			clay.vertex_color_use_as_albedo = false
 			ship_mi.material_override = clay
-			env_node.environment.background_color = Color(0.18, 0.19, 0.21)
-			env_node.environment.ambient_light_energy = 0.55
+			env_node.environment.background_color = Color(0.22, 0.23, 0.25)
+			env_node.environment.ambient_light_energy = 0.65
 			env_node.environment.glow_enabled = false
-			light.light_energy = 1.2
-			fill.light_energy = 0.4
-			rim.light_energy = 0.2
+			light.light_energy = 1.35
+			fill.light_energy = 0.55
+			rim.light_energy = 0.25
 		"material":
 			var mat := VisualMaterials.make(str(profile["material"]), design["color"], 0.55)
 			mat.roughness = float(profile.get("roughness", 0.5))
@@ -263,6 +264,7 @@ func _apply_view(design: Dictionary) -> void:
 	var view := str(ORTHO_VIEWS[ortho_i]) if mode == "ortho" else str(VIEWS[view_i])
 	var pos := Vector3.ZERO
 	match view:
+		# Nose is −Z; front cameras sit on −Z looking toward origin.
 		"front":
 			pos = Vector3(0, length * 0.08, -dist)
 		"rear":
@@ -276,9 +278,10 @@ func _apply_view(design: Dictionary) -> void:
 		"bottom":
 			pos = Vector3(0.01, -dist, 0.01)
 		"three_quarter_rear":
-			pos = Vector3(dist * 0.6, dist * 0.32, -dist * 0.65)
-		_:
 			pos = Vector3(dist * 0.62, dist * 0.34, dist * 0.68)
+		_:
+			# three_quarter_front
+			pos = Vector3(dist * 0.6, dist * 0.32, -dist * 0.65)
 	if mode == "ortho":
 		camera.size = length * 2.2
 	camera.global_position = pos

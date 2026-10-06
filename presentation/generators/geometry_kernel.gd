@@ -53,20 +53,22 @@ static func ngon_profile(sides: int, rx: float, ry: float, bevel: float = 0.0, b
 
 
 ## Wedge / flattened hex fighter profile — wider on sides, flatter top/bottom.
-static func fighter_profile(rx: float, ry: float, bevel: float = 0.18, bevel_segs: int = 1) -> PackedVector2Array:
-	# Non-uniform hex: shoulders + flat deck (reads as LT prism, not ellipse).
+static func fighter_profile(rx: float, ry: float, bevel: float = 0.22, bevel_segs: int = 1) -> PackedVector2Array:
+	# Non-uniform octagon: shoulders + flat deck (reads as LT prism, not ellipse).
 	var raw := PackedVector2Array([
 		Vector2(0.0, ry),
-		Vector2(rx * 0.72, ry * 0.55),
-		Vector2(rx, 0.0),
-		Vector2(rx * 0.72, -ry * 0.65),
+		Vector2(rx * 0.55, ry * 0.78),
+		Vector2(rx * 0.92, ry * 0.28),
+		Vector2(rx, -ry * 0.15),
+		Vector2(rx * 0.7, -ry * 0.72),
 		Vector2(0.0, -ry),
-		Vector2(-rx * 0.72, -ry * 0.65),
-		Vector2(-rx, 0.0),
-		Vector2(-rx * 0.72, ry * 0.55),
+		Vector2(-rx * 0.7, -ry * 0.72),
+		Vector2(-rx, -ry * 0.15),
+		Vector2(-rx * 0.92, ry * 0.28),
+		Vector2(-rx * 0.55, ry * 0.78),
 	])
 	if bevel > 0.0:
-		return bevel_profile(raw, clampf(bevel, 0.0, 0.4), bevel_segs)
+		return bevel_profile(raw, clampf(bevel, 0.0, 0.42), maxi(bevel_segs, 1))
 	return raw
 
 
@@ -154,11 +156,11 @@ static func wing_planform(
 	# Leading-edge bias: fraction of chord ahead of mid (0.5 = centered)
 	var r_le := root + Vector3(0, 0, -rc * le_bias)
 	var r_te := root + Vector3(0, 0, rc * (1.0 - le_bias))
-	var tip_adj := tip + Vector3(0, sin(dihedral) * (tip - root).length(), 0)
+	var span_vec := tip - root
+	var tip_adj := tip + Vector3(0, sin(dihedral) * span_vec.length(), 0)
 	var t_le := tip_adj + Vector3(0, 0, -tc * le_bias)
 	var t_te := tip_adj + Vector3(0, 0, tc * (1.0 - le_bias))
 	var up := Vector3(0, th * 0.5, 0)
-	# Upper / lower quads
 	var ru0 := r_le + up
 	var ru1 := r_te + up
 	var tu0 := t_le + up
@@ -167,12 +169,22 @@ static func wing_planform(
 	var rl1 := r_te - up
 	var tl0 := t_le - up
 	var tl1 := t_te - up
-	_quad(st, ru0, tu0, tu1, ru1, color) # upper
-	_quad(st, rl0, rl1, tl1, tl0, color.darkened(0.06)) # lower
-	_quad(st, ru0, ru1, rl1, rl0, color.darkened(0.04)) # root
-	_quad(st, tu0, tl0, tl1, tu1, color.darkened(0.1)) # tip
-	_quad(st, ru0, rl0, tl0, tu0, color.lightened(0.03)) # leading
-	_quad(st, ru1, tu1, tl1, rl1, color.darkened(0.08)) # trailing
+	# Flip winding when tip is on -X so upper faces stay outward.
+	var flip := span_vec.x < 0.0
+	if flip:
+		_quad(st, ru0, ru1, tu1, tu0, color)
+		_quad(st, rl0, tl0, tl1, rl1, color.darkened(0.06))
+		_quad(st, ru0, rl0, rl1, ru1, color.darkened(0.04))
+		_quad(st, tu0, tu1, tl1, tl0, color.darkened(0.1))
+		_quad(st, ru0, tu0, tl0, rl0, color.lightened(0.03))
+		_quad(st, ru1, rl1, tl1, tu1, color.darkened(0.08))
+	else:
+		_quad(st, ru0, tu0, tu1, ru1, color)
+		_quad(st, rl0, rl1, tl1, tl0, color.darkened(0.06))
+		_quad(st, ru0, ru1, rl1, rl0, color.darkened(0.04))
+		_quad(st, tu0, tl0, tl1, tu1, color.darkened(0.1))
+		_quad(st, ru0, rl0, tl0, tu0, color.lightened(0.03))
+		_quad(st, ru1, tu1, tl1, rl1, color.darkened(0.08))
 
 
 ## Structural engine housing + recessed exhaust (geometry first, colour second).

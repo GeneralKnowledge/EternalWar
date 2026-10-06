@@ -56,12 +56,20 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 			var ep: Vector3 = e["pos"]
 			var ex: Color = e.get("exhaust", exhaust)
 			var segs := int(e.get("segments", 6))
+			var er := float(e["radius"])
+			var el := float(e["length"])
 			if lod >= VisualLOD.LOD_BATCH:
-				ShapePrims.box(st, ep, Vector3(float(e["radius"]) * 1.6, float(e["radius"]) * 1.6, float(e["length"])), accent.darkened(0.2))
+				ShapePrims.box(st, ep, Vector3(er * 1.6, er * 1.6, el), accent.darkened(0.2))
 			else:
+				# Keel fairing from hull into engine housing (structural connection)
+				if ship_class == SimEntities.ShipClass.PATROL and lod <= VisualLOD.LOD_SIMPLE:
+					var keel: Array = [
+						GeometryKernel.station(ep.z - el * 0.55, er * 2.4, er * 1.8, ep.y, ep.x * 0.55, "ngon", segs),
+						GeometryKernel.station(ep.z - el * 0.15, er * 2.0, er * 1.7, ep.y, ep.x, "ngon", segs),
+					]
+					GeometryKernel.loft_hull(st, keel, color.darkened(0.08), bevel_amt * 0.6, 1, true, true)
 				GeometryKernel.engine_block(
-					st, ep, float(e["radius"]), float(e["length"]),
-					accent.darkened(0.15), ex, bevel_amt * 0.8, segs
+					st, ep, er, el, accent.darkened(0.15), ex, bevel_amt * 0.8, segs
 				)
 
 	if include_functional:
@@ -97,18 +105,17 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 		)
 
 	if include_surface and style == STYLE_MILITARY and ship_class == SimEntities.ShipClass.PATROL:
-		# Light armour plate along dorsal — secondary mass, not a second hull
-		var plate_z0 := -length * 0.15
-		var plate_z1 := length * 0.28
+		# Single dorsal armour ridge — follows hull, does not stack a second hull
 		var plate_stations: Array = [
-			GeometryKernel.station(plate_z0, width * 0.42, height * 0.08, height * 0.38, 0.0, "box", 4),
-			GeometryKernel.station(plate_z1, width * 0.38, height * 0.06, height * 0.36, 0.0, "box", 4),
+			GeometryKernel.station(-length * 0.08, width * 0.32, height * 0.06, height * 0.34, 0.0, "fighter", 6),
+			GeometryKernel.station(length * 0.22, width * 0.28, height * 0.05, height * 0.32, 0.0, "fighter", 6),
 		]
-		GeometryKernel.loft_hull(st, plate_stations, color.darkened(0.12), 0.1, 1, true, true)
+		GeometryKernel.loft_hull(st, plate_stations, color.darkened(0.1), 0.16, 1, true, true)
 	elif include_surface and style == STYLE_MILITARY:
 		ShapePrims.box(st, Vector3(0, height * 0.4, length * 0.05), Vector3(width * 0.55, height * 0.08, length * 0.45), color.darkened(0.15))
 
-	st.generate_normals()
+	# Face normals are authored by GeometryKernel / ShapePrims — do not smooth
+	# (smoothing on thin wings produces black streaking).
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh
 
@@ -181,6 +188,14 @@ static func _emit_wing(st: SurfaceTool, w: Dictionary, accent: Color, lod: int) 
 	if lod >= VisualLOD.LOD_BATCH:
 		ShapePrims.box(st, root.lerp(tip, 0.45), Vector3(absf(span) * 0.9, thick, chord * 0.7), accent.darkened(0.1))
 		return
+	# Optional root fairing: short loft from inboard toward wing root (fills negative-space gap)
+	if bool(w.get("fairing", false)) and lod <= VisualLOD.LOD_SIMPLE:
+		var inboard := root - Vector3(signf(span) * absf(span) * 0.08, 0, 0)
+		var fair_stations: Array = [
+			GeometryKernel.station(root.z - chord * 0.35, thick * 2.2, thick * 1.6, root.y, inboard.x, "box", 4),
+			GeometryKernel.station(root.z + chord * 0.25, thick * 1.8, thick * 1.3, root.y, root.x, "box", 4),
+		]
+		GeometryKernel.loft_hull(st, fair_stations, accent.darkened(0.05), 0.1, 1, true, true)
 	GeometryKernel.wing_planform(
 		st, root, tip, chord, tip_chord, thick, accent.darkened(0.08), dihedral, le_bias
 	)

@@ -47,7 +47,7 @@ static func build(design: Dictionary, extras: Dictionary = {}) -> Dictionary:
 		"aft_taper": aft_taper,
 		"center": Vector3.ZERO,
 		"stations": [],
-		"bevel": lerpf(0.12, 0.28, float(profile.get("detail_density", 0.5))),
+		"bevel": lerpf(0.18, 0.34, float(profile.get("detail_density", 0.5))),
 	}
 	if ship_class == SimEntities.ShipClass.PATROL or hull_lang == "wedge":
 		hull["language"] = "loft"
@@ -65,11 +65,13 @@ static func build(design: Dictionary, extras: Dictionary = {}) -> Dictionary:
 			t += eng_rng.randf_range(0.08, 0.28) * width
 		var y_off := -height * eng_rng.randf_range(0.02, 0.12)
 		if ship_class == SimEntities.ShipClass.PATROL:
-			y_off = -height * 0.08
+			y_off = -height * 0.04
+			# Keep engines inside aft shoulder so housings read as hull terminations
+			t = (float(i) / float(maxi(engine_n - 1, 1)) - 0.5) * width * 0.38
 		engines.append({
-			"pos": Vector3(t, y_off, length * 0.46),
+			"pos": Vector3(t, y_off, length * 0.44),
 			"radius": width * 0.09 * float(profile["engine_scale"]) * eng_rng.randf_range(0.9, 1.1),
-			"length": length * 0.18 * eng_rng.randf_range(0.9, 1.15),
+			"length": length * 0.2 * eng_rng.randf_range(0.9, 1.1),
 			"exhaust": exhaust,
 			"segments": 6 if ship_class == SimEntities.ShipClass.PATROL else 8,
 		})
@@ -283,19 +285,19 @@ static func _role_modules(
 				"size": Vector3(width * 0.12, height * 0.18, length * 0.1),
 				"region": "accent",
 			})
-			# Side wing mounts (LT WingMounts) — create gap between fuselage and wing root.
-			var mount_x := width * lerpf(0.52, 0.68, gap)
+			# Side wing mounts — bridge hull shoulder to wing root (controlled gap, not floating).
+			var mount_x := width * 0.48
 			modules.append({
 				"type": "mount",
 				"pos": Vector3(mount_x, -height * 0.02, length * 0.04),
-				"size": Vector3(width * 0.16, height * 0.55, length * 0.36),
+				"size": Vector3(width * 0.22, height * 0.5, length * 0.38),
 				"region": "secondary",
 			})
 			if symmetric:
 				modules.append({
 					"type": "mount",
 					"pos": Vector3(-mount_x, -height * 0.02, length * 0.04),
-					"size": Vector3(width * 0.16, height * 0.55, length * 0.36),
+					"size": Vector3(width * 0.22, height * 0.5, length * 0.38),
 					"region": "secondary",
 				})
 	if float(profile["ornament"]) > 0.45 and rng.randf() < float(profile["ornament"]):
@@ -371,15 +373,16 @@ static func _role_wings(
 	var root_x := width * lerpf(0.55, 0.72, float(profile.get("negative_space", 0.4)))
 	if ship_class == SimEntities.ShipClass.PATROL:
 		# Canonical military fighter: swept planform, mild anhedral, no random TIE panels
-		span = width * 1.05
-		root_chord = length * 0.46
-		tip_chord = root_chord * 0.34
-		thick = height * 0.1
-		sweep = 0.32
-		dihedral = -0.04
-		root_x = width * 0.62
+		span = width * 0.95
+		root_chord = length * 0.48
+		tip_chord = root_chord * 0.32
+		thick = height * 0.12
+		sweep = 0.28
+		dihedral = -0.03
+		# Root sits on outer face of wing mount (filled gap, not floating plates)
+		root_x = width * 0.58
 	wings.append({
-		"root": Vector3(root_x, -height * 0.02, length * 0.06),
+		"root": Vector3(root_x, -height * 0.02, length * 0.04),
 		"span": span,
 		"chord": root_chord,
 		"tip_chord": tip_chord,
@@ -387,10 +390,11 @@ static func _role_wings(
 		"sweep": sweep,
 		"dihedral": dihedral,
 		"le_bias": 0.42,
+		"fairing": true,
 	})
 	if symmetric:
 		wings.append({
-			"root": Vector3(-root_x, -height * 0.02, length * 0.06),
+			"root": Vector3(-root_x, -height * 0.02, length * 0.04),
 			"span": -span,
 			"chord": root_chord,
 			"tip_chord": tip_chord,
@@ -398,6 +402,7 @@ static func _role_wings(
 			"sweep": sweep,
 			"dihedral": dihedral,
 			"le_bias": 0.42,
+			"fairing": true,
 		})
 	# Occasional TIE-like vertical panel (LT WingsTie) — not on canonical military baseline
 	if ship_class == SimEntities.ShipClass.PATROL and style != "military" and rng.randf() < 0.28:
@@ -462,12 +467,13 @@ static func _fighter_stations(
 	var cockpit_lift := height * 0.08
 	var bevel := lerpf(0.14, 0.26, float(profile.get("detail_density", 0.5)))
 	var stations: Array = [
-		GeometryKernel.station(-hz, nose_w * 0.35, nose_h * 0.3, 0.0, 0.0, "fighter", 6),
-		GeometryKernel.station(-hz * 0.55, nose_w, nose_h, height * 0.02, 0.0, "fighter", 6),
-		GeometryKernel.station(-hz * 0.12, width * 0.88, mid_h * 0.9, cockpit_lift * 0.4, 0.0, "fighter", 6),
-		GeometryKernel.station(hz * 0.18, shoulder_w, mid_h, cockpit_lift * 0.2, 0.0, "fighter", 6),
-		GeometryKernel.station(hz * 0.55, width * 0.78, height * 0.85, -height * 0.02, 0.0, "fighter", 6),
-		GeometryKernel.station(hz * 0.92, aft_w, aft_h, -height * 0.06, 0.0, "ngon", int(profile.get("hull_sides", 6))),
+		GeometryKernel.station(-hz, nose_w * 0.28, nose_h * 0.25, height * 0.02, 0.0, "fighter", 6),
+		GeometryKernel.station(-hz * 0.62, nose_w * 0.85, nose_h * 0.8, height * 0.03, 0.0, "fighter", 6),
+		GeometryKernel.station(-hz * 0.2, width * 0.82, mid_h * 0.85, cockpit_lift * 0.5, 0.0, "fighter", 6),
+		GeometryKernel.station(hz * 0.12, shoulder_w, mid_h, cockpit_lift * 0.15, 0.0, "fighter", 6),
+		GeometryKernel.station(hz * 0.48, width * 0.85, height * 0.9, -height * 0.01, 0.0, "fighter", 6),
+		GeometryKernel.station(hz * 0.78, width * 0.72, height * 0.78, -height * 0.03, 0.0, "ngon", int(profile.get("hull_sides", 6))),
+		GeometryKernel.station(hz * 0.98, aft_w * 0.9, aft_h * 0.85, -height * 0.05, 0.0, "ngon", int(profile.get("hull_sides", 6))),
 	]
 	for s in stations:
 		s["bevel"] = bevel
