@@ -8,13 +8,16 @@ See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) for researc
 
 ## What works in this prototype
 
-- Deterministic seeded star system (planets, ore fields, stations, factions)
-- ~400 autonomous ships as **data**, not Nodes
+- Deterministic seeded star system with **hierarchical child seeds**
+- Procedural starfield, star types, planet classes (shader), asteroid fields, modular stations, class/style ships
+- ~400 autonomous ships as **data**, MultiMesh rendering per class
 - Mining → delivery and station-to-station trade jobs
 - Production chains: ore → metal → components (+ energy/food sinks)
 - Supply/demand price response
 - Observe mode (watch the universe) and fly mode (enter the simulation)
-- Debug overlay with simulation / economy timing
+- Debug overlay with sim stats + nearest-ship design inspect (F3 pause)
+
+See also: `docs/visual-generation-devnote.md`, `docs/limit-theory-research.md`.
 
 ## Requirements
 

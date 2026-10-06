@@ -269,9 +269,102 @@ Instrumentation cost should stay tiny (timestamps around major phases only).
 | Production recipes | Yes | ore→metal→components |
 | Seeded system gen | Yes | SeededRNG + SystemGenerator |
 | Action stack AI | Yes | Compact action enums |
-| Visual LOD meshes | Deferred | MultiMesh primitives |
+| Hierarchical child seeds | Yes | `SeedHash.derive(parent, tag)` |
+| ShapeLib-style modular ships | Yes (simplified) | Hull + engines + class modules |
+| Procedural stations | Yes | Role-driven module kits |
+| Starfield clusters | Yes | MultiMesh + temperature colours |
+| Planet shader materials | Yes | Godot `planet.gdshader` |
+| Visual LOD meshes | Partial | Distance scale + class MultiMeshes |
 | Full galaxy | Deferred | Single system first |
 | Rust | No | Profile first |
+
+---
+
+## 11. Hierarchical / independent child seeds
+
+### Technique
+Derive object seeds from `parent_seed + tag` so content is order-independent.
+
+### Original Limit Theory approach
+Generators take an explicit seed (`SystemGenerator(seed)`, `Planet(seed)`, `Station(rng:get31())`). Child content uses fresh RNG instances from those seeds rather than one global mutable stream for everything permanent.
+
+### Problem it solved
+Reproducible worlds; regenerating one object does not scramble others; supports lazy generation.
+
+### EternalWar implementation
+`SeedHash.derive(parent, tag)` / `derive_i(parent, tag, index)`. System stream still chooses counts and orbital layout; each planet/station/ship/yield stores its own `seed` and generates appearance/role from that child RNG.
+
+### Reason for differences
+Godot has no LibPHX RNG objects; we wrap `RandomNumberGenerator` and avoid GlobalScope `randf()` inside wrappers.
+
+### Performance considerations
+Hashing is cheap. Child RNGs are created only during generation / mesh build.
+
+---
+
+## 12. ShapeLib modular ship / station construction
+
+### Technique
+Compose intentional designs from primitives, joints, extrusion, symmetry, and style parameters — not unconstrained random boxes.
+
+### Original Limit Theory approach
+`Gen.ShapeLib` (`Shape`, `BasicShapes`, `Joint`, warps) plus `ShipFighter` / `Station` generators. Hull + wings/engines attached with controlled randomness and settings-driven styles.
+
+### Problem it solved
+Recognisable vehicle silhouettes with variety; design language instead of noise.
+
+### EternalWar implementation
+`ShipMeshGen` / `StationMeshGen` build `ArrayMesh` via `SurfaceTool` boxes/prisms. Inputs: class, faction style, design seed. Results cached in `MeshCache`. Far field uses MultiMesh per ship class; stations instantiate modular meshes once.
+
+### Reason for differences
+No native BoxMesh CSG bevel stack like LT’s `BoxMesh`. GDScript SurfaceTool is enough for prototype silhouettes. Full ShapeLib port deferred until profiling demands richer geometry.
+
+### Performance considerations
+Mesh builds are cached by design key. Never regenerate per frame. MultiMesh keeps 400+ ships cheap.
+
+---
+
+## 13. Clustered starfield + temperature colours
+
+### Technique
+Grow star positions from cluster seeds; colour by approximate temperature; render as efficient batches.
+
+### Original Limit Theory approach
+`Gen/Starfield.lua` — bootstrap points, iteratively add stars near existing ones, colour via temperature lerp, emit billboard quads at huge distance.
+
+### Problem it solved
+Believable sky without uniform random dots; cheap distant stars.
+
+### EternalWar implementation
+`StarfieldGen.build_multimesh` — cluster growth + MultiMesh spheres, temperature palette, nebula tint on `Environment` from system seed.
+
+### Reason for differences
+Godot MultiMesh + unshaded materials instead of custom mesh billboards. Nebula is ambient/fog tint for now, not LT’s TexCube IFS shader.
+
+### Performance considerations
+~2800 instances is fine on MultiMesh. Avoid Node3D-per-star.
+
+---
+
+## 14. Planet material from seed parameters
+
+### Technique
+Icosphere/sphere mesh + seeded surface parameters (colours, ocean, clouds) in a shader.
+
+### Original Limit Theory approach
+`Planet.lua` — icosphere, shader cubemap generation (`gen/planet`), ocean/cloud levels, multi-colour bands, separate atmosphere mesh.
+
+### Problem it solved
+Distinct planets without unique hand-authored textures per body.
+
+### EternalWar implementation
+`shaders/planet.gdshader` with fbm noise, ocean/cloud uniforms from planet dictionary; optional translucent atmosphere shell and ring MultiMesh for gas giants/ice worlds.
+
+### Reason for differences
+No offline TexCube bake yet — fragment noise is cheaper to ship and deterministic enough for identity. Can upgrade to cubemaps later.
+
+### Performance considerations
+One draw call per planet (+ atmo/rings). Fine for <20 planets.
 
 ---
 
@@ -280,4 +373,5 @@ Instrumentation cost should stay tiny (timestamps around major phases only).
 1. How to preserve economic state when demoting a system to aggregate LOD?
 2. When do we need spatial partitioning for job search?
 3. Should factions own station inventories or only ships?
-4. How much of LT’s ShapeLib ship generation is worth porting vs faction-tinted primitives?
+4. When to upgrade ShapeLib-style hull extrusion beyond box kits?
+5. Per-design ship MultiMesh (many unique meshes) vs atlas of class archetypes?
