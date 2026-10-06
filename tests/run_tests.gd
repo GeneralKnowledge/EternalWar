@@ -1,116 +1,116 @@
+## Headless test runner — no rendering required.
+## Usage: godot --headless --path . -s res://tests/run_tests.gd
 extends SceneTree
 
-## Headless test runner for non-visual MVP systems.
-## Run: godot --headless --path . -s res://tests/run_tests.gd
-
-var _passed: int = 0
 var _failed: int = 0
+var _passed: int = 0
 
 
-func _initialize() -> void:
-	call_deferred("_run_all")
-
-
-func _run_all() -> void:
-	print("=== Eternal Battle MVP Tests ===")
-	_test_shield_absorbs_damage()
-	_test_damage_transfers_to_hull()
-	_test_fighter_destruction()
-	_test_friendly_fire_prevented_logic()
-	_test_target_selection_helpers()
-	_test_teams()
-	_test_projectile_pool()
+func _init() -> void:
+	print("=== Limit Theory Prototype Tests ===")
+	_test_seeded_rng()
+	_test_system_determinism()
+	_test_economy_runs()
+	_test_ships_become_active()
+	_test_prices_respond_to_supply()
 	print("=== Results: %d passed, %d failed ===" % [_passed, _failed])
-	quit(0 if _failed == 0 else 1)
+	quit(1 if _failed > 0 else 0)
 
 
-func _assert(cond: bool, msg: String) -> void:
+func _ok(name: String, cond: bool, detail: String = "") -> void:
 	if cond:
 		_passed += 1
-		print("  PASS: ", msg)
+		print("PASS  ", name)
 	else:
 		_failed += 1
-		print("  FAIL: ", msg)
+		print("FAIL  ", name, "  ", detail)
 
 
-func _make_ship(team: int = Teams.Side.FRIENDLY) -> Ship:
-	var s := Ship.new()
-	s.team = team
-	s.max_health = 100.0
-	s.max_shield = 50.0
-	s.health = 100.0
-	s.shield = 50.0
-	s.is_alive = true
-	return s
+func _test_seeded_rng() -> void:
+	var a := SeededRNG.new(123)
+	var b := SeededRNG.new(123)
+	var same := true
+	for _i in 50:
+		if not is_equal_approx(a.randf(), b.randf()):
+			same = false
+			break
+	_ok("SeededRNG identical sequences", same)
+	var c := SeededRNG.new(999)
+	_ok("SeededRNG different seeds diverge", not is_equal_approx(SeededRNG.new(123).randf(), c.randf()))
 
 
-func _test_shield_absorbs_damage() -> void:
-	print("-- shields absorb damage --")
-	var s := _make_ship()
-	s.take_damage(30.0)
-	_assert(is_equal_approx(s.shield, 20.0), "shield reduced by 30")
-	_assert(is_equal_approx(s.health, 100.0), "hull untouched while shield remains")
-	s.free()
+func _test_system_determinism() -> void:
+	var g1 := SystemGenerator.new(42)
+	var g2 := SystemGenerator.new(42)
+	var w1 := g1.generate(50)
+	var w2 := g2.generate(50)
+	_ok("Same seed → same planet count", w1["planets"].size() == w2["planets"].size())
+	_ok("Same seed → same station count", w1["stations"].size() == w2["stations"].size())
+	_ok("Same seed → same system name", w1["name"] == w2["name"])
+	var p1: Vector3 = w1["planets"][0]["position"]
+	var p2: Vector3 = w2["planets"][0]["position"]
+	_ok("Same seed → same first planet position", p1.is_equal_approx(p2))
+
+	var g3 := SystemGenerator.new(99)
+	var w3 := g3.generate(50)
+	_ok("Different seed → different name or layout", w3["name"] != w1["name"] or not w3["planets"][0]["position"].is_equal_approx(p1))
 
 
-func _test_damage_transfers_to_hull() -> void:
-	print("-- damage transfers to hull --")
-	var s := _make_ship()
-	s.take_damage(70.0) # 50 shield + 20 hull
-	_assert(is_equal_approx(s.shield, 0.0), "shield depleted")
-	_assert(is_equal_approx(s.health, 80.0), "20 damage to hull")
-	s.free()
+func _test_economy_runs() -> void:
+	var sim := StarSystemSim.new()
+	sim.generate(7, 80)
+	var cycles0: int = int(sim.economy.metrics.get("production_cycles", 0))
+	for _i in 120:
+		sim.tick(0.25)
+	var cycles1: int = int(sim.economy.metrics.get("production_cycles", 0))
+	_ok("Factories produce over time", cycles1 > cycles0)
+	_ok("Job board non-empty", int(sim.economy.metrics.get("job_count", 0)) > 0)
+	_ok("Avg prices present", sim.economy.metrics.get("avg_prices", {}).has(Commodities.ORE))
 
 
-func _test_fighter_destruction() -> void:
-	print("-- fighter destroyed at zero health --")
-	var s := _make_ship()
-	var state := {"destroyed": false}
-	s.destroyed.connect(func(_ship: Ship): state["destroyed"] = true)
-	s.take_damage(200.0)
-	_assert(not s.is_alive, "ship marked not alive")
-	_assert(state["destroyed"] == true, "destroyed signal emitted")
-	_assert(s.health <= 0.0, "health at or below zero")
-	# Base Ship.queue_free via _play_destruction; ensure cleanup if still valid
-	if is_instance_valid(s):
-		s.free()
+func _test_ships_become_active() -> void:
+	var sim := StarSystemSim.new()
+	sim.generate(11, 200)
+	var ever_active := false
+	var ever_mining := false
+	var ever_trade := false
+	for _i in 600:
+		sim.tick(0.25)
+		if int(sim.perf.get("ships_active", 0)) > 10:
+			ever_active = true
+		if int(sim.perf.get("ships_mining", 0)) > 0:
+			ever_mining = true
+		if int(sim.economy.metrics.get("transactions", 0)) > 0:
+			ever_trade = true
+		if ever_active and ever_mining and ever_trade:
+			break
+	_ok("Ships leave idle for work", ever_active)
+	_ok("Some ships mine", ever_mining)
+	_ok("Transactions occur", ever_trade)
 
 
-func _test_friendly_fire_prevented_logic() -> void:
-	print("-- friendly fire team check --")
-	_assert(not Teams.is_enemy(Teams.Side.FRIENDLY, Teams.Side.FRIENDLY), "same team not enemy")
-	_assert(Teams.is_enemy(Teams.Side.FRIENDLY, Teams.Side.ENEMY), "opposite teams are enemies")
+func _test_prices_respond_to_supply() -> void:
+	var sim := StarSystemSim.new()
+	sim.generate(13, 100)
+	# Snapshot ore price, drain ore from all stations, tick prices.
+	for st in sim.world["stations"]:
+		st["inventory"][Commodities.ORE] = 2.0
+	for _i in 20:
+		sim.economy._update_prices(sim.world)
+	var scarce: float = float(sim.world["stations"][0]["prices"][Commodities.ORE])
+	for st in sim.world["stations"]:
+		st["inventory"][Commodities.ORE] = 400.0
+	for _i in 20:
+		sim.economy._update_prices(sim.world)
+	var glut: float = float(sim.world["stations"][0]["prices"][Commodities.ORE])
+	_ok("Scarce ore priced higher than glut", scarce > glut)
 
-
-func _test_target_selection_helpers() -> void:
-	print("-- target distance helper --")
-	var a := Node3D.new()
-	var b := Node3D.new()
-	root.add_child(a)
-	root.add_child(b)
-	a.global_position = Vector3.ZERO
-	b.global_position = Vector3(3000, 0, 0)
-	var d := TargetSystem.distance_to(a, b)
-	_assert(is_equal_approx(d, 3000.0), "distance between nodes is 3000")
-	a.queue_free()
-	b.queue_free()
-
-
-func _test_teams() -> void:
-	print("-- teams helpers --")
-	_assert(Teams.opposite(Teams.Side.FRIENDLY) == Teams.Side.ENEMY, "opposite of friendly is enemy")
-	_assert(Teams.side_name(Teams.Side.ENEMY) == "ENEMY", "side name")
-
-
-func _test_projectile_pool() -> void:
-	print("-- projectile pool --")
-	Projectile.clear_pool()
-	var p1 := Projectile.acquire()
-	var p2 := Projectile.acquire()
-	_assert(p1 != p2, "acquire returns distinct instances when pool empty")
-	Projectile.release(p1)
-	var p3 := Projectile.acquire()
-	_assert(p3 == p1, "released projectile is reused")
-	Projectile.release(p2)
-	Projectile.release(p3)
-	Projectile.clear_pool()
+	# Determinism of sim ticks
+	var a := StarSystemSim.new()
+	var b := StarSystemSim.new()
+	a.generate(55, 60)
+	b.generate(55, 60)
+	for _i in 40:
+		a.tick(0.1)
+		b.tick(0.1)
+	_ok("Parallel sims stay in sync", a.snapshot_hash() == b.snapshot_hash())
