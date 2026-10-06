@@ -99,12 +99,13 @@ void sky() {
 	col += primary_color * band * 0.55 * band_strength;
 	col += secondary_color * band_profile * n_lo * 0.18 * band_strength;
 
+	// Faint far hint only — real colour/volume comes from raymarched masses.
 	float m0 = mass_field(dir, mass0_dir, mass0_params);
 	float m1 = mass_field(dir, mass1_dir, mass1_params);
 	float m2 = mass_field(dir, mass2_dir, mass2_params);
-	col += mix(primary_color, secondary_color, 0.15) * m0 * 1.45;
-	col += mix(primary_color, secondary_color, 0.55) * m1 * 1.15;
-	col += mix(secondary_color, band_color, 0.4) * m2 * 0.95;
+	col += mix(primary_color, secondary_color, 0.15) * m0 * 0.28;
+	col += mix(primary_color, secondary_color, 0.55) * m1 * 0.2;
+	col += mix(secondary_color, band_color, 0.4) * m2 * 0.16;
 
 	vec2 suv = dir.xy * 95.0 + dir.z * 40.0 + seed;
 	float cell = hash21(floor(suv));
