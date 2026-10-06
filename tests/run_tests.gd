@@ -19,6 +19,7 @@ func _init() -> void:
 	_test_asteroid_families()
 	_test_lod_consistency()
 	_test_stellar_colour()
+	_test_sky_composition()
 	_test_economy_runs()
 	_test_ships_become_active()
 	_test_prices_respond_to_supply()
@@ -262,6 +263,21 @@ func _test_stellar_colour() -> void:
 	var hot := StellarColour.from_temperature(12000.0)
 	_ok("Cool stars redder than hot", cool.r >= hot.r * 0.9 and cool.b < hot.b)
 	_ok("Hot stars bluish", hot.b > 0.85)
+
+
+func _test_sky_composition() -> void:
+	var a := SkyComposition.build(42)
+	var b := SkyComposition.build(42)
+	_ok("SkyComposition deterministic mood", str(a["mood"]) == str(b["mood"]))
+	_ok("SkyComposition has masses", (a["masses"] as Array).size() >= 2)
+	_ok("SkyComposition has voids", (a["voids"] as Array).size() >= 2)
+	_ok("SkyComposition has gems", (a["gems"] as Array).size() >= 4)
+	_ok("SkyComposition palette keys", a["palette"].has("primary") and a["palette"].has("bg"))
+	var c := SkyComposition.build(99)
+	_ok("Different seed can change mood or axis", str(a["mood"]) != str(c["mood"]) or not a["galaxy_normal"].is_equal_approx(c["galaxy_normal"]))
+	var packs := StarfieldGen.build_from_composition(a)
+	_ok("Starfield populations build", packs.has("field") and packs.has("micro") and packs.has("gems"))
+	_ok("Field MultiMesh count", packs["field"].instance_count == int(a["star_field_count"]))
 
 
 func _test_perf_benchmarks() -> void:
