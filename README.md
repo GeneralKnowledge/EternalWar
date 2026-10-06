@@ -97,7 +97,7 @@ Each exit criterion is **screenshot proof**, not new sim features. Living system
 
 | # | Goal | Status |
 |---|------|--------|
-| A | Sky & atmosphere — deep space, billboard stars, nebula, dust, corona | In progress |
+| A | Sky & atmosphere — composition-driven sky, star hierarchy, nebula masses | Done (see `docs/limit-theory-visual-analysis.md`) |
 | B | World bodies — fresnel atmospheres, class-distinct planets, rings | In progress |
 | C | Shape language — ShapeLib-lite ships/stations, near-field per-design | In progress |
 | D | Field identity — composition-driven yields, life particles | In progress |

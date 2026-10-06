@@ -24,14 +24,18 @@ func setup(p_sim: StarSystemSim, p_player: PlayerController, p_presenter: System
 	add_child(label)
 
 
+func set_paused(p: bool) -> void:
+	paused = p
+	if player != null and player.get_parent() != null:
+		var main = player.get_parent()
+		if main.get("time_scale") != null:
+			main.time_scale = 0.0 if paused else 1.0
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F3:
-			paused = not paused
-			if player != null and player.get_parent() != null:
-				var main = player.get_parent()
-				if main.get("time_scale") != null:
-					main.time_scale = 0.0 if paused else 1.0
+			set_paused(not paused)
 
 
 func _process(_dt: float) -> void:
@@ -114,5 +118,11 @@ func _process(_dt: float) -> void:
 		lines.append("Player  credits=%.0f  cargo=%.0f/%.0f" % [s["credits"], SimEntities.cargo_used(s), s["cargo_capacity"]])
 
 	lines.append("")
-	lines.append("F1 fly/observe  F2 dock/trade  F3 pause  arrows orbit  +/- zoom")
+	var sky: Dictionary = sim.world.get("sky_composition", {})
+	if not sky.is_empty():
+		lines.append("Sky mood=%s  masses=%s  voids=%s  gems=%s" % [
+			str(sky.get("mood", "?")), str(sky.get("masses", "?")),
+			str(sky.get("voids", "?")), str(sky.get("gems", "?")),
+		])
+	lines.append("F1 fly/observe  F2 dock  F3 pause  [ ] seed  R regen  F5 showcase  1/2/3 cinema")
 	label.text = "\n".join(lines)

@@ -54,15 +54,21 @@ func _place_near_station() -> void:
 func apply_cinematic_preset(preset: int) -> void:
 	cinematic_preset = clampi(preset, 0, 2)
 	_cinematic_blend = 1.0
+	# Place camera opposite the primary nebula mass so objects silhouette against it.
+	var sky_yaw := 0.0
+	if presenter != null:
+		var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
+		# Camera sits on -mass_dir so look-at-center faces +mass_dir (luminous backdrop).
+		sky_yaw = atan2(-sky_dir.x, -sky_dir.z)
 	match cinematic_preset:
 		0:
-			# Wide system orbit — deep space / nebula readable
+			# Wide system orbit — galaxy / nebula as compositional backdrop
 			_cinematic_focus = Vector3.ZERO
 			observe_distance = 1600.0
-			observe_yaw = 0.55
-			observe_pitch = -0.28
+			observe_yaw = sky_yaw + 0.25
+			observe_pitch = -0.18
 		1:
-			# Planet approach
+			# Planet approach — planet rim against luminous sky
 			if presenter != null:
 				_cinematic_focus = presenter.get_planet_focus()
 			elif not sim.world["planets"].is_empty():
@@ -70,10 +76,10 @@ func apply_cinematic_preset(preset: int) -> void:
 			else:
 				_cinematic_focus = Vector3.ZERO
 			observe_distance = 280.0
-			observe_yaw = 0.9
-			observe_pitch = -0.15
+			observe_yaw = sky_yaw + 0.45
+			observe_pitch = -0.1
 		2:
-			# Station flyby
+			# Station flyby — silhouette against nebula
 			if presenter != null:
 				_cinematic_focus = presenter.get_station_focus()
 			elif not sim.world["stations"].is_empty():
@@ -81,8 +87,8 @@ func apply_cinematic_preset(preset: int) -> void:
 			else:
 				_cinematic_focus = Vector3.ZERO
 			observe_distance = 160.0
-			observe_yaw = 1.2
-			observe_pitch = -0.2
+			observe_yaw = sky_yaw + 0.55
+			observe_pitch = -0.14
 	observe_mode = true
 	mode_changed.emit(true)
 	_capture_mouse = false
