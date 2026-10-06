@@ -240,6 +240,93 @@ static func apply_ship_transforms(
 	return n
 
 
+## Bulk distance → VisualLOD tier. Returns { lods: PackedInt32Array, distances: PackedFloat32Array }.
+static func classify_lod(positions: PackedFloat32Array, camera: Vector3) -> Dictionary:
+	var thresholds := PackedFloat32Array([
+		VisualLOD.DIST_FULL, VisualLOD.DIST_SIMPLE, VisualLOD.DIST_LOW, VisualLOD.DIST_BATCH
+	])
+	if available() and _kernels.has_method("classify_lod"):
+		var result: Dictionary = _kernels.call("classify_lod", positions, camera, thresholds)
+		if bool(result.get("ok", false)):
+			return {"lods": result["lods"], "distances": result["distances"]}
+	return _classify_lod_gdscript(positions, camera, thresholds)
+
+
+static func _classify_lod_gdscript(
+	positions: PackedFloat32Array, camera: Vector3, thresholds: PackedFloat32Array
+) -> Dictionary:
+	var n := positions.size() / 3
+	var lods := PackedInt32Array()
+	var dists := PackedFloat32Array()
+	lods.resize(n)
+	dists.resize(n)
+	var full := thresholds[0]
+	var simple := thresholds[1]
+	var low := thresholds[2]
+	var batch := thresholds[3]
+	for i in n:
+		var i3 := i * 3
+		var pos := Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2])
+		var dist := camera.distance_to(pos)
+		dists[i] = dist
+		if dist < full:
+			lods[i] = VisualLOD.LOD_FULL
+		elif dist < simple:
+			lods[i] = VisualLOD.LOD_SIMPLE
+		elif dist < low:
+			lods[i] = VisualLOD.LOD_LOW
+		elif dist < batch:
+			lods[i] = VisualLOD.LOD_BATCH
+		else:
+			lods[i] = VisualLOD.LOD_SIM
+	return {"lods": lods, "distances": dists}
+
+
+## Starfield/dust: uniform-scale instances at positions (0..n-1).
+static func fill_scaled_instances(mm: MultiMesh, positions: PackedFloat32Array, scales: PackedFloat32Array) -> int:
+	var n := scales.size()
+	if available() and _kernels.has_method("fill_scaled_instances"):
+		return int(_kernels.call("fill_scaled_instances", mm, positions, scales))
+	for i in n:
+		var i3 := i * 3
+		var pos := Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2])
+		var s := scales[i]
+		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * s), pos))
+	return n
+
+
+## Asteroid fields: euler (YXZ) + scale instances (0..n-1).
+static func fill_euler_instances(
+	mm: MultiMesh, positions: PackedFloat32Array, eulers: PackedFloat32Array, scales: PackedFloat32Array
+) -> int:
+	var n := scales.size()
+	if available() and _kernels.has_method("fill_euler_instances"):
+		return int(_kernels.call("fill_euler_instances", mm, positions, eulers, scales))
+	for i in n:
+		var i3 := i * 3
+		var pos := Vector3(positions[i3], positions[i3 + 1], positions[i3 + 2])
+		var euler := Vector3(eulers[i3], eulers[i3 + 1], eulers[i3 + 2])
+		var s := scales[i]
+		var basis := Basis.from_euler(euler).scaled(Vector3.ONE * s)
+		mm.set_instance_transform(i, Transform3D(basis, pos))
+	return n
+
+
+## Packed RGBA colors (n*4). Empty indices → write 0..n-1.
+static func fill_instance_colors(
+	mm: MultiMesh, colors_rgba: PackedFloat32Array, indices: PackedInt32Array = PackedInt32Array()
+) -> int:
+	var n := colors_rgba.size() / 4
+	if available() and _kernels.has_method("fill_instance_colors"):
+		return int(_kernels.call("fill_instance_colors", mm, colors_rgba, indices))
+	for i in n:
+		var c4 := i * 4
+		var col := Color(colors_rgba[c4], colors_rgba[c4 + 1], colors_rgba[c4 + 2], colors_rgba[c4 + 3])
+		var idx := i if indices.is_empty() else int(indices[i])
+		mm.set_instance_color(idx, col)
+	return n
+
+
 static func bench_travel_ms(n: int, iters: int) -> float:
 	_ensure()
 	if available() and _kernels.has_method("bench_travel"):
@@ -267,4 +354,18 @@ static func bench_travel_ms(n: int, iters: int) -> float:
 	var t0 := Time.get_ticks_usec()
 	for _k in iters:
 		_integrate_travel_core(positions, headings, velocities, dests, speeds, arrive, 0.05)
+	return float(Time.get_ticks_usec() - t0) / 1000.0
+
+
+static func bench_classify_ms(n: int, iters: int) -> float:
+	_ensure()
+	if available() and _kernels.has_method("bench_classify_lod"):
+		return float(_kernels.call("bench_classify_lod", n, iters))
+	var positions := PackedFloat32Array()
+	positions.resize(n * 3)
+	for i in n:
+		positions[i * 3] = float(i) * 3.0
+	var t0 := Time.get_ticks_usec()
+	for _k in iters:
+		classify_lod(positions, Vector3.ZERO)
 	return float(Time.get_ticks_usec() - t0) / 1000.0

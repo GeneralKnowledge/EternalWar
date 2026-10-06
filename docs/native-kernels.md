@@ -42,13 +42,21 @@ Moves a batch of ships toward destinations (same formula as `ShipAI._travel`). R
 
 Builds `Basis.looking_at` + scale transforms and writes them to a `MultiMesh`. Used by `SystemPresenter.sync_ships` for far-field instances.
 
+### `classify_lod`
+
+SoA distance → VisualLOD tier (`FULL`/`SIMPLE`/`LOW`/`BATCH`/`SIM`). Used each frame in `sync_ships` before near/far bucketing.
+
+### `fill_scaled_instances` / `fill_euler_instances` / `fill_instance_colors`
+
+LTR `InstanceBatch` analogue: pack asteroid euler+scale fields and starfield/dust billboards into MultiMesh in one native pass (RNG/layout stays in GDScript).
+
 ## Next candidates (when profiled)
 
 Ordered by evidence from the [LTR code study](limit-theory-redux-code-study.md):
 
-1. Ship MultiMesh transform+color in one native call (extend current apply)
-2. Asteroid / starfield instance packing (LTR `AsteroidInstancedRenderer` / `InstanceBatch`)
-3. Bulk distance → LOD classify SoA
+1. Ship MultiMesh transform+color — **done**
+2. Asteroid / starfield instance packing — **done**
+3. Bulk distance → LOD classify — **done**
 4. Mesh build helpers — only if `mesh_ms` dominates
 5. Hierarchical seed / galaxy generation
 

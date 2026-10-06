@@ -6,6 +6,8 @@
 use godot::classes::MultiMesh;
 use godot::prelude::*;
 
+mod instances;
+mod lod;
 mod travel;
 mod transforms;
 
@@ -15,10 +17,6 @@ struct EwKernelsExtension;
 unsafe impl ExtensionLibrary for EwKernelsExtension {}
 
 /// Entry point visible from GDScript as `NativeKernels`.
-///
-/// All methods take / return packed arrays so the Godot↔Rust boundary stays
-/// explicit and cheap. When the extension is missing, GDScript falls back to
-/// pure implementations in `simulation/native_bridge.gd`.
 #[derive(GodotClass)]
 #[class(base=RefCounted)]
 pub struct NativeKernels {
@@ -34,31 +32,16 @@ impl IRefCounted for NativeKernels {
 
 #[godot_api]
 impl NativeKernels {
-	/// Library identity for capability checks from GDScript.
 	#[func]
 	fn version() -> GString {
-		GString::from("0.1.0-travel+transforms")
+		GString::from("0.2.0-travel+transforms+lod+instances")
 	}
 
-	/// Always true when this class loads — GDScript uses ClassDB to detect presence.
 	#[func]
 	fn is_available() -> bool {
 		true
 	}
 
-	/// Integrate TRAVEL for a batch of ships.
-	///
-	/// Layout (length = n * 3 for vec3 packs, n for scalars):
-	/// - `positions`  xyz… (mutated)
-	/// - `headings`   xyz… (mutated)
-	/// - `velocities` xyz… (mutated)
-	/// - `destinations` xyz…
-	/// - `speeds`     float per ship
-	/// - `arrive`     arrive radius per ship
-	/// - `dt`
-	///
-	/// Returns a Dictionary with updated packs + `status` PackedInt32Array:
-	///   0 = still traveling, 1 = arrived this step, 2 = invalid
 	#[func]
 	fn integrate_travel(
 		positions: PackedFloat32Array,
@@ -80,7 +63,6 @@ impl NativeKernels {
 		)
 	}
 
-	/// Build packed Transform3D floats (n * 12) from SoA ship state.
 	#[func]
 	fn pack_ship_transforms(
 		positions: PackedFloat32Array,
@@ -91,7 +73,6 @@ impl NativeKernels {
 		transforms::pack_ship_transforms_godot(positions, headings, scales, hidden)
 	}
 
-	/// Write transforms directly onto a MultiMesh (skips GDScript Transform3D build).
 	#[func]
 	fn apply_ship_transforms(
 		mut mm: Gd<MultiMesh>,
@@ -111,16 +92,61 @@ impl NativeKernels {
 		)
 	}
 
-	/// Micro-benchmark: run `integrate_travel` `iters` times over `n` synthetic ships.
-	/// Returns elapsed milliseconds (f32). Used by headless tests.
+	/// Classify world positions into VisualLOD tiers relative to camera.
+	/// `thresholds` = [full, simple, low, batch] distances (defaults if short).
+	/// Returns { ok, lods: PackedInt32Array, distances: PackedFloat32Array }.
+	#[func]
+	fn classify_lod(
+		positions: PackedFloat32Array,
+		camera: Vector3,
+		thresholds: PackedFloat32Array,
+	) -> Dictionary {
+		lod::classify_lod_godot(positions, camera, thresholds)
+	}
+
+	/// Starfield / dust: identity basis × uniform scale at each position (instances 0..n-1).
+	#[func]
+	fn fill_scaled_instances(
+		mut mm: Gd<MultiMesh>,
+		positions: PackedFloat32Array,
+		scales: PackedFloat32Array,
+	) -> i32 {
+		instances::fill_scaled_instances_godot(&mut mm, positions, scales)
+	}
+
+	/// Asteroid fields: Basis.from_euler(xyz) × scale at each position (instances 0..n-1).
+	#[func]
+	fn fill_euler_instances(
+		mut mm: Gd<MultiMesh>,
+		positions: PackedFloat32Array,
+		eulers: PackedFloat32Array,
+		scales: PackedFloat32Array,
+	) -> i32 {
+		instances::fill_euler_instances_godot(&mut mm, positions, eulers, scales)
+	}
+
+	/// Write MultiMesh instance colors from packed RGBA (n*4). Empty indices → 0..n-1.
+	#[func]
+	fn fill_instance_colors(
+		mut mm: Gd<MultiMesh>,
+		colors_rgba: PackedFloat32Array,
+		indices: PackedInt32Array,
+	) -> i32 {
+		instances::fill_instance_colors_godot(&mut mm, colors_rgba, indices)
+	}
+
 	#[func]
 	fn bench_travel(n: i32, iters: i32) -> f32 {
 		travel::bench_travel(n.max(0) as usize, iters.max(1) as usize)
 	}
 
-	/// Micro-benchmark: pack transforms for `n` ships, `iters` times. Returns ms.
 	#[func]
 	fn bench_transforms(n: i32, iters: i32) -> f32 {
 		transforms::bench_transforms(n.max(0) as usize, iters.max(1) as usize)
+	}
+
+	#[func]
+	fn bench_classify_lod(n: i32, iters: i32) -> f32 {
+		lod::bench_classify(n.max(0) as usize, iters.max(1) as usize)
 	}
 }

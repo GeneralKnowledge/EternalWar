@@ -437,19 +437,39 @@ func _build_yields() -> void:
 		mm.instance_count = count
 		var rng := SeededRNG.new(SeedHash.derive(int(y.get("seed", 1)), "field"))
 		var base_col: Color = pal["color"]
-		# Secondary family variants as vertex-tint only (shared mesh, design language via family)
+		# Pack SoA then write via NativeBridge (Rust InstanceBatch analogue).
+		var positions := PackedFloat32Array()
+		var eulers := PackedFloat32Array()
+		var scales := PackedFloat32Array()
+		var colors := PackedFloat32Array()
+		positions.resize(count * 3)
+		eulers.resize(count * 3)
+		scales.resize(count)
+		colors.resize(count * 4)
 		for i in count:
 			var p: Vector3 = rng.dir3() * rng.randf_range(spread * 0.12, spread)
 			p.y *= 0.4 if composition != "ice" else 0.55
 			var s := rng.randf_range(3.5, 13.0) * (0.55 + float(y.get("richness", 1.0)) * 0.45) * float(pal["size_mul"])
 			if composition == "iron" and rng.randf() < 0.2:
 				s *= 1.45
-			var basis := Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU))
-			mm.set_instance_transform(i, Transform3D(basis.scaled(Vector3.ONE * s), p))
+			var i3 := i * 3
+			positions[i3] = p.x
+			positions[i3 + 1] = p.y
+			positions[i3 + 2] = p.z
+			eulers[i3] = rng.randf() * TAU
+			eulers[i3 + 1] = rng.randf() * TAU
+			eulers[i3 + 2] = rng.randf() * TAU
+			scales[i] = s
 			var c := base_col.lightened(rng.randf_range(-0.12, 0.18))
 			if composition == "ice":
 				c = c.lerp(Color(0.85, 0.92, 1.0), rng.randf() * 0.35)
-			mm.set_instance_color(i, c)
+			var c4 := i * 4
+			colors[c4] = c.r
+			colors[c4 + 1] = c.g
+			colors[c4 + 2] = c.b
+			colors[c4 + 3] = c.a
+		NativeBridge.fill_euler_instances(mm, positions, eulers, scales)
+		NativeBridge.fill_instance_colors(mm, colors)
 		mm_i.multimesh = mm
 		var mat_name := "ice" if composition == "ice" else ("rock" if composition != "iron" else "industrial")
 		var mat := VisualMaterials.make(mat_name, base_col, 0.55)
@@ -648,6 +668,19 @@ func sync_ships() -> void:
 	if _camera != null:
 		cam_pos = _camera.global_position
 
+	# Bulk LOD classify (native when available).
+	var all_pos := PackedFloat32Array()
+	all_pos.resize(ships.size() * 3)
+	for i in ships.size():
+		var sp: Vector3 = ships[i]["position"]
+		var i3 := i * 3
+		all_pos[i3] = sp.x
+		all_pos[i3 + 1] = sp.y
+		all_pos[i3 + 2] = sp.z
+	var classified: Dictionary = NativeBridge.classify_lod(all_pos, cam_pos if _camera != null else Vector3(0, 0, 800))
+	var lods: PackedInt32Array = classified["lods"]
+	var dists: PackedFloat32Array = classified["distances"]
+
 	var nearest_dist := INF
 	var nearest: Dictionary = {}
 	var near_candidates: Array = [] # {dist, index}
@@ -658,8 +691,8 @@ func sync_ships() -> void:
 	var batch_head: Dictionary = {}
 	var batch_scale: Dictionary = {}
 	var batch_hidden: Dictionary = {}
-	var batch_color_i: Dictionary = {} # sc -> Array of local indices needing color
-	var batch_color_c: Dictionary = {} # sc -> Array of Color
+	var batch_color_i: Dictionary = {} # sc -> PackedInt32Array
+	var batch_color_c: Dictionary = {} # sc -> PackedFloat32Array rgba
 
 	for i in ships.size():
 		var s: Dictionary = ships[i]
@@ -669,7 +702,8 @@ func sync_ships() -> void:
 		if not _ship_mm.has(sc):
 			continue
 		var pos: Vector3 = s["position"]
-		var dist := cam_pos.distance_to(pos) if _camera != null else 800.0
+		var dist: float = dists[i] if _camera != null else 800.0
+		var lod: int = int(lods[i]) if _camera != null else VisualLOD.LOD_BATCH
 		if dist < nearest_dist:
 			nearest_dist = dist
 			nearest = s
@@ -680,8 +714,8 @@ func sync_ships() -> void:
 			batch_head[sc] = PackedFloat32Array()
 			batch_scale[sc] = PackedFloat32Array()
 			batch_hidden[sc] = PackedInt32Array()
-			batch_color_i[sc] = []
-			batch_color_c[sc] = []
+			batch_color_i[sc] = PackedInt32Array()
+			batch_color_c[sc] = PackedFloat32Array()
 
 		var locals: PackedInt32Array = batch_local[sc]
 		var positions: PackedFloat32Array = batch_pos[sc]
@@ -701,8 +735,8 @@ func sync_ships() -> void:
 		var hide := false
 		if int(s.get("docked_station_id", -1)) >= 0 and not s.get("is_player", false):
 			hide = true
-		elif dist < VisualLOD.DIST_LOW or s.get("is_player", false):
-			near_candidates.append({"dist": dist, "index": i, "lod": VisualLOD.for_distance(dist)})
+		elif lod <= VisualLOD.LOD_LOW or s.get("is_player", false):
+			near_candidates.append({"dist": dist, "index": i, "lod": lod})
 			hide = true
 
 		var scale := _ship_scale(s)
@@ -716,8 +750,15 @@ func sync_ships() -> void:
 			var col: Color = design.get("color", Color(0.7, 0.75, 0.85))
 			if s.get("is_player", false):
 				col = Color(1.0, 0.95, 0.55)
-			batch_color_i[sc].append(local_i)
-			batch_color_c[sc].append(col)
+			var coli: PackedInt32Array = batch_color_i[sc]
+			var colc: PackedFloat32Array = batch_color_c[sc]
+			coli.append(local_i)
+			colc.append(col.r)
+			colc.append(col.g)
+			colc.append(col.b)
+			colc.append(col.a)
+			batch_color_i[sc] = coli
+			batch_color_c[sc] = colc
 
 		batch_local[sc] = locals
 		batch_pos[sc] = positions
@@ -735,10 +776,10 @@ func sync_ships() -> void:
 			batch_scale[sc2],
 			batch_hidden[sc2],
 		)
-		var cols_i: Array = batch_color_i[sc2]
-		var cols_c: Array = batch_color_c[sc2]
-		for ci in cols_i.size():
-			mm.set_instance_color(int(cols_i[ci]), cols_c[ci])
+		var coli2: PackedInt32Array = batch_color_i[sc2]
+		var colc2: PackedFloat32Array = batch_color_c[sc2]
+		if coli2.size() > 0:
+			NativeBridge.fill_instance_colors(mm, colc2, coli2)
 
 	near_candidates.sort_custom(func(a, b): return float(a["dist"]) < float(b["dist"]))
 	var keep: Dictionary = {}
@@ -766,17 +807,17 @@ func sync_ships() -> void:
 					local2, design2.get("color", Color(0.7, 0.75, 0.85))
 				)
 			continue
-		var lod: int = int(c.get("lod", VisualLOD.LOD_FULL))
-		if lod > VisualLOD.LOD_LOW:
-			lod = VisualLOD.LOD_LOW
+		var lod2: int = int(c.get("lod", VisualLOD.LOD_FULL))
+		if lod2 > VisualLOD.LOD_LOW:
+			lod2 = VisualLOD.LOD_LOW
 		keep[idx] = true
 		n_keep += 1
-		var mi := _ensure_near_ship(idx, s, lod)
+		var mi := _ensure_near_ship(idx, s, lod2)
 		var heading3: Vector3 = s["heading"]
 		if heading3.length_squared() < 0.001:
 			heading3 = Vector3(0, 0, -1)
 		var basis3 := Basis.looking_at(heading3.normalized(), Vector3.UP)
-		var scale3 := _ship_scale(s) * (1.08 if lod == VisualLOD.LOD_FULL else 1.02)
+		var scale3 := _ship_scale(s) * (1.08 if lod2 == VisualLOD.LOD_FULL else 1.02)
 		mi.transform = Transform3D(basis3.scaled(Vector3.ONE * scale3), s["position"])
 		mi.visible = true
 

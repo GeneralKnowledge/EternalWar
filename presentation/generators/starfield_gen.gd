@@ -22,6 +22,13 @@ static func build_multimesh(system_seed: int, count: int = 6200) -> MultiMesh:
 
 	var plane_n := Vector3(rng.randf_range(-0.22, 0.22), 1.0, rng.randf_range(-0.22, 0.22)).normalized()
 
+	var positions := PackedFloat32Array()
+	var scales := PackedFloat32Array()
+	var colors := PackedFloat32Array()
+	positions.resize(count * 3)
+	scales.resize(count)
+	colors.resize(count * 4)
+
 	for i in count:
 		var dir: Vector3
 		var on_plane := rng.randf() < 0.5
@@ -51,8 +58,20 @@ static func build_multimesh(system_seed: int, count: int = 6200) -> MultiMesh:
 		var col := StellarColour.from_temperature(temp_k)
 		var bright := 0.9 + mag * 1.5
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
-		mm.set_instance_color(i, col)
+		var pos := dir * dist
+		var i3 := i * 3
+		positions[i3] = pos.x
+		positions[i3 + 1] = pos.y
+		positions[i3 + 2] = pos.z
+		scales[i] = size
+		var c4 := i * 4
+		colors[c4] = col.r
+		colors[c4 + 1] = col.g
+		colors[c4 + 2] = col.b
+		colors[c4 + 3] = col.a
+
+	NativeBridge.fill_scaled_instances(mm, positions, scales)
+	NativeBridge.fill_instance_colors(mm, colors)
 	return mm
 
 
@@ -68,6 +87,14 @@ static func build_galactic_dust(system_seed: int, count: int = 480) -> MultiMesh
 	mm.instance_count = count
 	var plane_n := Vector3(rng.randf_range(-0.15, 0.15), 1.0, rng.randf_range(-0.15, 0.15)).normalized()
 	var tint := nebula_color(system_seed)
+
+	var positions := PackedFloat32Array()
+	var scales := PackedFloat32Array()
+	var colors := PackedFloat32Array()
+	positions.resize(count * 3)
+	scales.resize(count)
+	colors.resize(count * 4)
+
 	for i in count:
 		var dir := rng.dir3()
 		dir = (dir - plane_n * dir.dot(plane_n) * rng.randf_range(0.65, 0.98)).normalized()
@@ -80,8 +107,20 @@ static func build_galactic_dust(system_seed: int, count: int = 480) -> MultiMesh
 			lerpf(tint.b, 0.95, 0.45),
 			a
 		)
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
-		mm.set_instance_color(i, c)
+		var pos := dir * dist
+		var i3 := i * 3
+		positions[i3] = pos.x
+		positions[i3 + 1] = pos.y
+		positions[i3 + 2] = pos.z
+		scales[i] = size
+		var c4 := i * 4
+		colors[c4] = c.r
+		colors[c4 + 1] = c.g
+		colors[c4 + 2] = c.b
+		colors[c4 + 3] = c.a
+
+	NativeBridge.fill_scaled_instances(mm, positions, scales)
+	NativeBridge.fill_instance_colors(mm, colors)
 	return mm
 
 

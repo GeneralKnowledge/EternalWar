@@ -150,11 +150,12 @@ EternalWar’s GDScript generators + shaders are the correct Godot equivalent; n
 
 | Priority | Kernel | Why (from LTR) |
 |----------|--------|----------------|
-| 1 | Bulk MultiMesh transform+color write (ships) | InstanceBatch analogue — **started** |
-| 2 | Asteroid field instance pack by mesh key | AsteroidInstancedRenderer |
-| 3 | Distance/LOD classify SoA | LOD selection before draw |
-| 4 | Kinematic travel batch | Fleet without full physics — **started** |
-| 5 | Mesh build helpers | Only if mesh_ms dominates benchmarks |
+| 1 | Bulk MultiMesh transform+color write (ships) | InstanceBatch analogue — **done** |
+| 2 | Asteroid field instance pack by mesh key | AsteroidInstancedRenderer — **done** (euler+color fill) |
+| 3 | Distance/LOD classify SoA | LOD selection before draw — **done** |
+| 4 | Kinematic travel batch | Fleet without full physics — **done** |
+| 5 | Starfield / dust scaled fill | Billboard instance pack — **done** |
+| 6 | Mesh build helpers | Only if mesh_ms dominates benchmarks |
 
 ---
 

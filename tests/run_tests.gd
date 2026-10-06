@@ -316,20 +316,44 @@ func _test_native_kernels() -> void:
 	_ok("Travel status traveling", status.size() == 1 and int(status[0]) == NativeBridge.STATUS_TRAVELING)
 	var p: Vector3 = ships[0]["position"]
 	_ok("Travel stepped ~5 units", absf(p.x - 5.0) < 0.01, "pos=%s" % p)
-	# Arrive
-	ships[0]["position"] = Vector3(10, 0, 0)
-	status = NativeBridge.integrate_travel_ships(ships, dests, arrive, 0.05)
-	# dest still 1000 — not arrived. Place near dest.
 	ships[0]["position"] = Vector3(980, 0, 0)
 	status = NativeBridge.integrate_travel_ships(ships, [Vector3(1000, 0, 0)], arrive, 0.05)
 	_ok("Travel arrives within radius", int(status[0]) == NativeBridge.STATUS_ARRIVED)
-	# Sim uses batch path and stays deterministic across backends for seed.
+	# LOD classify
+	var pos_pack := PackedFloat32Array([0, 0, 0, 400, 0, 0, 800, 0, 0, 2000, 0, 0, 9000, 0, 0])
+	var clas: Dictionary = NativeBridge.classify_lod(pos_pack, Vector3.ZERO)
+	var lods: PackedInt32Array = clas["lods"]
+	_ok("LOD classify count", lods.size() == 5)
+	_ok("LOD near is FULL", int(lods[0]) == VisualLOD.LOD_FULL)
+	_ok("LOD mid is SIMPLE", int(lods[1]) == VisualLOD.LOD_SIMPLE)
+	_ok("LOD far is SIM", int(lods[4]) == VisualLOD.LOD_SIM)
+	# Scaled / euler instance fill (headless MultiMesh may not round-trip transforms;
+	# assert the native/bridge API accepts packs and reports counts).
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = BoxMesh.new()
+	mm.instance_count = 2
+	var ipos := PackedFloat32Array([1, 2, 3, 4, 5, 6])
+	var iscales := PackedFloat32Array([2.0, 3.0])
+	_ok("fill_scaled_instances", NativeBridge.fill_scaled_instances(mm, ipos, iscales) == 2)
+	var eulers := PackedFloat32Array([0, 0, 0, 0, 0, 0])
+	_ok("fill_euler_instances", NativeBridge.fill_euler_instances(mm, ipos, eulers, iscales) == 2)
+	var cols := PackedFloat32Array([1, 0, 0, 1, 0, 1, 0, 1])
+	_ok("fill_instance_colors", NativeBridge.fill_instance_colors(mm, cols) == 2)
+	_ok("MultiMesh instance_count intact", mm.instance_count == 2)
+	# Starfield builds through native pack path
+	var sf := StarfieldGen.build_multimesh(42, 200)
+	_ok("Starfield MultiMesh via native pack", sf != null and sf.instance_count == 200)
 	var sim := StarSystemSim.new()
 	sim.generate(99, 120)
 	for _i in 40:
 		sim.tick(0.05)
 	_ok("Sim ticks with native travel batch", int(sim.world["tick"]) == 40)
 	_ok("Travel batch recorded", int(sim.perf.get("travel_batch_n", -1)) >= 0)
+	var clas_ms := NativeBridge.bench_classify_ms(4000, 100)
+	print("  classify_lod microbench n=4000 iters=100 → %.3fms (%s)" % [clas_ms, NativeBridge.backend_name()])
+	_ok("LOD microbench finishes", clas_ms >= 0.0)
 
 
 func _test_economy_runs() -> void:
