@@ -273,6 +273,11 @@ func _test_sky_composition() -> void:
 	_ok("SkyComposition has voids", (a["voids"] as Array).size() >= 2)
 	_ok("SkyComposition has gems", (a["gems"] as Array).size() >= 4)
 	_ok("SkyComposition palette keys", a["palette"].has("primary") and a["palette"].has("bg"))
+	var m0: Dictionary = a["masses"][0]
+	_ok("Mass has volumetric depth range", m0.has("depth_near") and m0.has("depth_far") and float(m0["depth_far"]) > float(m0["depth_near"]))
+	_ok("Mass has center and radius", m0.has("center") and float(m0.get("radius", 0.0)) > 100.0)
+	_ok("Mass has cavity/filament/density", m0.has("dark") and m0.has("filament") and m0.has("density"))
+	_ok("Primary mass helper", not SkyComposition.primary_mass(a).is_empty())
 	var c := SkyComposition.build(99)
 	_ok("Different seed can change mood or axis", str(a["mood"]) != str(c["mood"]) or not a["galaxy_normal"].is_equal_approx(c["galaxy_normal"]))
 	var packs := StarfieldGen.build_from_composition(a)
@@ -280,6 +285,7 @@ func _test_sky_composition() -> void:
 	_ok("Field MultiMesh count", packs["field"].instance_count == int(a["star_field_count"]))
 	_ok("Notable stars rarer than field", packs["notable"].instance_count < packs["field"].instance_count)
 	_ok("Gems rarer than notable", packs["gems"].instance_count < packs["notable"].instance_count)
+	_ok("Volume shader resource exists", ResourceLoader.exists("res://shaders/nebula_volume.gdshader"))
 
 
 func _test_perf_benchmarks() -> void:

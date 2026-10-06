@@ -127,17 +127,36 @@ static func _build_population(
 		var dist: float
 		var mag: float
 		var size: float
+		# Interleave distances with nebula depth ranges so stars sit behind / inside / in front of gas.
+		var near_d := 2800.0
+		var far_d := 7200.0
+		if not masses.is_empty():
+			var rm: Dictionary = masses[rng.randi_range(0, masses.size() - 1)]
+			near_d = float(rm.get("depth_near", near_d))
+			far_d = float(rm.get("depth_far", far_d))
 		match mode:
-			1: # micro — very numerous, extremely subtle
-				dist = rng.randf_range(9000.0, 16000.0)
+			1: # micro — always behind volumes
+				dist = rng.randf_range(maxf(far_d + 800.0, 10000.0), 17000.0)
 				mag = pow(rng.randf(), 3.4)
 				size = lerpf(1.6, 4.8, mag)
-			2: # notable — rare, clearly visible
-				dist = rng.randf_range(3000.0, 6200.0)
+			2: # notable — front half of volumes + near space
+				var slot := rng.randf()
+				if slot < 0.45:
+					dist = rng.randf_range(maxf(1200.0, near_d * 0.55), near_d * 0.95)
+				elif slot < 0.8:
+					dist = lerpf(near_d, far_d, rng.randf_range(0.2, 0.7))
+				else:
+					dist = rng.randf_range(far_d * 0.9, far_d * 1.15)
 				mag = lerpf(0.55, 0.92, pow(rng.randf(), 1.2))
 				size = lerpf(9.0, 18.0, mag)
-			_: # field — visible but mostly faint
-				dist = rng.randf_range(3400.0, 8200.0)
+			_: # field — mostly behind / through volumes (occludable)
+				var fslot := rng.randf()
+				if fslot < 0.55:
+					dist = rng.randf_range(far_d * 0.95, far_d * 1.45)
+				elif fslot < 0.85:
+					dist = lerpf(near_d, far_d, rng.randf())
+				else:
+					dist = rng.randf_range(near_d * 0.7, near_d)
 				mag = pow(rng.randf(), 2.6)
 				if on_plane:
 					mag = minf(1.0, mag + 0.06)
@@ -185,7 +204,7 @@ static func _build_gems(system_seed: int, gem_defs: Array) -> MultiMesh:
 	for i in count:
 		var g: Dictionary = gem_defs[i] if i < gem_defs.size() else {"dir": rng.dir3(), "temp": 6000.0, "mag": 0.8}
 		var dir: Vector3 = g.get("dir", rng.dir3())
-		var dist := rng.randf_range(2800.0, 5200.0)
+		var dist := float(g.get("dist", rng.randf_range(2400.0, 5600.0)))
 		var mag := float(g.get("mag", 0.8))
 		var size := lerpf(18.0, 34.0, mag)
 		var col := StellarColour.from_temperature(float(g.get("temp", 6000.0)))
