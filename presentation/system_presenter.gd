@@ -80,8 +80,9 @@ func _build_environment() -> void:
 	light.rotation_degrees = Vector3(-38, 42, 0)
 	add_child(light)
 
-	var nebula: Color = sim.world.get("nebula_color", Color(0.25, 0.15, 0.45))
-	nebula = Color.from_hsv(nebula.h, clampf(nebula.s * 1.15, 0.35, 0.8), clampf(nebula.v * 1.25, 0.18, 0.42))
+	var nebula: Color = sim.world.get("nebula_color", Color(0.25, 0.2, 0.55))
+	# Keep saturation punchy but don't lift value into muddy wash.
+	nebula = Color.from_hsv(nebula.h, clampf(nebula.s * 1.15, 0.42, 0.88), clampf(nebula.v * 1.15, 0.26, 0.48))
 
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
@@ -94,24 +95,24 @@ func _build_environment() -> void:
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
 	sky_mat.set_shader_parameter("seed", float(sim.seed_value))
 	sky_mat.set_shader_parameter("nebula_tint", Vector3(nebula.r, nebula.g, nebula.b))
-	sky_mat.set_shader_parameter("nebula_strength", 0.7)
-	sky_mat.set_shader_parameter("band_strength", 0.62)
+	sky_mat.set_shader_parameter("nebula_strength", 0.95)
+	sky_mat.set_shader_parameter("band_strength", 0.9)
 	sky.sky_material = sky_mat
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.045, 0.05, 0.075).lerp(nebula, 0.35)
-	e.ambient_light_energy = 0.32
-	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.88
-	# Glow for engines/beacons only — high threshold stops sky/star blowout.
+	e.ambient_light_color = Color(0.06, 0.065, 0.1).lerp(nebula, 0.45)
+	e.ambient_light_energy = 0.4
+	# Filmic keeps dark sky structure; ACES was crushing the void to pure black.
+	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	e.tonemap_exposure = 1.05
 	e.glow_enabled = true
-	e.glow_intensity = 0.28
-	e.glow_bloom = 0.06
-	e.glow_hdr_threshold = 1.35
+	e.glow_intensity = 0.32
+	e.glow_bloom = 0.08
+	e.glow_hdr_threshold = 1.25
 	e.fog_enabled = true
-	e.fog_light_color = Color(nebula.r * 0.4, nebula.g * 0.4, nebula.b * 0.5)
-	e.fog_density = 0.000016
-	e.fog_aerial_perspective = 0.05
+	e.fog_light_color = Color(nebula.r * 0.45, nebula.g * 0.4, nebula.b * 0.55)
+	e.fog_density = 0.000014
+	e.fog_aerial_perspective = 0.06
 	env.environment = e
 	_env_node = env
 	add_child(env)
@@ -124,7 +125,7 @@ func _build_environment() -> void:
 func _build_starfield() -> void:
 	# Primary dense starfield — additive billboards always fill empty sky.
 	var stars := MultiMeshInstance3D.new()
-	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 5200)
+	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 6200)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/starfield.gdshader")
 	stars.material_override = mat
@@ -132,7 +133,7 @@ func _build_starfield() -> void:
 
 	# Soft galactic dust band for large-scale structure.
 	var dust := MultiMeshInstance3D.new()
-	dust.multimesh = StarfieldGen.build_galactic_dust(sim.seed_value, 560)
+	dust.multimesh = StarfieldGen.build_galactic_dust(sim.seed_value, 480)
 	var dmat := ShaderMaterial.new()
 	dmat.shader = load("res://shaders/starfield.gdshader")
 	dust.material_override = dmat
@@ -140,33 +141,34 @@ func _build_starfield() -> void:
 
 
 func _build_nebula_layers(nebula: Color) -> void:
-	# Far veils — colour accents, not a mid-distance white wash.
+	# Mid/far veils — coloured structure without blooming white.
 	var rng := SeedHash.make_rng(sim.seed_value, "nebula_layers")
 	var shader: Shader = load("res://shaders/nebula.gdshader")
-	for i in 3:
+	for i in 4:
 		var mi := MeshInstance3D.new()
 		var plane := PlaneMesh.new()
-		var sz := rng.randf_range(7000.0, 12000.0)
+		var sz := rng.randf_range(5500.0, 10000.0)
 		plane.size = Vector2(sz, sz)
 		mi.mesh = plane
 		var mat := ShaderMaterial.new()
 		mat.shader = shader
 		var layer_col := Color.from_hsv(
-			nebula.h + rng.randf_range(-0.08, 0.08),
-			clampf(nebula.s * 1.05 + 0.05, 0.3, 0.75),
-			clampf(nebula.v * 1.2 + 0.1, 0.18, 0.42)
+			nebula.h + rng.randf_range(-0.1, 0.1),
+			clampf(nebula.s * 1.1, 0.35, 0.85),
+			clampf(nebula.v + rng.randf_range(0.05, 0.2), 0.28, 0.55)
 		)
 		mat.set_shader_parameter("nebula_color", layer_col)
 		mat.set_shader_parameter("seed_offset", float(i) * 17.3 + float(sim.seed_value % 100) * 0.13)
-		mat.set_shader_parameter("density", rng.randf_range(0.42, 0.62))
-		mat.set_shader_parameter("soft_edge", rng.randf_range(0.4, 0.7))
-		mat.set_shader_parameter("brightness", rng.randf_range(0.2, 0.38))
+		mat.set_shader_parameter("density", rng.randf_range(0.5, 0.72))
+		mat.set_shader_parameter("soft_edge", rng.randf_range(0.35, 0.6))
+		mat.set_shader_parameter("brightness", rng.randf_range(0.4, 0.62))
 		mi.material_override = mat
 		var dir := rng.dir3()
 		if i < 2:
-			dir.y *= 0.35
+			dir.y *= 0.28
 			dir = dir.normalized()
-		mi.position = dir * rng.randf_range(9000.0, 15000.0)
+		# Spread layers so at least one reads from typical cinema angles.
+		mi.position = dir * rng.randf_range(3800.0, 8200.0)
 		add_child(mi)
 		mi.look_at(Vector3.ZERO, Vector3.UP)
 
