@@ -5,6 +5,9 @@ extends RefCounted
 enum ShipClass { MINER, TRADER, HAULER, PATROL }
 enum Activity { IDLE, TRAVEL, MINE, DOCK, TRADE, UNDOCK }
 
+const PLANET_CLASSES := ["rocky", "desert", "ocean", "ice", "gas_giant", "lava", "barren", "habitable", "industrial"]
+const FACTION_STYLES := ["military", "mining", "civilian", "pirate"]
+
 
 static func make_planet(
 	id: int,
@@ -13,9 +16,10 @@ static func make_planet(
 	radius: float,
 	color: Color,
 	habitability: float,
-	resources: Dictionary
+	resources: Dictionary,
+	extra: Dictionary = {}
 ) -> Dictionary:
-	return {
+	var d := {
 		"id": id,
 		"kind": "planet",
 		"name": name,
@@ -24,7 +28,19 @@ static func make_planet(
 		"color": color,
 		"habitability": habitability,
 		"resources": resources.duplicate(),
+		"seed": int(extra.get("seed", id)),
+		"planet_class": str(extra.get("planet_class", "rocky")),
+		"ocean_level": float(extra.get("ocean_level", 0.3)),
+		"cloud_level": float(extra.get("cloud_level", 0.1)),
+		"atmosphere": float(extra.get("atmosphere", 0.3)),
+		"has_rings": bool(extra.get("has_rings", false)),
+		"ring_color": extra.get("ring_color", Color(0.7, 0.65, 0.5, 0.5)),
+		"temperature": float(extra.get("temperature", 280.0)),
+		"color_b": extra.get("color_b", color.darkened(0.15)),
+		"color_c": extra.get("color_c", color.lightened(0.1)),
+		"color_d": extra.get("color_d", Color(0.9, 0.9, 0.95)),
 	}
+	return d
 
 
 static func make_yield_site(
@@ -32,7 +48,8 @@ static func make_yield_site(
 	name: String,
 	position: Vector3,
 	item: String,
-	richness: float
+	richness: float,
+	extra: Dictionary = {}
 ) -> Dictionary:
 	return {
 		"id": id,
@@ -42,6 +59,11 @@ static func make_yield_site(
 		"item": item,
 		"richness": richness,
 		"remaining": richness * 10000.0,
+		"seed": int(extra.get("seed", id)),
+		"composition": str(extra.get("composition", "iron")),
+		"asteroid_count": int(extra.get("asteroid_count", 24)),
+		"spread": float(extra.get("spread", 90.0)),
+		"color": extra.get("color", Color(0.5, 0.42, 0.32)),
 	}
 
 
@@ -52,7 +74,8 @@ static func make_station(
 	faction_id: int,
 	recipe_ids: Array,
 	inventory: Dictionary,
-	credits: float
+	credits: float,
+	extra: Dictionary = {}
 ) -> Dictionary:
 	var inv: Dictionary = {}
 	for c in Commodities.ALL:
@@ -77,8 +100,13 @@ static func make_station(
 		"prices": prices,
 		"flows": flows,
 		"productions": prod_state,
-		"population": 100.0,
+		"population": float(extra.get("population", 100.0)),
 		"docked_ships": [],
+		"seed": int(extra.get("seed", id)),
+		"role": str(extra.get("role", "trade")),
+		"style": str(extra.get("style", "industrial")),
+		"modules": extra.get("modules", []),
+		"color": extra.get("color", Color(0.55, 0.6, 0.65)),
 	}
 
 
@@ -89,11 +117,19 @@ static func make_ship(
 	position: Vector3,
 	cargo_capacity: float,
 	speed: float,
-	credits: float
+	credits: float,
+	extra: Dictionary = {}
 ) -> Dictionary:
 	var cargo: Dictionary = {}
 	for c in Commodities.ALL:
 		cargo[c] = 0.0
+	var design := {
+		"seed": int(extra.get("design_seed", id)),
+		"ship_class": ship_class,
+		"style": str(extra.get("style", "civilian")),
+		"color": extra.get("color", Color(0.7, 0.75, 0.85)),
+		"accent": extra.get("accent", Color(0.5, 0.55, 0.6)),
+	}
 	return {
 		"id": id,
 		"kind": "ship",
@@ -117,6 +153,8 @@ static func make_ship(
 		"action_timer": 0.0,
 		"mine_rate": 8.0,
 		"is_player": false,
+		"seed": int(extra.get("seed", id)),
+		"design": design,
 	}
 
 
@@ -153,10 +191,20 @@ static func remove_cargo(ship: Dictionary, item: String, amount: float) -> float
 
 
 static func station_buy_price(station: Dictionary, item: String) -> float:
-	# Station buys from ships (bid).
 	return float(station["prices"].get(item, Commodities.base_price_of(item))) * 0.92
 
 
 static func station_sell_price(station: Dictionary, item: String) -> float:
-	# Station sells to ships (ask).
 	return float(station["prices"].get(item, Commodities.base_price_of(item))) * 1.08
+
+
+static func class_name_of(ship_class: int) -> String:
+	match ship_class:
+		ShipClass.MINER:
+			return "Miner"
+		ShipClass.HAULER:
+			return "Hauler"
+		ShipClass.PATROL:
+			return "Patrol"
+		_:
+			return "Trader"

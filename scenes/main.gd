@@ -25,7 +25,7 @@ func _ready() -> void:
 
 	presenter = SystemPresenter.new()
 	add_child(presenter)
-	presenter.setup(sim)
+	presenter.setup(sim, camera)
 
 	player = PlayerController.new()
 	add_child(player)
@@ -33,11 +33,12 @@ func _ready() -> void:
 
 	overlay = DebugOverlay.new()
 	add_child(overlay)
-	overlay.setup(sim, player)
+	overlay.setup(sim, player, presenter)
 
-	print("Generated system '%s' seed=%d ships=%d stations=%d planets=%d" % [
-		sim.world["name"], world_seed, sim.world["ships"].size(),
-		sim.world["stations"].size(), sim.world["planets"].size()
+	var star: Dictionary = sim.world["star"]
+	print("Generated system '%s' seed=%d star=%s planets=%d stations=%d ships=%d" % [
+		sim.world["name"], world_seed, star.get("star_type", "?"),
+		sim.world["planets"].size(), sim.world["stations"].size(), sim.world["ships"].size()
 	])
 
 
