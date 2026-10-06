@@ -46,7 +46,7 @@ func generate(ship_count: int = 400) -> Dictionary:
 	]
 
 	var nebula_rng := SeedHash.make_rng(seed_value, "nebula")
-	var nebula_color := Color.from_hsv(nebula_rng.randf(), nebula_rng.randf_range(0.25, 0.65), nebula_rng.randf_range(0.08, 0.22))
+	var nebula_color := Color.from_hsv(nebula_rng.randf(), nebula_rng.randf_range(0.4, 0.75), nebula_rng.randf_range(0.2, 0.45))
 
 	return {
 		"seed": seed_value,
