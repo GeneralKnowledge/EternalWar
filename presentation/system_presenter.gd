@@ -274,12 +274,13 @@ func _build_nebula_volumes(primary: Color, secondary: Color) -> void:
 			wmat.set_shader_parameter("seed_offset", float(m.get("seed", 0)) * 0.01 + float(si) * 31.7 + float(i) * 7.3)
 			wmat.set_shader_parameter("density", float(shell["dens"]))
 			wmat.set_shader_parameter("soft_edge", 0.45)
-			wmat.set_shader_parameter("brightness", float(shell["bright"]))
-			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.45)
+			wmat.set_shader_parameter("brightness", float(shell["bright"]) * 0.55)
+			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.35)
 			wmat.set_shader_parameter("dark_lanes", float(m.get("dark", 0.45)))
 			wmi.material_override = wmat
 			wmi.position = m["dir"] * float(shell["dist"])
 			wmi.name = "nebula_wisp_%d_%d" % [i, si]
+			# Wisps are supporting detail — draw after volumes in tree is fine; keep subtle.
 			add_child(wmi)
 			wmi.look_at(Vector3.ZERO, Vector3.UP)
 			si += 1

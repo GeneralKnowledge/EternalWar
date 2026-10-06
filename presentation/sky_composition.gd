@@ -38,8 +38,8 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 		if i == 0:
 			dir = (dir + Vector3(0.4, 0.1, 0.35)).normalized()
 		var center_dist := rng.randf_range(3200.0, 7800.0)
-		var radius := rng.randf_range(1600.0, 3800.0) * lerpf(0.85, 1.25, float(i == 0))
-		var half_thick := radius * rng.randf_range(0.55, 0.95)
+		var radius := rng.randf_range(2200.0, 4600.0) * lerpf(0.9, 1.35, float(i == 0))
+		var half_thick := radius * rng.randf_range(0.6, 1.05)
 		var depth_near := maxf(900.0, center_dist - half_thick)
 		var depth_far := center_dist + half_thick
 		var scale := rng.randf_range(0.55, 1.35)
@@ -51,11 +51,11 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 			"depth_near": depth_near,
 			"depth_far": depth_far,
 			"scale": scale,
-			"core": rng.randf_range(0.35, 0.85),
-			"dark": rng.randf_range(0.3, 0.7), # cavity strength
-			"filament": rng.randf_range(0.35, 0.85),
-			"density": rng.randf_range(0.55, 1.15),
-			"emission": rng.randf_range(0.65, 1.15),
+			"core": rng.randf_range(0.4, 0.9),
+			"dark": rng.randf_range(0.35, 0.7), # cavity strength
+			"filament": rng.randf_range(0.45, 0.95),
+			"density": rng.randf_range(0.9, 1.55),
+			"emission": rng.randf_range(1.0, 1.6),
 			"color_t": rng.randf(),
 			"depth": clampf((center_dist - 3200.0) / 4600.0, 0.0, 1.0), # legacy sky hint
 			"shell": center_dist,
