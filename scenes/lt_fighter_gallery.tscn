@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/lt_fighter_gallery.gd" id="1"]
+
+[node name="LTFighterGallery" type="Node3D"]
+script = ExtResource("1")
+capture_dir = "/workspace/tools/visual_compare/eternalwar/fighter"

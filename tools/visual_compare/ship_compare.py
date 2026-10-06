@@ -140,22 +140,107 @@ def side_by_side(lt: np.ndarray, ew: np.ndarray, title_lt: str, title_ew: str, s
     return canvas
 
 
-def silhouette_panel(lt: np.ndarray, ew: np.ndarray) -> Image.Image:
+def normalize_mask(mask: np.ndarray) -> np.ndarray:
+    """Translate + scale mask so bbox fills a common canvas — composition-invariant silhouette."""
+    ys, xs = np.where(mask > 0.5)
+    h, w = mask.shape
+    out = np.zeros_like(mask)
+    if len(xs) == 0:
+        return out
+    x0, x1 = int(xs.min()), int(xs.max())
+    y0, y1 = int(ys.min()), int(ys.max())
+    bw = max(1, x1 - x0 + 1)
+    bh = max(1, y1 - y0 + 1)
+    crop = mask[y0 : y1 + 1, x0 : x1 + 1]
+    # Fit into 80% of canvas preserving aspect
+    scale = 0.8 * min(w / bw, h / bh)
+    nw = max(1, int(round(bw * scale)))
+    nh = max(1, int(round(bh * scale)))
+    im = Image.fromarray((crop * 255).astype(np.uint8), mode="L")
+    im = im.resize((nw, nh), Image.Resampling.BILINEAR)
+    arr = np.asarray(im, dtype=np.float32) / 255.0
+    ox = (w - nw) // 2
+    oy = (h - nh) // 2
+    out[oy : oy + nh, ox : ox + nw] = (arr > 0.4).astype(np.float32)
+    return out
+
+
+def silhouette_iou(lt_mask: np.ndarray, ew_mask: np.ndarray) -> float:
+    a = normalize_mask(lt_mask) > 0.5
+    b = normalize_mask(ew_mask) > 0.5
+    inter = float(np.logical_and(a, b).sum())
+    union = float(np.logical_or(a, b).sum())
+    if union < 1.0:
+        return 0.0
+    return inter / union
+
+
+def edge_overlap(lt_mask: np.ndarray, ew_mask: np.ndarray) -> float:
+    """Fraction of LT silhouette edge pixels near an EW edge (after normalize)."""
+    a = normalize_mask(lt_mask)
+    b = normalize_mask(ew_mask)
+    ae = np.asarray(Image.fromarray((a * 255).astype(np.uint8)).filter(ImageFilter.FIND_EDGES), dtype=np.float32) / 255.0
+    be = np.asarray(Image.fromarray((b * 255).astype(np.uint8)).filter(ImageFilter.FIND_EDGES), dtype=np.float32) / 255.0
+    ae = ae > 0.2
+    be = be > 0.2
+    # Dilate EW edges slightly
+    be_img = Image.fromarray((be.astype(np.uint8) * 255), mode="L").filter(ImageFilter.MaxFilter(5))
+    be_d = np.asarray(be_img, dtype=np.float32) > 0
+    n = float(ae.sum())
+    if n < 1.0:
+        return 0.0
+    return float(np.logical_and(ae, be_d).sum()) / n
+
+
+def silhouette_panel(lt: np.ndarray, ew: np.ndarray, iou: float, edge: float) -> Image.Image:
     ml = ship_mask(lt)
     me = ship_mask(ew)
+    mln = normalize_mask(ml)
+    men = normalize_mask(me)
     h, w = ml.shape
-    panel = np.zeros((h, w * 3, 3), dtype=np.float32)
-    panel[:, :w, :] = np.stack([ml, ml, ml], axis=2)
-    panel[:, w : w * 2, :] = np.stack([me, me, me], axis=2)
+    panel = np.zeros((h * 2, w * 3, 3), dtype=np.float32)
+    # Row 0: raw masks
+    panel[:h, :w, :] = np.stack([ml, ml, ml], axis=2)
+    panel[:h, w : w * 2, :] = np.stack([me, me, me], axis=2)
     diff = np.abs(ml - me)
-    panel[:, w * 2 :, 0] = diff
-    panel[:, w * 2 :, 1] = diff * 0.3
-    panel[:, w * 2 :, 2] = diff * 0.3
-    im = Image.fromarray((panel * 255).astype(np.uint8))
+    panel[:h, w * 2 :, 0] = diff
+    panel[:h, w * 2 :, 1] = diff * 0.3
+    panel[:h, w * 2 :, 2] = diff * 0.3
+    # Row 1: normalized + overlap (R=LT only, G=overlap, B=EW only)
+    panel[h:, :w, 0] = mln
+    panel[h:, :w, 1] = np.minimum(mln, men)
+    panel[h:, :w, 2] = men
+    panel[h:, w : w * 2, 0] = np.clip(mln - men, 0, 1)
+    panel[h:, w : w * 2, 1] = np.minimum(mln, men)
+    panel[h:, w : w * 2, 2] = np.clip(men - mln, 0, 1)
+    panel[h:, w * 2 :, :] = np.stack([np.abs(mln - men)] * 3, axis=2)
+    im = Image.fromarray((np.clip(panel, 0, 1) * 255).astype(np.uint8))
     d = ImageDraw.Draw(im)
     d.text((8, 8), "LT mask", fill=(255, 255, 0))
     d.text((w + 8, 8), "EW mask", fill=(255, 255, 0))
     d.text((w * 2 + 8, 8), "Diff", fill=(255, 255, 0))
+    d.text((8, h + 8), f"Norm overlap  IoU={iou:.3f}  edge={edge:.3f}", fill=(255, 255, 0))
+    d.text((w + 8, h + 8), "LT-only / both / EW-only", fill=(255, 255, 0))
+    d.text((w * 2 + 8, h + 8), "Norm diff", fill=(255, 255, 0))
+    return im
+
+
+def luminance_panel(lt: np.ndarray, ew: np.ndarray) -> Image.Image:
+    yl = luma(lt)
+    ye = luma(ew)
+    h, w = yl.shape
+    panel = np.zeros((h, w * 3, 3), dtype=np.float32)
+    panel[:, :w, :] = np.stack([yl, yl, yl], axis=2)
+    panel[:, w : w * 2, :] = np.stack([ye, ye, ye], axis=2)
+    dlt = np.abs(yl - ye)
+    panel[:, w * 2 :, 0] = dlt
+    panel[:, w * 2 :, 1] = dlt * 0.4
+    panel[:, w * 2 :, 2] = dlt * 0.2
+    im = Image.fromarray((np.clip(panel, 0, 1) * 255).astype(np.uint8))
+    d = ImageDraw.Draw(im)
+    d.text((8, 8), "LT Y", fill=(255, 255, 0))
+    d.text((w + 8, 8), "EW Y", fill=(255, 255, 0))
+    d.text((w * 2 + 8, 8), "|ΔY|", fill=(255, 255, 0))
     return im
 
 
@@ -172,20 +257,33 @@ def main() -> None:
     ew = load_rgb(args.ew, (640, 360))
     lt_s = stats(lt)
     ew_s = stats(ew)
+    ml = ship_mask(lt)
+    me = ship_mask(ew)
+    iou = silhouette_iou(ml, me)
+    edge = edge_overlap(ml, me)
     sc, ranked = score(lt_s, ew_s)
+    # Primary diagnostic: silhouette similarity (composition-normalized IoU)
+    sil_score = iou * 100.0
+    # Blend: silhouette dominates this pass
+    combined = 0.55 * sil_score + 0.45 * sc
 
-    side_by_side(lt, ew, Path(args.lt).name, Path(args.ew).name, sc).save(f"{args.out}_sidebyside.png")
-    silhouette_panel(lt, ew).save(f"{args.out}_silhouette.png")
+    side_by_side(lt, ew, Path(args.lt).name, Path(args.ew).name, combined).save(f"{args.out}_sidebyside.png")
+    silhouette_panel(lt, ew, iou, edge).save(f"{args.out}_silhouette.png")
+    luminance_panel(lt, ew).save(f"{args.out}_luminance.png")
     report = {
         "lt": args.lt,
         "ew": args.ew,
-        "score": sc,
+        "score": combined,
+        "score_legacy": sc,
+        "silhouette_iou": iou,
+        "edge_overlap": edge,
+        "silhouette_score": sil_score,
         "lt_stats": lt_s,
         "ew_stats": ew_s,
         "ranked_mismatches": ranked,
     }
     Path(f"{args.out}_report.json").write_text(json.dumps(report, indent=2))
-    print(f"score={sc:.1f}/100")
+    print(f"score={combined:.1f}/100  silhouette_iou={iou:.3f}  edge_overlap={edge:.3f}  legacy={sc:.1f}")
     for i, m in enumerate(ranked[:6], 1):
         bar = "█" * max(1, int(m["delta"] * 40))
         print(f"  {i}. {m['name']:<22} {bar}  Δ={m['delta']:.4f}")

@@ -90,7 +90,7 @@ static func strut(st: SurfaceTool, a: Vector3, b: Vector3, thickness: float, col
 	box(st, mid, size, color)
 
 
-## Flat wing plate extruded from root (LT WingsStandard principle).
+## Wing plate — routes to GeometryKernel planform (trapezoid + thickness).
 static func wing_plate(
 	st: SurfaceTool,
 	root: Vector3,
@@ -102,13 +102,11 @@ static func wing_plate(
 	tip_scale: float = 0.35
 ) -> void:
 	var tip := root + Vector3(span, 0, sweep * chord)
-	box(st, root.lerp(tip, 0.3), Vector3(absf(span) * 0.55, thickness, chord), color)
-	box(st, tip, Vector3(absf(span) * tip_scale, thickness * 0.65, chord * 0.7), color.darkened(0.08))
-	# Pointy tip extrusion
-	box(st, tip + Vector3(signf(span) * absf(span) * 0.12, 0, sweep * chord * 0.15), Vector3(absf(span) * 0.12, thickness * 0.35, chord * 0.35), color.darkened(0.12))
+	var tip_chord := chord * clampf(tip_scale + 0.15, 0.2, 0.85)
+	GeometryKernel.wing_planform(st, root, tip, chord, tip_chord, thickness, color, 0.0, 0.4)
 
 
-## Engine nacelle body + flared bell. Exhaust colour is a parameter (not hard-coded blue).
+## Engine nacelle — structural housing via GeometryKernel (exhaust colour is a parameter).
 static func nacelle(
 	st: SurfaceTool,
 	pos: Vector3,
@@ -117,12 +115,7 @@ static func nacelle(
 	body_color: Color,
 	exhaust: Color
 ) -> void:
-	box(st, pos - Vector3(0, 0, length * 0.1), Vector3(radius * 1.5, radius * 1.5, length * 0.45), body_color.darkened(0.15))
-	cylinder_z(st, pos, radius * 0.85, length * 0.35, body_color.darkened(0.2), 8)
-	# Flare
-	box(st, pos + Vector3(0, 0, length * 0.28), Vector3(radius * 1.55, radius * 1.55, length * 0.18), body_color.darkened(0.05))
-	# Exhaust core (emissive cue via bright vertex colour)
-	box(st, pos + Vector3(0, 0, length * 0.42), Vector3(radius * 0.9, radius * 0.9, length * 0.14), exhaust)
+	GeometryKernel.engine_block(st, pos, radius, length, body_color, exhaust, 0.14, 6)
 
 
 static func engine_bell(st: SurfaceTool, pos: Vector3, radius: float, length: float, color: Color, exhaust: Color = Color(-1, -1, -1)) -> void:
