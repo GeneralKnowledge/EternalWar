@@ -90,34 +90,37 @@ static func _role_dims(ship_class: int, rng: SeededRNG, profile: Dictionary) -> 
 	var stretch := lerpf(0.95, 1.12, 1.0 - float(profile["taper"]))
 	match ship_class:
 		SimEntities.ShipClass.MINER:
+			# Blocky industrial silhouette — wide belly, short nose.
 			return {
-				"length": rng.randf_range(2.5, 3.4) * stretch,
-				"width": rng.randf_range(1.3, 1.95),
-				"height": rng.randf_range(1.0, 1.45),
+				"length": rng.randf_range(2.6, 3.5) * stretch,
+				"width": rng.randf_range(1.55, 2.15),
+				"height": rng.randf_range(1.15, 1.55),
 				"engines": 2,
 				"cargo": 2,
 			}
 		SimEntities.ShipClass.HAULER:
+			# Long spine + cargo volume — readable at distance.
 			return {
-				"length": rng.randf_range(3.4, 4.6) * stretch,
-				"width": rng.randf_range(1.7, 2.35),
-				"height": rng.randf_range(1.3, 1.85),
+				"length": rng.randf_range(3.8, 5.2) * stretch,
+				"width": rng.randf_range(1.6, 2.2),
+				"height": rng.randf_range(1.25, 1.7),
 				"engines": 3,
 				"cargo": 6,
 			}
 		SimEntities.ShipClass.PATROL:
+			# Flat interceptor wedge — LT fighter-like proportions.
 			return {
-				"length": rng.randf_range(1.9, 2.6) * stretch,
-				"width": rng.randf_range(1.0, 1.5),
-				"height": rng.randf_range(0.45, 0.75),
+				"length": rng.randf_range(2.1, 2.9) * stretch,
+				"width": rng.randf_range(1.25, 1.85),
+				"height": rng.randf_range(0.35, 0.58),
 				"engines": 2,
 				"cargo": 0,
 			}
 		_:
 			return {
-				"length": rng.randf_range(2.3, 3.15) * stretch,
-				"width": rng.randf_range(1.15, 1.7),
-				"height": rng.randf_range(0.7, 1.15),
+				"length": rng.randf_range(2.4, 3.3) * stretch,
+				"width": rng.randf_range(1.2, 1.75),
+				"height": rng.randf_range(0.75, 1.2),
 				"engines": 2,
 				"cargo": 4,
 			}

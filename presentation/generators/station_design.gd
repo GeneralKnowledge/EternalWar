@@ -91,20 +91,22 @@ static func _module_size(mname: String, rng: SeededRNG, profile: Dictionary) -> 
 	var d := float(profile.get("detail_density", 0.5))
 	match mname:
 		"core":
-			return Vector3(1.2, 1.1, 1.2)
+			# Dominant mass — stations need an architectural anchor.
+			return Vector3(1.45, 1.3, 1.45)
 		"docking":
-			return Vector3(0.9, 0.45, 1.1)
+			# Long berth arms read as places activity can happen.
+			return Vector3(1.05, 0.4, 1.55)
 		"cargo", "storage":
-			return Vector3(rng.randf_range(0.9, 1.3), rng.randf_range(0.5, 0.9), rng.randf_range(0.9, 1.3))
+			return Vector3(rng.randf_range(1.0, 1.45), rng.randf_range(0.55, 1.0), rng.randf_range(1.0, 1.45))
 		"factories", "manufacturing", "processing", "refinery":
-			return Vector3(rng.randf_range(1.2, 1.7), rng.randf_range(1.0, 1.5), rng.randf_range(1.0, 1.4))
+			return Vector3(rng.randf_range(1.35, 1.9), rng.randf_range(1.1, 1.7), rng.randf_range(1.1, 1.55))
 		"power":
-			return Vector3(0.55, rng.randf_range(1.0, 1.6), 0.55)
+			return Vector3(0.6, rng.randf_range(1.3, 2.0), 0.6)
 		"habitation":
-			return Vector3(1.1, 0.9, 1.1)
+			return Vector3(1.25, 1.0, 1.25)
 		"weapons", "armour":
-			return Vector3(0.55, 0.4, 0.55)
+			return Vector3(0.65, 0.45, 0.65)
 		"command", "communications":
-			return Vector3(0.5, 0.7 + d * 0.3, 0.5)
+			return Vector3(0.55, 0.85 + d * 0.35, 0.55)
 		_:
-			return Vector3(0.8, 0.6, 0.8)
+			return Vector3(0.9, 0.65, 0.9)

@@ -16,6 +16,7 @@ var _inspect_target: Dictionary = {}
 var _dust: GPUParticles3D
 var _engine_fx: GPUParticles3D
 var _env_node: WorldEnvironment
+var sky_comp: Dictionary = {}
 
 const NEAR_SHIP_CAP := 28
 
@@ -25,6 +26,14 @@ func setup(p_sim: StarSystemSim, camera: Camera3D = null) -> void:
 	_camera = camera
 	MeshCache.clear()
 	_clear_visuals()
+	var nebula_hint: Color = sim.world.get("nebula_color", Color(0.3, 0.25, 0.55))
+	sky_comp = SkyComposition.build(sim.seed_value, nebula_hint)
+	sim.world["sky_composition"] = {
+		"mood": sky_comp.get("mood", ""),
+		"masses": (sky_comp.get("masses", []) as Array).size(),
+		"voids": (sky_comp.get("voids", []) as Array).size(),
+		"gems": (sky_comp.get("gems", []) as Array).size(),
+	}
 	_build_environment()
 	_build_star()
 	_build_planets()
@@ -33,6 +42,11 @@ func setup(p_sim: StarSystemSim, camera: Camera3D = null) -> void:
 	_build_ships()
 	_build_life_fx()
 	_built = true
+
+
+func get_sky_focus() -> Vector3:
+	## Direction toward primary nebula mass — for cinema composition.
+	return SkyComposition.primary_mass_dir(sky_comp) * 800.0
 
 
 func set_camera(camera: Camera3D) -> void:
@@ -72,110 +86,148 @@ func _clear_visuals() -> void:
 
 func _build_environment() -> void:
 	var star: Dictionary = sim.world["star"]
-	var light := DirectionalLight3D.new()
-	light.light_color = StellarColour.from_temperature(float(star.get("temperature", 5800.0)))
-	# Keep the local sun readable without blooming the whole frame white.
-	light.light_energy = clampf(float(star.get("luminosity", 1.2)) * 0.72, 0.45, 1.6)
-	light.shadow_enabled = false
-	light.rotation_degrees = Vector3(-38, 42, 0)
-	add_child(light)
+	var palette: Dictionary = sky_comp.get("palette", {})
+	var primary: Color = palette.get("primary", Color(0.35, 0.28, 0.6))
+	var secondary: Color = palette.get("secondary", primary.darkened(0.15))
+	var band_c: Color = palette.get("band", primary.lightened(0.1))
+	var bg: Color = palette.get("bg", Color(0.03, 0.035, 0.08))
+	var fog_c: Color = palette.get("fog", primary.darkened(0.4))
+	var ambient_c: Color = palette.get("ambient", bg.lerp(primary, 0.35))
 
-	var nebula: Color = sim.world.get("nebula_color", Color(0.25, 0.2, 0.55))
-	# Keep saturation punchy but don't lift value into muddy wash.
-	nebula = Color.from_hsv(nebula.h, clampf(nebula.s * 1.15, 0.42, 0.88), clampf(nebula.v * 1.15, 0.26, 0.48))
+	var light := DirectionalLight3D.new()
+	var star_col := StellarColour.from_temperature(float(star.get("temperature", 5800.0)))
+	# Star light ties the local environment together (LT object/sky relationship).
+	light.light_color = star_col.lerp(primary, 0.12)
+	light.light_energy = clampf(float(star.get("luminosity", 1.2)) * 0.78, 0.5, 1.75)
+	light.shadow_enabled = false
+	# Aim light so objects rim-light against the primary nebula mass.
+	var mass_dir := SkyComposition.primary_mass_dir(sky_comp)
+	var light_dir := (-mass_dir + Vector3(0.2, 0.55, 0.15)).normalized()
+	light.transform = Transform3D(Basis.looking_at(light_dir, Vector3.UP), Vector3.ZERO)
+	add_child(light)
 
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
-	# Soft procedural sky fills voids; MultiMesh billboards supply dense star points.
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
-	sky_mat.set_shader_parameter("seed", float(sim.seed_value))
-	sky_mat.set_shader_parameter("nebula_tint", Vector3(nebula.r, nebula.g, nebula.b))
-	sky_mat.set_shader_parameter("nebula_strength", 0.95)
-	sky_mat.set_shader_parameter("band_strength", 0.9)
+	_apply_sky_uniforms(sky_mat, palette)
 	sky.sky_material = sky_mat
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.06, 0.065, 0.1).lerp(nebula, 0.45)
-	e.ambient_light_energy = 0.4
-	# Filmic keeps dark sky structure; ACES was crushing the void to pure black.
+	e.ambient_light_color = ambient_c
+	e.ambient_light_energy = 0.36
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 1.05
+	e.tonemap_exposure = 1.0
+	# Bloom for light sources (stars/engines), not whole-frame wash — LT contrast.
 	e.glow_enabled = true
-	e.glow_intensity = 0.32
-	e.glow_bloom = 0.08
-	e.glow_hdr_threshold = 1.25
+	e.glow_intensity = 0.42
+	e.glow_bloom = 0.12
+	e.glow_hdr_threshold = 1.05
 	e.fog_enabled = true
-	e.fog_light_color = Color(nebula.r * 0.45, nebula.g * 0.4, nebula.b * 0.55)
-	e.fog_density = 0.000014
-	e.fog_aerial_perspective = 0.06
+	e.fog_light_color = fog_c
+	e.fog_density = 0.000012
+	e.fog_aerial_perspective = 0.08
+	e.adjustment_enabled = true
+	e.adjustment_saturation = 1.05
+	e.adjustment_contrast = 1.08
 	env.environment = e
 	_env_node = env
 	add_child(env)
 
-	_build_nebula_layers(nebula)
+	_build_nebula_layers(primary, secondary)
 	_build_starfield()
-	_build_dust(nebula)
+	_build_dust(primary)
+
+
+func _apply_sky_uniforms(sky_mat: ShaderMaterial, palette: Dictionary) -> void:
+	var bg: Color = palette.get("bg", Color(0.03, 0.035, 0.08))
+	var band_c: Color = palette.get("band", Color(0.45, 0.4, 0.7))
+	var primary: Color = palette.get("primary", Color(0.4, 0.3, 0.7))
+	var secondary: Color = palette.get("secondary", Color(0.3, 0.35, 0.55))
+	sky_mat.set_shader_parameter("seed", float(sim.seed_value))
+	sky_mat.set_shader_parameter("bg_color", Vector3(bg.r, bg.g, bg.b))
+	sky_mat.set_shader_parameter("band_color", Vector3(band_c.r, band_c.g, band_c.b))
+	sky_mat.set_shader_parameter("primary_color", Vector3(primary.r, primary.g, primary.b))
+	sky_mat.set_shader_parameter("secondary_color", Vector3(secondary.r, secondary.g, secondary.b))
+	var gn: Vector3 = sky_comp.get("galaxy_normal", Vector3.UP)
+	sky_mat.set_shader_parameter("galaxy_normal", gn)
+	sky_mat.set_shader_parameter("band_width", float(sky_comp.get("band_width", 3.6)))
+	sky_mat.set_shader_parameter("band_strength", float(sky_comp.get("band_strength", 0.75)))
+	var masses: Array = sky_comp.get("masses", [])
+	for i in 3:
+		var key_dir := "mass%d_dir" % i
+		var key_par := "mass%d_params" % i
+		if i < masses.size():
+			var m: Dictionary = masses[i]
+			sky_mat.set_shader_parameter(key_dir, m["dir"])
+			sky_mat.set_shader_parameter(key_par, Vector3(float(m["scale"]), float(m["core"]), float(m["dark"])))
+		else:
+			sky_mat.set_shader_parameter(key_dir, Vector3(0.0, 1.0, 0.0))
+			sky_mat.set_shader_parameter(key_par, Vector3(0.2, 0.2, 0.2))
+	var voids: Array = sky_comp.get("voids", [])
+	for i in 2:
+		if i < voids.size():
+			sky_mat.set_shader_parameter("void%d_dir" % i, voids[i]["dir"])
+			sky_mat.set_shader_parameter("void%d_radius" % i, float(voids[i]["radius"]))
+		else:
+			sky_mat.set_shader_parameter("void%d_dir" % i, Vector3(0, 1, 0))
+			sky_mat.set_shader_parameter("void%d_radius" % i, 0.2)
 
 
 func _build_starfield() -> void:
-	# Primary dense starfield — additive billboards always fill empty sky.
-	var stars := MultiMeshInstance3D.new()
-	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 6200)
+	var packs := StarfieldGen.build_from_composition(sky_comp)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/starfield.gdshader")
-	stars.material_override = mat
-	add_child(stars)
-
-	# Soft galactic dust band for large-scale structure.
-	var dust := MultiMeshInstance3D.new()
-	dust.multimesh = StarfieldGen.build_galactic_dust(sim.seed_value, 480)
-	var dmat := ShaderMaterial.new()
-	dmat.shader = load("res://shaders/starfield.gdshader")
-	dust.material_override = dmat
-	add_child(dust)
+	for key in ["micro", "field", "notable", "gems", "dust"]:
+		var mm: MultiMesh = packs.get(key)
+		if mm == null:
+			continue
+		var node := MultiMeshInstance3D.new()
+		node.multimesh = mm
+		node.material_override = mat
+		add_child(node)
 
 
-func _build_nebula_layers(nebula: Color) -> void:
-	# Mid/far veils — coloured structure without blooming white.
-	var rng := SeedHash.make_rng(sim.seed_value, "nebula_layers")
+func _build_nebula_layers(primary: Color, secondary: Color) -> void:
+	## Place nebula billboards from composition masses — not random wash.
 	var shader: Shader = load("res://shaders/nebula.gdshader")
-	for i in 4:
+	var masses: Array = sky_comp.get("masses", [])
+	var i := 0
+	for m in masses:
 		var mi := MeshInstance3D.new()
 		var plane := PlaneMesh.new()
-		var sz := rng.randf_range(5500.0, 10000.0)
+		var scale_m := float(m.get("scale", 1.0))
+		var sz := lerpf(5200.0, 11000.0, clampf(scale_m * 0.55, 0.0, 1.0))
 		plane.size = Vector2(sz, sz)
 		mi.mesh = plane
 		var mat := ShaderMaterial.new()
 		mat.shader = shader
-		var layer_col := Color.from_hsv(
-			nebula.h + rng.randf_range(-0.1, 0.1),
-			clampf(nebula.s * 1.1, 0.35, 0.85),
-			clampf(nebula.v + rng.randf_range(0.05, 0.2), 0.28, 0.55)
-		)
+		var t := float(m.get("color_t", 0.5))
+		var layer_col := primary.lerp(secondary, t)
 		mat.set_shader_parameter("nebula_color", layer_col)
-		mat.set_shader_parameter("seed_offset", float(i) * 17.3 + float(sim.seed_value % 100) * 0.13)
-		mat.set_shader_parameter("density", rng.randf_range(0.5, 0.72))
-		mat.set_shader_parameter("soft_edge", rng.randf_range(0.35, 0.6))
-		mat.set_shader_parameter("brightness", rng.randf_range(0.4, 0.62))
+		mat.set_shader_parameter("secondary_color", secondary.lerp(primary, 0.35))
+		mat.set_shader_parameter("seed_offset", float(i) * 19.1 + float(sim.seed_value % 100) * 0.17)
+		mat.set_shader_parameter("density", lerpf(0.48, 0.72, float(m.get("core", 0.5))))
+		mat.set_shader_parameter("soft_edge", lerpf(0.32, 0.58, 1.0 - scale_m * 0.3))
+		mat.set_shader_parameter("brightness", lerpf(0.5, 0.78, float(m.get("depth", 0.5))))
+		mat.set_shader_parameter("core_strength", float(m.get("core", 0.55)))
+		mat.set_shader_parameter("dark_lanes", float(m.get("dark", 0.45)))
 		mi.material_override = mat
-		var dir := rng.dir3()
-		if i < 2:
-			dir.y *= 0.28
-			dir = dir.normalized()
-		# Spread layers so at least one reads from typical cinema angles.
-		mi.position = dir * rng.randf_range(3800.0, 8200.0)
+		var dir: Vector3 = m["dir"]
+		# Closer shells so masses read as volumes behind local objects.
+		mi.position = dir * lerpf(2800.0, 6200.0, float(m.get("depth", 0.5)))
 		add_child(mi)
 		mi.look_at(Vector3.ZERO, Vector3.UP)
+		i += 1
 
 
 func _build_dust(nebula: Color) -> void:
 	_dust = GPUParticles3D.new()
-	_dust.amount = 180
+	_dust.amount = 140
 	_dust.lifetime = 8.0
 	_dust.preprocess = 4.0
 	_dust.visibility_aabb = AABB(Vector3(-400, -400, -400), Vector3(800, 800, 800))
@@ -185,20 +237,20 @@ func _build_dust(nebula: Color) -> void:
 	mat.initial_velocity_min = 0.5
 	mat.initial_velocity_max = 4.0
 	mat.gravity = Vector3.ZERO
-	mat.scale_min = 0.15
-	mat.scale_max = 0.7
-	mat.color = Color(nebula.r + 0.4, nebula.g + 0.4, nebula.b + 0.5, 0.35)
+	mat.scale_min = 0.12
+	mat.scale_max = 0.55
+	mat.color = Color(nebula.r + 0.25, nebula.g + 0.25, nebula.b + 0.35, 0.28)
 	_dust.process_material = mat
 	var draw := SphereMesh.new()
-	draw.radius = 0.35
-	draw.height = 0.7
+	draw.radius = 0.3
+	draw.height = 0.6
 	draw.radial_segments = 4
 	draw.rings = 2
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(0.7, 0.75, 0.85, 0.25)
+	dm.albedo_color = Color(nebula.r + 0.3, nebula.g + 0.3, nebula.b + 0.4, 0.22)
 	dm.emission_enabled = true
-	dm.emission = Color(0.5, 0.55, 0.7)
-	dm.emission_energy_multiplier = 0.6
+	dm.emission = nebula
+	dm.emission_energy_multiplier = 0.45
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	draw.material = dm
@@ -219,24 +271,25 @@ func _build_star() -> void:
 	mat.shader = load("res://shaders/star.gdshader")
 	mat.set_shader_parameter("star_color", StellarColour.from_temperature(float(star.get("temperature", 5800.0))))
 	mat.set_shader_parameter("emission_energy", StellarColour.luminosity_energy(float(star.get("luminosity", 1.0))))
-	mat.set_shader_parameter("corona", 0.55)
-	mat.set_shader_parameter("core_hot", 1.4)
+	# Hot core + controlled corona — LT local star is a light event, not two soft spheres.
+	mat.set_shader_parameter("corona", 0.42)
+	mat.set_shader_parameter("core_hot", 1.65)
 	mi.material_override = mat
 	mi.position = star["position"]
 	add_child(mi)
 
 	var corona := MeshInstance3D.new()
 	var cs := SphereMesh.new()
-	cs.radius = float(star["radius"]) * 1.22
+	cs.radius = float(star["radius"]) * 1.14
 	cs.height = cs.radius * 2.0
 	cs.radial_segments = 24
 	cs.rings = 12
 	corona.mesh = cs
 	var cm := StandardMaterial3D.new()
-	cm.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.12)
+	cm.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.1)
 	cm.emission_enabled = true
 	cm.emission = star["color"]
-	cm.emission_energy_multiplier = 1.6
+	cm.emission_energy_multiplier = 2.1
 	cm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	cm.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -244,19 +297,19 @@ func _build_star() -> void:
 	corona.position = star["position"]
 	add_child(corona)
 
-	# Soft outer bloom shell
+	# Thin outer shell — bloom carries the rest (avoid giant soft disc)
 	var outer := MeshInstance3D.new()
 	var os := SphereMesh.new()
-	os.radius = float(star["radius"]) * 1.55
+	os.radius = float(star["radius"]) * 1.38
 	os.height = os.radius * 2.0
 	os.radial_segments = 16
 	os.rings = 8
 	outer.mesh = os
 	var om := StandardMaterial3D.new()
-	om.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.05)
+	om.albedo_color = Color(star["color"].r, star["color"].g, star["color"].b, 0.04)
 	om.emission_enabled = true
 	om.emission = star["color"]
-	om.emission_energy_multiplier = 0.7
+	om.emission_energy_multiplier = 0.85
 	om.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	om.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	om.cull_mode = BaseMaterial3D.CULL_DISABLED
@@ -326,7 +379,9 @@ func _build_planets() -> void:
 				atmo_col = Color(ac.r * 0.6 + 0.2, ac.g * 0.5 + 0.2, ac.b * 0.4 + 0.15)
 			am.set_shader_parameter("atmo_color", atmo_col)
 			am.set_shader_parameter("intensity", 0.55 + float(p.get("atmosphere", 0.3)) * 0.7)
-			am.set_shader_parameter("power", 2.8)
+			am.set_shader_parameter("power", 2.4)
+			var mass_dir := SkyComposition.primary_mass_dir(sky_comp)
+			am.set_shader_parameter("light_dir", (-mass_dir + Vector3(0.15, 0.6, 0.1)).normalized())
 			atmo.material_override = am
 			root.add_child(atmo)
 
@@ -437,10 +492,20 @@ func _build_yields() -> void:
 		mm.instance_count = count
 		var rng := SeededRNG.new(SeedHash.derive(int(y.get("seed", 1)), "field"))
 		var base_col: Color = pal["color"]
-		# Secondary family variants as vertex-tint only (shared mesh, design language via family)
+		# Belt / cluster composition (LT asteroid fields are spatial structures, not isotropic).
+		var belt_n := Vector3(rng.randf_range(-0.25, 0.25), 1.0, rng.randf_range(-0.25, 0.25)).normalized()
+		var cluster_a := rng.dir3()
+		var cluster_b := (cluster_a + rng.dir3() * 0.5).normalized()
 		for i in count:
-			var p: Vector3 = rng.dir3() * rng.randf_range(spread * 0.12, spread)
-			p.y *= 0.4 if composition != "ice" else 0.55
+			var dir: Vector3
+			if rng.randf() < 0.7:
+				dir = rng.dir3()
+				dir = (dir - belt_n * dir.dot(belt_n) * rng.randf_range(0.7, 0.95)).normalized()
+			else:
+				var cdir: Vector3 = cluster_a if rng.randf() < 0.55 else cluster_b
+				dir = (cdir + rng.dir3() * rng.randf_range(0.05, 0.35)).normalized()
+			var p: Vector3 = dir * rng.randf_range(spread * 0.15, spread)
+			p.y *= 0.28 if composition != "ice" else 0.4
 			var s := rng.randf_range(3.5, 13.0) * (0.55 + float(y.get("richness", 1.0)) * 0.45) * float(pal["size_mul"])
 			if composition == "iron" and rng.randf() < 0.2:
 				s *= 1.45

@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scenes/visual_showcase.gd" id="1"]
+
+[node name="VisualShowcase" type="Node3D"]
+script = ExtResource("1")
+world_seed = 42
+ship_count = 120
