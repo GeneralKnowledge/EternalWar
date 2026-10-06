@@ -69,8 +69,11 @@ void fragment() {
 	vec3 gas = mix(color_a.rgb, color_b.rgb, bands);
 	gas = mix(gas, color_c.rgb, smoothstep(0.35, 0.85, n_fine) * 0.45);
 
-	vec3 land = mix(color_a.rgb, color_b.rgb, smoothstep(0.28, 0.72, n));
-	land = mix(land, color_c.rgb, smoothstep(0.5, 0.92, lat * 0.45 + n * 0.55));
+	vec3 land = mix(color_a.rgb, color_b.rgb, smoothstep(0.22, 0.78, n));
+	land = mix(land, color_c.rgb, smoothstep(0.45, 0.95, lat * 0.4 + n_fine * 0.6));
+	// Extra crater / roughness variation for rocky surfaces
+	float craters = smoothstep(0.62, 0.78, n_fine) * (1.0 - gas_giant);
+	land *= 1.0 - craters * 0.28;
 	// Desert washes greens toward sand
 	land = mix(land, mix(color_c.rgb, color_a.rgb, n), desert * 0.85);
 

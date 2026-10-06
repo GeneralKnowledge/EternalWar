@@ -344,7 +344,7 @@ func _planet_palette(pclass: String, prng: SeededRNG) -> Dictionary:
 		"industrial":
 			return {"a": Color(0.35, 0.35, 0.38), "b": Color(0.45, 0.4, 0.35), "c": Color(0.25, 0.28, 0.3), "d": Color(0.6, 0.6, 0.55), "ocean": 0.15, "cloud": 0.4, "atmo": 0.35, "ring": Color(0.5, 0.5, 0.45, 0.3)}
 		"barren":
-			return {"a": Color(0.4, 0.38, 0.36), "b": Color(0.5, 0.48, 0.45), "c": Color(0.3, 0.28, 0.26), "d": Color(0.7, 0.7, 0.68), "ocean": 0.0, "cloud": -0.15, "atmo": 0.05, "ring": Color(0.5, 0.5, 0.5, 0.25)}
+			return {"a": Color(0.32, 0.3, 0.28), "b": Color(0.55, 0.48, 0.4), "c": Color(0.22, 0.2, 0.18), "d": Color(0.75, 0.72, 0.68), "ocean": 0.0, "cloud": -0.15, "atmo": 0.08, "ring": Color(0.5, 0.5, 0.5, 0.25)}
 		_:
 			return {"a": Color(prng.randf_range(0.25, 0.55), prng.randf_range(0.25, 0.5), prng.randf_range(0.3, 0.55)), "b": Color(0.35, 0.4, 0.3), "c": Color(0.45, 0.35, 0.25), "d": Color(0.85, 0.85, 0.9), "ocean": 0.25, "cloud": 0.12, "atmo": 0.3, "ring": Color(0.65, 0.6, 0.5, 0.35)}
 

@@ -32,7 +32,7 @@ static func build_multimesh(system_seed: int, count: int = 2800) -> MultiMesh:
 		var dist := rng.randf_range(7000.0, 14000.0)
 		# Magnitude: many faint, few bright
 		var mag := pow(rng.randf(), 2.4)
-		var size := lerpf(4.0, 36.0, mag)
+		var size := lerpf(3.0, 22.0, mag)
 		var temp_t := rng.randf()
 		var col := _temp_color(temp_t)
 		var bright := 0.4 + mag * 0.95

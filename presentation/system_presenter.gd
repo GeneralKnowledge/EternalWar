@@ -86,19 +86,20 @@ func _build_environment() -> void:
 	e.background_mode = Environment.BG_COLOR
 	var nebula: Color = sim.world.get("nebula_color", Color(0.02, 0.03, 0.05))
 	# True deep space — almost black, nebula lives in layered shaders.
-	e.background_color = Color(0.004, 0.005, 0.01)
+	e.background_color = Color(0.003, 0.004, 0.008)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.035, 0.04, 0.06).lerp(nebula, 0.2)
-	e.ambient_light_energy = 0.28
+	e.ambient_light_color = Color(0.04, 0.045, 0.06).lerp(nebula, 0.12)
+	e.ambient_light_energy = 0.3
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.tonemap_exposure = 0.95
+	e.tonemap_exposure = 0.92
 	e.glow_enabled = true
-	e.glow_intensity = 0.85
-	e.glow_bloom = 0.42
-	e.glow_hdr_threshold = 0.7
+	e.glow_intensity = 0.75
+	e.glow_bloom = 0.38
+	e.glow_hdr_threshold = 0.75
 	e.fog_enabled = true
-	e.fog_light_color = nebula.darkened(0.35)
-	e.fog_density = 0.000025
+	e.fog_light_color = Color(nebula.r * 0.35, nebula.g * 0.35, nebula.b * 0.4)
+	e.fog_density = 0.000018
+	e.fog_aerial_perspective = 0.05
 	env.environment = e
 	_env_node = env
 	add_child(env)
@@ -123,23 +124,27 @@ func _build_nebula_layers(nebula: Color) -> void:
 	for i in 3:
 		var mi := MeshInstance3D.new()
 		var plane := PlaneMesh.new()
-		var sz := rng.randf_range(9000.0, 16000.0)
+		var sz := rng.randf_range(6000.0, 11000.0)
 		plane.size = Vector2(sz, sz)
 		mi.mesh = plane
 		var mat := ShaderMaterial.new()
 		mat.shader = shader
-		var layer_col := nebula.lightened(rng.randf_range(-0.05, 0.2))
-		layer_col.a = 1.0
+		# Structured colour against black — not a full-sky wash.
+		var layer_col := Color.from_hsv(
+			nebula.h + rng.randf_range(-0.06, 0.06),
+			clampf(nebula.s * 1.1 + 0.1, 0.3, 0.7),
+			clampf(nebula.v * 1.4 + 0.15, 0.2, 0.45)
+		)
 		mat.set_shader_parameter("nebula_color", layer_col)
 		mat.set_shader_parameter("seed_offset", float(i) * 17.3 + float(sim.seed_value % 100) * 0.13)
-		mat.set_shader_parameter("density", rng.randf_range(0.4, 0.7))
-		mat.set_shader_parameter("soft_edge", rng.randf_range(0.25, 0.5))
-		mat.set_shader_parameter("brightness", rng.randf_range(0.22, 0.48))
+		mat.set_shader_parameter("density", rng.randf_range(0.45, 0.65))
+		mat.set_shader_parameter("soft_edge", rng.randf_range(0.4, 0.7))
+		mat.set_shader_parameter("brightness", rng.randf_range(0.18, 0.38))
 		mi.material_override = mat
 		var dir := rng.dir3()
-		mi.position = dir * rng.randf_range(3500.0, 7000.0)
-		mi.look_at(Vector3.ZERO, Vector3.UP)
+		mi.position = dir * rng.randf_range(9000.0, 16000.0)
 		add_child(mi)
+		mi.look_at(Vector3.ZERO, Vector3.UP)
 
 
 func _build_dust(nebula: Color) -> void:
@@ -260,7 +265,7 @@ func _build_planets() -> void:
 		mat.set_shader_parameter("atmosphere_tint", float(p.get("atmosphere", 0.3)))
 		var pclass := str(p.get("planet_class", "rocky"))
 		mat.set_shader_parameter("gas_giant", 1.0 if pclass == "gas_giant" else 0.0)
-		mat.set_shader_parameter("desert", 1.0 if pclass == "desert" or pclass == "lava" or pclass == "barren" else 0.0)
+		mat.set_shader_parameter("desert", 1.0 if pclass == "desert" else 0.0)
 		mat.set_shader_parameter("ice_world", 1.0 if pclass == "ice" else 0.0)
 		mi.material_override = mat
 		root.add_child(mi)
@@ -690,8 +695,9 @@ func sync_ships() -> void:
 		var nh: Vector3 = nearest.get("heading", Vector3(0, 0, -1))
 		if nh.length_squared() < 0.001:
 			nh = Vector3(0, 0, -1)
-		_engine_fx.global_position = np - nh.normalized() * 6.0
-		_engine_fx.look_at(np - nh.normalized() * 20.0, Vector3.UP)
+		var aft := np - nh.normalized() * 6.0
+		_engine_fx.global_position = aft
+		_engine_fx.look_at_from_position(aft, np - nh.normalized() * 20.0, Vector3.UP)
 
 
 func _process(_dt: float) -> void:
