@@ -63,28 +63,30 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
 	var nebula: Color = sim.world.get("nebula_color", Color(0.02, 0.03, 0.05))
-	e.background_color = nebula.darkened(0.35)
+	# Keep space mostly dark; nebula is a subtle tint, not a flat wash.
+	e.background_color = Color(nebula.r * 0.15, nebula.g * 0.15, nebula.b * 0.2).darkened(0.4)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = nebula.lightened(0.15)
-	e.ambient_light_energy = 0.55
+	e.ambient_light_color = Color(0.06, 0.07, 0.1).lerp(nebula, 0.25)
+	e.ambient_light_energy = 0.45
 	e.tonemap_mode = Environment.TONE_MAPPER_ACES
 	e.glow_enabled = true
-	e.glow_intensity = 0.55
-	e.glow_bloom = 0.25
+	e.glow_intensity = 0.7
+	e.glow_bloom = 0.35
 	e.fog_enabled = true
-	e.fog_light_color = nebula
-	e.fog_density = 0.00008
+	e.fog_light_color = nebula.darkened(0.2)
+	e.fog_density = 0.00004
 	env.environment = e
 	add_child(env)
 
 	var stars := MultiMeshInstance3D.new()
-	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 2800)
+	stars.multimesh = StarfieldGen.build_multimesh(sim.seed_value, 3200)
 	var mat := StandardMaterial3D.new()
 	mat.vertex_color_use_as_albedo = true
 	mat.emission_enabled = true
-	mat.emission = Color(0.8, 0.85, 1.0)
-	mat.emission_energy_multiplier = 2.4
+	mat.emission = Color(1.0, 1.0, 1.0)
+	mat.emission_energy_multiplier = 6.0
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.disable_receive_shadows = true
 	stars.material_override = mat
 	add_child(stars)
 

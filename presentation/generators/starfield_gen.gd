@@ -32,12 +32,12 @@ static func build_multimesh(system_seed: int, count: int = 2500) -> MultiMesh:
 			dir = (dir + rng.dir3() * rng.randf_range(0.0, 0.12)).normalized()
 		else:
 			dir = rng.dir3()
-		var dist := rng.randf_range(9000.0, 16000.0)
-		var size := rng.randf_range(2.5, 14.0) * (0.4 + rng.randf() * rng.randf())
+		var dist := rng.randf_range(6000.0, 12000.0)
+		var size := rng.randf_range(6.0, 28.0) * (0.5 + rng.randf() * rng.randf())
 		var temp_t := rng.randf()
 		var col := _temp_color(temp_t)
-		var bright := pow(rng.randf(), 2.2)
-		col = col.lightened(bright * 0.35)
+		var bright := 0.55 + pow(rng.randf(), 1.8) * 0.7
+		col = Color(col.r * bright, col.g * bright, col.b * bright)
 		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * size), dir * dist))
 		mm.set_instance_color(i, col)
 	return mm
