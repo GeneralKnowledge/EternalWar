@@ -24,4 +24,4 @@ static func from_temperature(kelvin: float) -> Color:
 
 
 static func luminosity_energy(luminosity: float) -> float:
-	return 2.4 + clampf(luminosity, 0.3, 3.0) * 1.8
+	return 1.4 + clampf(luminosity, 0.3, 3.0) * 1.1

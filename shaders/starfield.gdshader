@@ -28,6 +28,7 @@ void fragment() {
 	}
 	vec3 col = COLOR.rgb;
 	ALBEDO = col;
-	EMISSION = col * (2.0 + core * 5.0);
+	// Bright points without HDR spikes that bloom into white discs.
+	EMISSION = col * (1.35 + core * 2.4);
 	ALPHA = clamp(a, 0.0, 1.0);
 }

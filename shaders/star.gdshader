@@ -13,6 +13,6 @@ void fragment() {
 	vec3 col = star_color.rgb;
 	vec3 hot = mix(col, vec3(1.0, 0.98, 0.92), 0.65);
 	ALBEDO = mix(col, hot, core);
-	EMISSION = hot * (emission_energy * core_hot * (0.55 + core * 0.9))
-		+ col * rim * corona * 8.0;
+	EMISSION = hot * (emission_energy * core_hot * (0.45 + core * 0.7))
+		+ col * rim * corona * 2.2;
 }
