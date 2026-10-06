@@ -1,0 +1,93 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_capital_spine.jpg",
+  "ew": "tools/visual_compare/eternalwar/ships/ew_ship_hauler_s42_three_quarter.png",
+  "score": 53.331624916696086,
+  "lt_stats": {
+    "mean_Y": 0.1558229625225067,
+    "dark_frac": 0.03593315972222222,
+    "mean_sat": 0.1908559799194336,
+    "mask_frac": 0.21358506381511688,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.17550072073936462,
+      0.14773029088974,
+      0.17487448453903198
+    ],
+    "emissive_frac": 0.0008940972222222222
+  },
+  "ew_stats": {
+    "mean_Y": 0.11032713949680328,
+    "dark_frac": 0.0019184027777777778,
+    "mean_sat": 0.5894564986228943,
+    "mask_frac": 0.03708767518401146,
+    "aspect": 0.930681818181818,
+    "bbox": [
+      0.3515625,
+      0.38055555555555554,
+      0.284375,
+      0.3055555555555556
+    ],
+    "mean_rgb": [
+      0.0812593623995781,
+      0.11058813333511353,
+      0.18998751044273376
+    ],
+    "emissive_frac": 0.0
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Saturation",
+      "delta": 0.3986005187034607,
+      "weighted": 0.3188804149627686,
+      "category": "colour"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.715625,
+      "weighted": 0.10734374999999999,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.6944444444444444,
+      "weighted": 0.10416666666666666,
+      "category": "proportion"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.1024176598126842,
+      "weighted": 0.09217589383141579,
+      "category": "colour"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.17649738863110542,
+      "weighted": 0.044124347157776356,
+      "category": "silhouette"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.024261363636363678,
+      "weighted": 0.02911363636363641,
+      "category": "proportion"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.04549582302570343,
+      "weighted": 0.022747911512851715,
+      "category": "lighting"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.0008940972222222222,
+      "weighted": 0.0008940972222222222,
+      "category": "engine"
+    }
+  ]
+}

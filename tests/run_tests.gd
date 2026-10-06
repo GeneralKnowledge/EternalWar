@@ -38,6 +38,14 @@ func _ok(name: String, cond: bool, detail: String = "") -> void:
 		print("FAIL  ", name, "  ", detail)
 
 
+func _count_mod(modules: Array, type_name: String) -> int:
+	var n := 0
+	for m in modules:
+		if str(m.get("type", "")) == type_name:
+			n += 1
+	return n
+
+
 func _test_seeded_rng() -> void:
 	var a := SeededRNG.new(123)
 	var b := SeededRNG.new(123)
@@ -191,10 +199,18 @@ func _test_ship_design_grammar() -> void:
 			var t: String = str(m["type"])
 			if not miner_types.has(t):
 				miner_types.append(t)
-	_ok("Miners share mining module vocabulary", miner_types.has("drill") or miner_types.has("ore_bay"))
+	_ok("Miners share mining module vocabulary", miner_types.has("drill") or miner_types.has("ore_bay") or miner_types.has("boom"))
 	var patrol := ShipDesign.build({"seed": 11, "ship_class": SimEntities.ShipClass.PATROL, "style": "military", "color": Color.WHITE, "accent": Color.GRAY})
 	var hauler := ShipDesign.build({"seed": 11, "ship_class": SimEntities.ShipClass.HAULER, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
 	_ok("Patrol vs hauler different silhouette dims", float(patrol["length"]) < float(hauler["length"]))
+	_ok("Patrol is flatter than hauler", float(patrol["height"]) < float(hauler["height"]) * 0.85)
+	_ok("Hauler has spine/cargo negative-space modules", _count_mod(hauler["modules"], "spine") + _count_mod(hauler["modules"], "cargo") >= 3)
+	_ok("Style profile exposes hull language", str(patrol["hull"].get("language", "")) != "")
+	_ok("Exhaust not hard-coded missing", patrol.has("exhaust") and (patrol["exhaust"] as Color).a > 0.0)
+	var mil := StyleProfile.of("military")
+	var mine := StyleProfile.of("mining")
+	_ok("Military vs mining different exhaust family", str(mil.get("exhaust_family")) != str(mine.get("exhaust_family")))
+	_ok("Style negative_space present", mil.has("negative_space") and mine.has("negative_space"))
 	# Isolation: changing one design seed does not alter another object's seed derivation from parent
 	var parent := 100
 	var ship_a := SeedHash.derive_i(parent, "ship", 0)
