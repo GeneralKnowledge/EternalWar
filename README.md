@@ -4,20 +4,21 @@ A Godot 4.3 procedural space simulation inspired by the cancelled indie game **L
 
 This is **not** a clone. It studies publicly released Limit Theory / Limit Theory Redux source for architectural ideas (economy job boards, payout-driven AI, seeded generation, simulation/presentation split), then reimplements those ideas cleanly in modern Godot.
 
-See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) for research notes.
+**Current focus:** procedural visuals — come close to how brilliant Limit Theory *looked*. Systems work (economy, AI) is foundation and frozen until the look clears the screenshot bar.
+
+See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) and [`docs/visual-generation-devnote.md`](docs/visual-generation-devnote.md).
 
 ## What works in this prototype
 
 - Deterministic seeded star system with **hierarchical child seeds**
-- Procedural starfield, star types, planet classes (shader), asteroid fields, modular stations, class/style ships
-- ~400 autonomous ships as **data**, MultiMesh rendering per class
-- Mining → delivery and station-to-station trade jobs
-- Production chains: ore → metal → components (+ energy/food sinks)
-- Supply/demand price response
-- Observe mode (watch the universe) and fly mode (enter the simulation)
+- Deep-space sky: billboard starfield, seeded nebula layers, dust motes, star corona
+- Planet classes with fresnel atmospheres, rings, class-distinct shaders
+- ShapeLib-lite modular ships & stations (near-field per-design meshes)
+- Composition-driven asteroid fields (iron / silicate / carbon / ice)
+- ~400 autonomous ships as **data**, MultiMesh far-field + detailed near-field
+- Mining → delivery and station-to-station trade jobs (foundation)
+- Observe mode with cinematic presets + fly mode
 - Debug overlay with sim stats + nearest-ship design inspect (F3 pause)
-
-See also: `docs/visual-generation-devnote.md`, `docs/limit-theory-research.md`.
 
 ## Requirements
 
@@ -41,10 +42,12 @@ godot --path .
 | **F1** | Toggle observe ↔ fly |
 | Arrow keys | Orbit camera (observe) |
 | `+` / `-` | Zoom (observe) |
+| **1 / 2 / 3** | Cinematic presets: system orbit / planet approach / station flyby |
 | Mouse | Look (fly, click to capture) |
 | WASD | Thrust (fly) |
 | Space / C | Up / down (fly) |
 | **F2** | Dock with nearest station & trade (fly, within range) |
+| **F3** | Pause sim (inspect) |
 | Esc | Release mouse |
 
 ## Tests
@@ -59,30 +62,45 @@ godot --headless --path . -s res://tests/run_tests.gd
 
 ```
 Game
-├── simulation/     # Data-oriented world (no Nodes)
+├── simulation/     # Data-oriented world (no Nodes) — foundation, frozen
 │   ├── seeded_rng.gd
 │   ├── system_generator.gd
 │   ├── economy_system.gd
 │   ├── ship_ai.gd
 │   └── star_system_sim.gd
-├── presentation/   # Rendering + HUD
-├── player/         # Fly / observe controls
+├── presentation/   # Rendering + HUD — active development
+│   └── generators/ # Starfield, ShapeLib-lite ships/stations, asteroids
+├── shaders/        # Star, planet, nebula, atmosphere, starfield
+├── player/         # Fly / observe / cinematic presets
 ├── scenes/main.tscn
-└── docs/limit-theory-research.md
+└── docs/
 ```
 
 Ships, stations, and markets live as dictionaries inside `StarSystemSim`. Godot Nodes render and interact; they are not the source of truth.
 
 ## Milestones
 
+### Foundation (frozen — do not expand until visual ladder clears)
+
 | # | Goal | Status |
 |---|------|--------|
 | 0 | LT research doc | Done |
-| 1 | Procedural system | Done |
+| 1 | Procedural system + hierarchical seeds | Done |
 | 2 | Autonomous ships | Done |
-| 3 | Economy | Done (prototype) |
-| 4 | Factions | Partial (colors / ownership) |
-| 5+ | Conflict, LOD, galaxy, fleets | Planned |
+| 3 | Economy (job board, production, prices) | Done (prototype) |
+
+### Visual-first ladder (active)
+
+Each exit criterion is **screenshot proof**, not new sim features. Living system stays as the canvas.
+
+| # | Goal | Status |
+|---|------|--------|
+| A | Sky & atmosphere — deep space, billboard stars, nebula, dust, corona | In progress |
+| B | World bodies — fresnel atmospheres, class-distinct planets, rings | In progress |
+| C | Shape language — ShapeLib-lite ships/stations, near-field per-design | In progress |
+| D | Field identity — composition-driven yields, life particles | In progress |
+| E | Showcase pass — cinematic presets, acceptance checklist | In progress |
+| F | Systems resume — factions, conflict, galaxy, fleets | Blocked on E |
 
 ## Rust policy
 

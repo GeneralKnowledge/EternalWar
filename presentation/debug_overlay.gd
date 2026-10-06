@@ -40,11 +40,15 @@ func _process(_dt: float) -> void:
 	var p := sim.perf
 	var m: Dictionary = sim.economy.metrics
 	var prices: Dictionary = m.get("avg_prices", {})
-	var mode := "OBSERVE (F1 fly)" if player == null or player.observe_mode else "FLY (F1 observe, F2 dock/trade)"
+	var mode := "OBSERVE (F1 fly, 1/2/3 cinema)" if player == null or player.observe_mode else "FLY (F1 observe, F2 dock/trade)"
+	var cinema := ""
+	if player != null and player.observe_mode:
+		var names := ["system orbit", "planet approach", "station flyby"]
+		cinema = "  Cinema: %s" % names[clampi(player.cinematic_preset, 0, 2)]
 	var star: Dictionary = sim.world.get("star", {})
 	var cache := MeshCache.stats()
 	var lines: PackedStringArray = PackedStringArray([
-		"Limit Theory Prototype  |  seed %d  |  %s%s" % [sim.seed_value, mode, "  [PAUSED F3]" if paused else ""],
+		"Limit Theory Prototype  |  seed %d  |  %s%s%s" % [sim.seed_value, mode, cinema, "  [PAUSED F3]" if paused else ""],
 		"System: %s   t=%.1fs   Star: %s (%.0fK)" % [
 			str(sim.world.get("name", "?")), float(sim.world.get("sim_time", 0.0)),
 			str(star.get("star_type", "?")), float(star.get("temperature", 0.0))

@@ -29,7 +29,7 @@ func _ready() -> void:
 
 	player = PlayerController.new()
 	add_child(player)
-	player.setup(sim, camera)
+	player.setup(sim, camera, presenter)
 
 	overlay = DebugOverlay.new()
 	add_child(overlay)

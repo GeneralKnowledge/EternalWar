@@ -1,5 +1,4 @@
-## Modular procedural station mesh — composition driven by role + faction style.
-## Inspired by LT Station.lua: assemble primitives on joints rather than unique sculptures.
+## Modular procedural station — architectural kits by role + faction style.
 class_name StationMeshGen
 extends RefCounted
 
@@ -13,7 +12,8 @@ const ROLE_HABITAT := "habitat"
 static func build(design: Dictionary) -> ArrayMesh:
 	var seed: int = int(design.get("seed", 1))
 	var role: String = str(design.get("role", ROLE_TRADE))
-	var key := "station:%d:%s" % [seed, role]
+	var style: String = str(design.get("style", "industrial"))
+	var key := "station:%d:%s:%s" % [seed, role, style]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -21,134 +21,64 @@ static func build(design: Dictionary) -> ArrayMesh:
 	var rng := SeededRNG.new(seed)
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var style: String = str(design.get("style", "industrial"))
 	var accent: Color = design.get("color", Color(0.6, 0.65, 0.7))
+	var spine_h := rng.randf_range(1.8, 2.6)
+	if style == "military":
+		spine_h *= 1.15
+	elif style == "civilian" or style == "luxury":
+		spine_h *= 0.9
 
-	# Core
-	_box(st, Vector3.ZERO, Vector3(1.2, 1.0, 1.2), accent)
-
-	# Spire / command
-	_box(st, Vector3(0, 1.4, 0), Vector3(0.35, 1.6, 0.35), accent.lightened(0.1))
+	# Central spine / habitat core
+	ShapePrims.bevel_box(st, Vector3.ZERO, Vector3(1.15, 1.1, 1.15), accent, 0.08)
+	ShapePrims.cylinder(st, Vector3(0, 0.55, 0), 0.28, spine_h, accent.lightened(0.08), 8)
+	ShapePrims.box(st, Vector3(0, 0.55 + spine_h, 0), Vector3(0.55, 0.35, 0.55), accent.lightened(0.12))
 
 	match role:
 		ROLE_MINING:
-			_box(st, Vector3(1.6, 0, 0), Vector3(1.4, 0.7, 0.9), accent.darkened(0.15))
-			_box(st, Vector3(-1.6, 0, 0), Vector3(1.4, 0.7, 0.9), accent.darkened(0.15))
-			_box(st, Vector3(0, -0.2, 1.8), Vector3(0.8, 0.5, 1.5), Color(0.45, 0.4, 0.3))
-			for i in 3:
-				var y := -0.8 - float(i) * 0.55
-				_box(st, Vector3(0, y, 2.4), Vector3(0.35, 0.25, 0.35), Color(0.35, 0.32, 0.28))
-		ROLE_TRADE:
+			ShapePrims.mirrored_x(st, Vector3(1.7, 0, 0), Vector3(1.5, 0.75, 1.0), accent.darkened(0.15))
+			ShapePrims.box(st, Vector3(0, -0.25, 2.0), Vector3(0.9, 0.55, 1.7), Color(0.45, 0.4, 0.3))
 			for i in 4:
-				var a := float(i) * TAU * 0.25 + 0.2
-				var p := Vector3(cos(a) * 2.0, 0.0, sin(a) * 2.0)
-				_box(st, p, Vector3(0.9, 0.45, 0.9), accent.lightened(0.05))
-			_box(st, Vector3(0, 0.1, 0), Vector3(2.4, 0.25, 2.4), accent.darkened(0.2))
+				var y := -0.7 - float(i) * 0.5
+				ShapePrims.cylinder(st, Vector3(0, y, 2.55), 0.18, 0.35, Color(0.35, 0.32, 0.28), 6)
+			ShapePrims.ring(st, Vector3(0, -0.2, 0), 2.4, 0.18, accent.darkened(0.25), 10)
+		ROLE_TRADE:
+			ShapePrims.ring(st, Vector3.ZERO, 2.15, 0.28, accent.darkened(0.15), 12)
+			for i in 4:
+				var a := float(i) * TAU * 0.25 + 0.15
+				var p := Vector3(cos(a) * 2.05, 0.15, sin(a) * 2.05)
+				ShapePrims.bevel_box(st, p, Vector3(0.95, 0.5, 0.95), accent.lightened(0.05), 0.05)
+			ShapePrims.box(st, Vector3(0, 0.05, 0), Vector3(2.5, 0.22, 2.5), accent.darkened(0.2))
 		ROLE_INDUSTRIAL:
-			_box(st, Vector3(1.8, 0.2, 0), Vector3(1.6, 1.4, 1.1), accent.darkened(0.1))
-			_box(st, Vector3(-1.8, 0.2, 0), Vector3(1.6, 1.4, 1.1), accent.darkened(0.1))
-			_box(st, Vector3(0, 0, 2.0), Vector3(1.0, 0.8, 1.3), Color(0.5, 0.45, 0.4))
-			for i in 2:
-				_cyl_approx(st, Vector3(1.2 + float(i) * 0.7, 1.6, 0.8), 0.2, 1.2, Color(0.4, 0.4, 0.42))
-		ROLE_MILITARY:
-			_box(st, Vector3(0, 0, 0), Vector3(1.6, 0.7, 2.2), accent.darkened(0.25))
+			ShapePrims.mirrored_x(st, Vector3(1.9, 0.25, 0), Vector3(1.7, 1.5, 1.15), accent.darkened(0.1))
+			ShapePrims.box(st, Vector3(0, 0, 2.1), Vector3(1.1, 0.85, 1.4), Color(0.5, 0.45, 0.4))
 			for i in 3:
-				var z := -1.2 + float(i) * 1.1
-				_box(st, Vector3(1.5, 0.3, z), Vector3(0.5, 0.35, 0.5), Color(0.7, 0.25, 0.25))
-				_box(st, Vector3(-1.5, 0.3, z), Vector3(0.5, 0.35, 0.5), Color(0.7, 0.25, 0.25))
-			_box(st, Vector3(0, 2.0, 0), Vector3(0.5, 0.9, 0.5), accent)
+				ShapePrims.cylinder(st, Vector3(1.0 + float(i) * 0.55, 1.4, 0.7), 0.18, 1.35, Color(0.4, 0.4, 0.42), 6)
+			ShapePrims.ring(st, Vector3(0, 0.8, 0), 1.6, 0.12, accent.darkened(0.3), 8)
+		ROLE_MILITARY:
+			ShapePrims.bevel_box(st, Vector3(0, 0, 0), Vector3(1.7, 0.75, 2.4), accent.darkened(0.25), 0.06)
+			for i in 3:
+				var z := -1.25 + float(i) * 1.15
+				ShapePrims.mirrored_x(st, Vector3(1.55, 0.35, z), Vector3(0.55, 0.4, 0.55), Color(0.72, 0.22, 0.22))
+			ShapePrims.box(st, Vector3(0, 2.15, 0), Vector3(0.55, 1.0, 0.55), accent)
+			ShapePrims.wing(st, Vector3(1.2, 0, 0.2), 1.1, 1.4, 0.12, accent.darkened(0.2), 0.1)
+			ShapePrims.wing(st, Vector3(-1.2, 0, 0.2), -1.1, 1.4, 0.12, accent.darkened(0.2), 0.1)
 		_:
-			_box(st, Vector3(1.4, 0.3, 0), Vector3(1.0, 1.1, 1.0), accent.lightened(0.15))
-			_box(st, Vector3(-1.4, 0.3, 0), Vector3(1.0, 1.1, 1.0), accent.lightened(0.15))
-			_box(st, Vector3(0, 0.5, 1.6), Vector3(1.2, 0.9, 0.8), accent)
+			ShapePrims.ring(st, Vector3(0, 0.4, 0), 1.9, 0.35, accent.lightened(0.1), 14)
+			ShapePrims.mirrored_x(st, Vector3(1.5, 0.35, 0), Vector3(1.05, 1.15, 1.05), accent.lightened(0.12))
+			ShapePrims.box(st, Vector3(0, 0.55, 1.7), Vector3(1.25, 0.95, 0.85), accent)
 
-	# Docking arm — all roles
-	var dock_len := rng.randf_range(1.4, 2.2)
-	_box(st, Vector3(0, -0.9, dock_len * 0.5), Vector3(0.35, 0.25, dock_len), accent.darkened(0.05))
-	_box(st, Vector3(0, -0.9, dock_len), Vector3(0.9, 0.4, 0.5), Color(0.8, 0.75, 0.4))
+	# Docking arm
+	var dock_len := rng.randf_range(1.5, 2.4)
+	ShapePrims.box(st, Vector3(0, -1.0, dock_len * 0.5), Vector3(0.32, 0.22, dock_len), accent.darkened(0.05))
+	ShapePrims.bevel_box(st, Vector3(0, -1.0, dock_len), Vector3(1.0, 0.45, 0.55), Color(0.82, 0.75, 0.4), 0.04)
 
-	# Style tweak: exposed industrial scaffolding
-	if style == "industrial" or style == "pirate":
+	if style == "industrial" or style == "pirate" or style == "mining":
 		for i in 4:
 			var a := float(i) * TAU * 0.25
-			_box(st, Vector3(cos(a) * 1.1, rng.randf_range(-0.5, 1.0), sin(a) * 1.1), Vector3(0.12, 1.4, 0.12), accent.darkened(0.3))
+			ShapePrims.box(st, Vector3(cos(a) * 1.15, rng.randf_range(-0.4, 1.1), sin(a) * 1.15), Vector3(0.1, 1.5, 0.1), accent.darkened(0.35))
+	elif style == "luxury" or style == "civilian":
+		ShapePrims.ring(st, Vector3(0, 1.2, 0), 1.2, 0.1, accent.lightened(0.2), 10)
 
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh
-
-
-static func _box(st: SurfaceTool, center: Vector3, size: Vector3, color: Color) -> void:
-	var hx := size.x * 0.5
-	var hy := size.y * 0.5
-	var hz := size.z * 0.5
-	var v := [
-		center + Vector3(-hx, -hy, -hz),
-		center + Vector3(hx, -hy, -hz),
-		center + Vector3(hx, hy, -hz),
-		center + Vector3(-hx, hy, -hz),
-		center + Vector3(-hx, -hy, hz),
-		center + Vector3(hx, -hy, hz),
-		center + Vector3(hx, hy, hz),
-		center + Vector3(-hx, hy, hz),
-	]
-	var faces := [
-		[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7],
-		[1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0],
-	]
-	for f in faces:
-		var a: Vector3 = v[f[0]]
-		var b: Vector3 = v[f[1]]
-		var c: Vector3 = v[f[2]]
-		var d: Vector3 = v[f[3]]
-		var n: Vector3 = (b - a).cross(c - a).normalized()
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(a)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(b)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(c)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(a)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(c)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(d)
-
-
-static func _cyl_approx(st: SurfaceTool, base: Vector3, radius: float, height: float, color: Color) -> void:
-	# Low-segment prism as chimney/tank.
-	var seg := 6
-	var top := base + Vector3(0, height, 0)
-	for i in seg:
-		var a0 := float(i) / float(seg) * TAU
-		var a1 := float(i + 1) / float(seg) * TAU
-		var p0 := base + Vector3(cos(a0) * radius, 0, sin(a0) * radius)
-		var p1 := base + Vector3(cos(a1) * radius, 0, sin(a1) * radius)
-		var p2 := top + Vector3(cos(a1) * radius, 0, sin(a1) * radius)
-		var p3 := top + Vector3(cos(a0) * radius, 0, sin(a0) * radius)
-		var n: Vector3 = (p1 - p0).cross(p3 - p0).normalized()
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p0)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p1)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p2)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p0)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p2)
-		st.set_normal(n)
-		st.set_color(color)
-		st.add_vertex(p3)

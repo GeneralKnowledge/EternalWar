@@ -121,6 +121,14 @@ func _test_mesh_generators() -> void:
 		"accent": Color(0.4, 0.3, 0.2),
 	})
 	_ok("Ship mesh cache hit", ship_mesh == ship_mesh2)
+	var patrol := ShipMeshGen.build({
+		"seed": 99,
+		"ship_class": SimEntities.ShipClass.PATROL,
+		"style": "military",
+		"color": Color(0.7, 0.7, 0.8),
+		"accent": Color(0.5, 0.2, 0.2),
+	})
+	_ok("Patrol mesh distinct from miner", patrol != null and patrol != ship_mesh)
 	var st_mesh := StationMeshGen.build({
 		"seed": 99,
 		"role": "mining",
@@ -128,12 +136,25 @@ func _test_mesh_generators() -> void:
 		"color": Color(0.6, 0.5, 0.3),
 	})
 	_ok("Station mesh builds", st_mesh != null and st_mesh.get_surface_count() > 0)
+	var trade_st := StationMeshGen.build({
+		"seed": 99,
+		"role": "trade",
+		"style": "civilian",
+		"color": Color(0.6, 0.5, 0.3),
+	})
+	_ok("Trade station mesh differs by role", trade_st != null and trade_st != st_mesh)
 	var ast := AsteroidMeshGen.build(42, 1)
 	_ok("Asteroid mesh builds", ast != null and ast.get_surface_count() > 0)
 	var desc := ShipMeshGen.describe({"seed": 12345, "ship_class": SimEntities.ShipClass.MINER, "style": "mining"})
 	_ok("Ship describe has hull dims", float(desc.get("length", 0)) > 0.0 and int(desc.get("engines", 0)) >= 1)
 	var mm := StarfieldGen.build_multimesh(42, 100)
 	_ok("Starfield MultiMesh", mm != null and mm.instance_count == 100)
+	_ok("Starfield uses QuadMesh billboards", mm.mesh is QuadMesh)
+	# Seed → mesh key stability across styles
+	MeshCache.clear()
+	var a := ShipMeshGen.build({"seed": 7, "ship_class": 0, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
+	var b := ShipMeshGen.build({"seed": 7, "ship_class": 0, "style": "civilian", "color": Color.WHITE, "accent": Color.GRAY})
+	_ok("Design seed mesh stable", a == b)
 
 
 func _test_economy_runs() -> void:
