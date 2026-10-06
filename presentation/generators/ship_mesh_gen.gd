@@ -1,5 +1,6 @@
 ## Procedural ship mesh from ShipDesign grammar (role silhouette + style constraints).
-## Tiered construction matching LT ShapeLib principles: hull → modules → wings → surface.
+## Tiered construction: hull → modules → wings → surface.
+## Geometry ops live in GeometryKernel; ShapePrims remains the semantic facade.
 class_name ShipMeshGen
 extends RefCounted
 
@@ -15,7 +16,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s:lod%d:v2" % [seed, ship_class, style, lod]
+	var key := "ship:%d:%d:%s:lod%d:v3" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -38,38 +39,56 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var include_secondary := lod <= VisualLOD.LOD_SIMPLE
 	var include_functional := lod <= VisualLOD.LOD_LOW
 	var include_engines := true
+	var bevel_segs := 2 if lod <= VisualLOD.LOD_FULL else (1 if lod <= VisualLOD.LOD_SIMPLE else 0)
+	var bevel_amt := float(hull.get("bevel", 0.18))
+	if lod >= VisualLOD.LOD_LOW:
+		bevel_amt *= 0.45
+	if lod >= VisualLOD.LOD_BATCH:
+		bevel_amt = 0.0
+		bevel_segs = 0
 
 	# Tier 1 — silhouette hull
-	_emit_hull(st, hull, length, width, height, color, nose)
+	_emit_hull(st, hull, length, width, height, color, nose, bevel_amt, bevel_segs)
 
 	# Tier 2 — engines + functional modules
 	if include_engines:
 		for e in desc["engines"]:
 			var ep: Vector3 = e["pos"]
 			var ex: Color = e.get("exhaust", exhaust)
-			ShapePrims.nacelle(st, ep, float(e["radius"]), float(e["length"]), accent.darkened(0.15), ex)
+			var segs := int(e.get("segments", 6))
+			var er := float(e["radius"])
+			var el := float(e["length"])
+			if lod >= VisualLOD.LOD_BATCH:
+				ShapePrims.box(st, ep, Vector3(er * 1.6, er * 1.6, el), accent.darkened(0.2))
+			else:
+				# Keel fairing from hull into engine housing (structural connection)
+				if ship_class == SimEntities.ShipClass.PATROL and lod <= VisualLOD.LOD_SIMPLE:
+					var keel: Array = [
+						GeometryKernel.station(ep.z - el * 0.55, er * 2.4, er * 1.8, ep.y, ep.x * 0.55, "ngon", segs),
+						GeometryKernel.station(ep.z - el * 0.15, er * 2.0, er * 1.7, ep.y, ep.x, "ngon", segs),
+					]
+					GeometryKernel.loft_hull(st, keel, color.darkened(0.08), bevel_amt * 0.6, 1, true, true)
+				GeometryKernel.engine_block(
+					st, ep, er, el, accent.darkened(0.15), ex, bevel_amt * 0.8, segs
+				)
 
 	if include_functional:
 		for m in desc["modules"]:
 			_emit_module(st, m, accent, color, lod, exhaust)
 
-	for hp in desc["hardpoints"]:
-		ShapePrims.box(st, hp["pos"], hp["size"], Color(0.55, 0.22, 0.18))
+	if include_functional:
+		for hp in desc["hardpoints"]:
+			_emit_hardpoint(st, hp, color, accent, lod)
 
 	# Tier 3 — wings, struts, plates
 	if include_secondary:
 		for w in desc["wings"]:
-			if bool(w.get("tie", false)):
-				ShapePrims.box(st, w["root"], Vector3(absf(float(w["span"])) * 2.0, float(w["thickness"]), float(w["chord"])), accent.darkened(0.12))
-			else:
-				ShapePrims.wing_plate(
-					st, w["root"], float(w["span"]), float(w["chord"]), float(w["thickness"]),
-					accent.darkened(0.08), float(w["sweep"]), 0.32
-				)
+			_emit_wing(st, w, accent, lod)
 		for s in desc.get("struts", []):
 			ShapePrims.strut(st, s["a"], s["b"], float(s.get("thickness", 0.06)), color.darkened(0.1))
 		for p in desc.get("plates", []):
-			ShapePrims.panel(st, p["pos"], p["size"], color.darkened(0.12))
+			if lod <= VisualLOD.LOD_FULL:
+				ShapePrims.panel(st, p["pos"], p["size"], color.darkened(0.12))
 
 	# Tier 4 — surface ridges / pirate salvage
 	if include_surface and (style == STYLE_INDUSTRIAL or style == STYLE_MINING):
@@ -85,11 +104,18 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 			Color(0.42, 0.22, 0.18)
 		)
 
-	if include_surface and style == STYLE_MILITARY:
-		# Armour ridge along dorsal
+	if include_surface and style == STYLE_MILITARY and ship_class == SimEntities.ShipClass.PATROL:
+		# Single dorsal armour ridge — follows hull, does not stack a second hull
+		var plate_stations: Array = [
+			GeometryKernel.station(-length * 0.08, width * 0.32, height * 0.06, height * 0.34, 0.0, "fighter", 6),
+			GeometryKernel.station(length * 0.22, width * 0.28, height * 0.05, height * 0.32, 0.0, "fighter", 6),
+		]
+		GeometryKernel.loft_hull(st, plate_stations, color.darkened(0.1), 0.16, 1, true, true)
+	elif include_surface and style == STYLE_MILITARY:
 		ShapePrims.box(st, Vector3(0, height * 0.4, length * 0.05), Vector3(width * 0.55, height * 0.08, length * 0.45), color.darkened(0.15))
 
-	st.generate_normals()
+	# Face normals are authored by GeometryKernel / ShapePrims — do not smooth
+	# (smoothing on thin wings produces black streaking).
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh
 
@@ -113,17 +139,28 @@ static func describe(design: Dictionary) -> Dictionary:
 		"module_types": _module_types(desc["modules"]),
 		"role_name": str(desc["role_name"]),
 		"hull_language": str(desc.get("hull", {}).get("language", "")),
+		"stations": (desc.get("hull", {}).get("stations", []) as Array).size(),
 		"negative_space": float(desc.get("negative_space", 0.0)),
 	}
 
 
 static func _emit_hull(
-	st: SurfaceTool, hull: Dictionary, length: float, width: float, height: float, color: Color, nose: float
+	st: SurfaceTool, hull: Dictionary, length: float, width: float, height: float,
+	color: Color, nose: float, bevel_amt: float, bevel_segs: int
 ) -> void:
 	var lang := str(hull.get("language", "wedge"))
 	var sides := int(hull.get("sides", 6))
 	var aft := float(hull.get("aft_taper", 0.88))
+	var stations: Array = hull.get("stations", [])
 	match lang:
+		"loft":
+			if stations.is_empty():
+				stations = [
+					GeometryKernel.station(-length * 0.5, width * nose * 0.5, height * nose * 0.5),
+					GeometryKernel.station(0.0, width, height),
+					GeometryKernel.station(length * 0.5, width * aft, height * aft),
+				]
+			GeometryKernel.loft_hull(st, stations, color, bevel_amt, maxi(bevel_segs, 1), true, true)
 		"block":
 			ShapePrims.block_hull(st, Vector3.ZERO, length, width, height, color)
 		"round":
@@ -133,6 +170,46 @@ static func _emit_hull(
 			ShapePrims.prism_hull(st, Vector3(0, 0, -length * 0.15), length * 0.55, width * 0.85, height * 0.85, color, sides, nose, aft)
 		_:
 			ShapePrims.prism_hull(st, Vector3.ZERO, length, width, height, color, sides, nose, aft)
+
+
+static func _emit_wing(st: SurfaceTool, w: Dictionary, accent: Color, lod: int) -> void:
+	if bool(w.get("tie", false)):
+		ShapePrims.box(st, w["root"], Vector3(absf(float(w["span"])) * 2.0, float(w["thickness"]), float(w["chord"])), accent.darkened(0.12))
+		return
+	var root: Vector3 = w["root"]
+	var span := float(w["span"])
+	var chord := float(w["chord"])
+	var tip_chord := float(w.get("tip_chord", chord * 0.35))
+	var thick := float(w["thickness"])
+	var sweep := float(w.get("sweep", 0.2))
+	var dihedral := float(w.get("dihedral", 0.0))
+	var le_bias := float(w.get("le_bias", 0.4))
+	var tip := root + Vector3(span, 0, sweep * chord)
+	if lod >= VisualLOD.LOD_BATCH:
+		ShapePrims.box(st, root.lerp(tip, 0.45), Vector3(absf(span) * 0.9, thick, chord * 0.7), accent.darkened(0.1))
+		return
+	# Optional root fairing: short loft from inboard toward wing root (fills negative-space gap)
+	if bool(w.get("fairing", false)) and lod <= VisualLOD.LOD_SIMPLE:
+		var inboard := root - Vector3(signf(span) * absf(span) * 0.08, 0, 0)
+		var fair_stations: Array = [
+			GeometryKernel.station(root.z - chord * 0.35, thick * 2.2, thick * 1.6, root.y, inboard.x, "box", 4),
+			GeometryKernel.station(root.z + chord * 0.25, thick * 1.8, thick * 1.3, root.y, root.x, "box", 4),
+		]
+		GeometryKernel.loft_hull(st, fair_stations, accent.darkened(0.05), 0.1, 1, true, true)
+	GeometryKernel.wing_planform(
+		st, root, tip, chord, tip_chord, thick, accent.darkened(0.08), dihedral, le_bias
+	)
+
+
+static func _emit_hardpoint(st: SurfaceTool, hp: Dictionary, color: Color, accent: Color, lod: int) -> void:
+	var pos: Vector3 = hp["pos"]
+	var size: Vector3 = hp["size"]
+	if lod >= VisualLOD.LOD_LOW:
+		ShapePrims.box(st, pos, size * 0.7, accent.darkened(0.2))
+		return
+	var orient: Vector3 = hp.get("orient", Vector3(0, 0, -1))
+	var role := str(hp.get("role", "gun"))
+	GeometryKernel.hardpoint_shelf(st, pos, size, orient, color.darkened(0.05), accent.darkened(0.1), role)
 
 
 static func _emit_module(
@@ -145,7 +222,6 @@ static func _emit_module(
 		"drill":
 			ShapePrims.cylinder_z(st, pos + Vector3(0, 0, -size.z * 0.15), size.x * 0.22, size.z * 0.7, Color(0.35, 0.33, 0.28), 7)
 			ShapePrims.box(st, pos, size * Vector3(0.85, 0.7, 0.55), Color(0.42, 0.38, 0.3))
-			# Head
 			ShapePrims.box(st, pos + Vector3(0, -size.y * 0.2, -size.z * 0.4), Vector3(size.x * 0.55, size.y * 0.35, size.z * 0.25), Color(0.5, 0.45, 0.35))
 		"boom":
 			ShapePrims.cylinder_z(st, pos, size.x * 0.45, size.z, color.darkened(0.1), 6)
@@ -160,16 +236,27 @@ static func _emit_module(
 			ShapePrims.cylinder(st, pos - Vector3(0, size.y * 0.5, 0), size.x * 0.35, size.y, Color(0.4, 0.36, 0.3), 5)
 			ShapePrims.box(st, pos + Vector3(size.x * 0.4, size.y * 0.2, 0), Vector3(size.x * 0.9, size.x * 0.25, size.x * 0.25), Color(0.38, 0.34, 0.28))
 		"cockpit":
-			ShapePrims.bevel_box(st, pos, size, color.lightened(0.12), 0.06)
-			# Glass strip
-			ShapePrims.box(st, pos + Vector3(0, size.y * 0.15, -size.z * 0.15), Vector3(size.x * 0.7, size.y * 0.25, size.z * 0.35), Color(0.45, 0.55, 0.65))
+			if lod <= VisualLOD.LOD_FULL:
+				GeometryKernel.cockpit_blister(st, pos, size, color.lightened(0.08), Color(0.4, 0.52, 0.62))
+			else:
+				ShapePrims.bevel_box(st, pos, size, color.lightened(0.12), 0.06)
 		"fin":
 			ShapePrims.fin(st, pos, size, accent.darkened(0.05))
 		"sensor":
-			ShapePrims.box(st, pos, size, Color(0.5, 0.55, 0.58))
-			ShapePrims.box(st, pos + Vector3(0, size.y * 0.3, 0), Vector3(size.x * 0.4, size.y * 0.2, size.z * 0.4), exhaust.darkened(0.2))
+			var sensor_stations: Array = [
+				GeometryKernel.station(pos.z - size.z * 0.4, size.x * 0.7, size.y * 0.7, pos.y, pos.x, "ngon", 6),
+				GeometryKernel.station(pos.z + size.z * 0.4, size.x, size.y, pos.y, pos.x, "ngon", 6),
+			]
+			GeometryKernel.loft_hull(st, sensor_stations, Color(0.48, 0.52, 0.55), 0.12, 1, true, true)
+			ShapePrims.box(st, pos + Vector3(0, size.y * 0.25, 0), Vector3(size.x * 0.35, size.y * 0.15, size.z * 0.35), exhaust.darkened(0.25))
 		"mount":
-			ShapePrims.prism_hull(st, pos, size.z, size.x, size.y, accent.darkened(0.1), 6, 0.7, 0.9)
+			# Wing mount prism — structural mass with gap from core hull
+			var mount_stations: Array = [
+				GeometryKernel.station(pos.z - size.z * 0.45, size.x * 0.7, size.y * 0.75, pos.y, pos.x, "ngon", 6),
+				GeometryKernel.station(pos.z + size.z * 0.1, size.x, size.y, pos.y, pos.x, "ngon", 6),
+				GeometryKernel.station(pos.z + size.z * 0.45, size.x * 0.85, size.y * 0.7, pos.y, pos.x, "ngon", 6),
+			]
+			GeometryKernel.loft_hull(st, mount_stations, accent.darkened(0.12), 0.14, 1, true, true)
 		_:
 			ShapePrims.box(st, pos, size, accent)
 

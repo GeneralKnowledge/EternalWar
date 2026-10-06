@@ -206,7 +206,45 @@ func _test_ship_design_grammar() -> void:
 	_ok("Patrol is flatter than hauler", float(patrol["height"]) < float(hauler["height"]) * 0.85)
 	_ok("Hauler has spine/cargo negative-space modules", _count_mod(hauler["modules"], "spine") + _count_mod(hauler["modules"], "cargo") >= 3)
 	_ok("Style profile exposes hull language", str(patrol["hull"].get("language", "")) != "")
+	_ok("Patrol uses lofted hull language", str(patrol["hull"].get("language", "")) == "loft")
+	_ok("Patrol has longitudinal stations", (patrol["hull"].get("stations", []) as Array).size() >= 4)
 	_ok("Exhaust not hard-coded missing", patrol.has("exhaust") and (patrol["exhaust"] as Color).a > 0.0)
+	# Canonical fighter + geometry kernel
+	var canon := {
+		"seed": 42,
+		"ship_class": SimEntities.ShipClass.PATROL,
+		"style": "military",
+		"color": Color(0.42, 0.45, 0.5),
+		"accent": Color(0.5, 0.28, 0.24),
+	}
+	var canon_desc := ShipDesign.build(canon)
+	_ok("Canonical fighter is symmetric", bool(canon_desc["symmetric"]))
+	_ok("Canonical fighter has planform wings", (canon_desc["wings"] as Array).size() >= 2)
+	if (canon_desc["wings"] as Array).size() >= 1:
+		_ok("Wing has tip_chord", (canon_desc["wings"][0] as Dictionary).has("tip_chord"))
+	if (canon_desc["hardpoints"] as Array).size() >= 1:
+		_ok("Hardpoint has mount role", (canon_desc["hardpoints"][0] as Dictionary).has("role"))
+	var profile_pts := GeometryKernel.fighter_profile(1.0, 0.5, 0.2, 1)
+	var raw_pts := GeometryKernel.fighter_profile(1.0, 0.5, 0.0, 1)
+	_ok("Bevel increases profile verts", profile_pts.size() > raw_pts.size())
+	MeshCache.clear()
+	var t0 := Time.get_ticks_usec()
+	var mesh_canon := ShipMeshGen.build(canon, VisualLOD.LOD_FULL)
+	var gen_one_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	_ok("Canonical fighter mesh builds", mesh_canon != null and mesh_canon.get_surface_count() >= 1)
+	MeshCache.clear()
+	t0 = Time.get_ticks_usec()
+	for i in 100:
+		ShipMeshGen.build({
+			"seed": 42 + i, "ship_class": SimEntities.ShipClass.PATROL,
+			"style": "military", "color": Color.GRAY, "accent": Color.DARK_GRAY,
+		}, VisualLOD.LOD_FULL)
+	var gen_100_ms := (Time.get_ticks_usec() - t0) / 1000.0
+	print("  fighter gen: 1=%.2fms  100=%.1fms" % [gen_one_ms, gen_100_ms])
+	_ok("100 fighters generate under 8s", gen_100_ms < 8000.0)
+	var lod0 := ShipMeshGen.build(canon, VisualLOD.LOD_FULL)
+	var lod2 := ShipMeshGen.build(canon, VisualLOD.LOD_LOW)
+	_ok("Fighter LOD meshes distinct", lod0 != null and lod2 != null and lod0 != lod2)
 	var mil := StyleProfile.of("military")
 	var mine := StyleProfile.of("mining")
 	_ok("Military vs mining different exhaust family", str(mil.get("exhaust_family")) != str(mine.get("exhaust_family")))
