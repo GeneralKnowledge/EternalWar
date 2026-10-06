@@ -15,6 +15,9 @@ var perf: Dictionary = {
 	"sim_ms": 0.0,
 	"economy_ms": 0.0,
 	"ai_ms": 0.0,
+	"travel_batch_ms": 0.0,
+	"travel_batch_n": 0,
+	"native_backend": "gdscript",
 	"ships_total": 0,
 	"ships_active": 0,
 	"ships_mining": 0,
@@ -34,6 +37,7 @@ func generate(p_seed: int = 42, ship_count: int = 400) -> void:
 	ai = ShipAI.new(economy, SeededRNG.new(SeededRNG.combine_seeds(p_seed, 777)))
 	economy.last_refresh_time = -999.0
 	economy.tick(world, 0.0)
+	perf["native_backend"] = NativeBridge.backend_name()
 
 
 func tick(dt: float) -> void:
@@ -54,6 +58,7 @@ func tick(dt: float) -> void:
 
 	perf["sim_ms"] = float(Time.get_ticks_usec() - t0) / 1000.0
 	perf["ships_total"] = world["ships"].size()
+	perf["native_backend"] = NativeBridge.backend_name()
 	if int(world["tick"]) % 30 == 0:
 		economy_updated.emit(economy.metrics)
 
@@ -63,14 +68,66 @@ func _tick_ships(dt: float) -> void:
 	var n := ships.size()
 	if n == 0:
 		return
-	# Update all ships for movement correctness; stagger is optional later.
+
+	# Batch TRAVEL through NativeBridge (Rust GDExtension when loaded).
+	var travel_ships: Array = []
+	var destinations: Array = []
+	var arrive_radii := PackedFloat32Array()
+	var travel_is_patrol: Array = [] # bool per travel ship
+
+	for ship in ships:
+		if ship.get("is_player", false):
+			continue
+		var is_patrol := int(ship["ship_class"]) == SimEntities.ShipClass.PATROL
+		# Patrol ships without a target still need AI to pick one.
+		if is_patrol and (ship["activity"] != SimEntities.Activity.TRAVEL or int(ship["target_id"]) < 0):
+			ai.tick_ship(world, ship, dt)
+			continue
+		if int(ship["activity"]) == SimEntities.Activity.TRAVEL:
+			var dest: Variant = ai.target_position(world, ship)
+			if typeof(dest) != TYPE_VECTOR3:
+				ai.tick_ship(world, ship, dt)
+				continue
+			travel_ships.append(ship)
+			destinations.append(dest)
+			arrive_radii.append(ai.arrive_radius(ship))
+			travel_is_patrol.append(is_patrol)
+		else:
+			ai.tick_ship(world, ship, dt)
+
+	var t_batch := Time.get_ticks_usec()
+	if not travel_ships.is_empty():
+		var status: PackedInt32Array = NativeBridge.integrate_travel_ships(
+			travel_ships, destinations, arrive_radii, dt
+		)
+		for i in travel_ships.size():
+			var ship2: Dictionary = travel_ships[i]
+			if int(status[i]) != NativeBridge.STATUS_ARRIVED:
+				continue
+			if bool(travel_is_patrol[i]):
+				ship2["activity"] = SimEntities.Activity.IDLE
+				ship2["action_timer"] = 1.0
+				ship2["target_id"] = -1
+			else:
+				ai.on_arrive(world, ship2)
+	perf["travel_batch_ms"] = float(Time.get_ticks_usec() - t_batch) / 1000.0
+	perf["travel_batch_n"] = travel_ships.size()
+
+	# Patrol linger countdown (ships that arrived earlier).
+	for ship3 in ships:
+		if int(ship3["ship_class"]) != SimEntities.ShipClass.PATROL:
+			continue
+		if float(ship3.get("action_timer", 0.0)) > 0.0:
+			ship3["action_timer"] = float(ship3["action_timer"]) - dt
+			if float(ship3["action_timer"]) <= 0.0:
+				ship3["target_id"] = -1
+
 	var active := 0
 	var mining := 0
 	var trading := 0
 	var idle := 0
-	for ship in ships:
-		ai.tick_ship(world, ship, dt)
-		var act: int = int(ship["activity"])
+	for ship4 in ships:
+		var act: int = int(ship4["activity"])
 		if act == SimEntities.Activity.IDLE:
 			idle += 1
 		else:

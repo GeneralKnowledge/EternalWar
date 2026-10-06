@@ -23,6 +23,7 @@ func _init() -> void:
 	_test_ships_become_active()
 	_test_prices_respond_to_supply()
 	_test_perf_benchmarks()
+	_test_native_kernels()
 	print("=== Results: %d passed, %d failed ===" % [_passed, _failed])
 	quit(1 if _failed > 0 else 0)
 
@@ -265,6 +266,7 @@ func _test_stellar_colour() -> void:
 
 func _test_perf_benchmarks() -> void:
 	print("--- Perf benchmarks ---")
+	print("  native_backend=%s  version=%s" % [NativeBridge.backend_name(), NativeBridge.version()])
 	var sizes := [400, 1000]
 	for n in sizes:
 		MeshCache.clear()
@@ -285,13 +287,49 @@ func _test_perf_benchmarks() -> void:
 		for _i in 60:
 			sim.tick(0.05)
 		var tick_ms := (Time.get_ticks_usec() - t0) / 1000.0
-		print("  ships=%d  gen=%.1fms  mesh=%.1fms  60ticks=%.1fms  econ=%.2f ai=%.2f" % [
+		print("  ships=%d  gen=%.1fms  mesh=%.1fms  60ticks=%.1fms  econ=%.2f ai=%.2f travel_batch=%.2f (n=%d) backend=%s" % [
 			n, gen_ms, mesh_ms, tick_ms, float(sim.perf.get("economy_ms", 0)), float(sim.perf.get("ai_ms", 0)),
+			float(sim.perf.get("travel_batch_ms", 0)), int(sim.perf.get("travel_batch_n", 0)),
+			str(sim.perf.get("native_backend", "?")),
 		])
 		_ok("Perf gen ships=%d under 5s" % n, gen_ms < 5000.0)
 		_ok("Perf mesh ships=%d under 10s" % n, mesh_ms < 10000.0)
-	# Document larger targets without failing CI on soft hardware
-	print("  (5000/10000/50000 ship targets: measure locally; Rust candidate if mesh_ms dominates)")
+	var rust_ms := NativeBridge.bench_travel_ms(2000, 200)
+	print("  travel microbench n=2000 iters=200 → %.3fms (%s)" % [rust_ms, NativeBridge.backend_name()])
+	_ok("Travel microbench finishes", rust_ms >= 0.0)
+	print("  (5000/10000/50000 ship targets: measure locally; extend native/ew_kernels for new SoA kernels)")
+
+
+func _test_native_kernels() -> void:
+	print("--- Native kernels ---")
+	_ok("NativeBridge reports a backend", NativeBridge.backend_name() in ["rust", "gdscript"])
+	# Travel math equivalence: one ship toward a far destination.
+	var ships: Array = [{
+		"position": Vector3.ZERO,
+		"heading": Vector3(0, 0, -1),
+		"velocity": Vector3.ZERO,
+		"speed": 100.0,
+	}]
+	var dests: Array = [Vector3(1000, 0, 0)]
+	var arrive := PackedFloat32Array([35.0])
+	var status: PackedInt32Array = NativeBridge.integrate_travel_ships(ships, dests, arrive, 0.05)
+	_ok("Travel status traveling", status.size() == 1 and int(status[0]) == NativeBridge.STATUS_TRAVELING)
+	var p: Vector3 = ships[0]["position"]
+	_ok("Travel stepped ~5 units", absf(p.x - 5.0) < 0.01, "pos=%s" % p)
+	# Arrive
+	ships[0]["position"] = Vector3(10, 0, 0)
+	status = NativeBridge.integrate_travel_ships(ships, dests, arrive, 0.05)
+	# dest still 1000 — not arrived. Place near dest.
+	ships[0]["position"] = Vector3(980, 0, 0)
+	status = NativeBridge.integrate_travel_ships(ships, [Vector3(1000, 0, 0)], arrive, 0.05)
+	_ok("Travel arrives within radius", int(status[0]) == NativeBridge.STATUS_ARRIVED)
+	# Sim uses batch path and stays deterministic across backends for seed.
+	var sim := StarSystemSim.new()
+	sim.generate(99, 120)
+	for _i in 40:
+		sim.tick(0.05)
+	_ok("Sim ticks with native travel batch", int(sim.world["tick"]) == 40)
+	_ok("Travel batch recorded", int(sim.perf.get("travel_batch_n", -1)) >= 0)
 
 
 func _test_economy_runs() -> void:

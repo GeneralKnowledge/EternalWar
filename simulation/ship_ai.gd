@@ -49,7 +49,7 @@ func _think(world: Dictionary, ship: Dictionary) -> void:
 
 
 func _travel(world: Dictionary, ship: Dictionary, dt: float) -> void:
-	var target_pos: Variant = _target_position(world, ship)
+	var target_pos: Variant = target_position(world, ship)
 	if typeof(target_pos) != TYPE_VECTOR3:
 		ship["activity"] = SimEntities.Activity.IDLE
 		ship["job"] = {}
@@ -58,9 +58,9 @@ func _travel(world: Dictionary, ship: Dictionary, dt: float) -> void:
 	var dest: Vector3 = target_pos
 	var to: Vector3 = dest - pos
 	var dist: float = to.length()
-	var arrive: float = 35.0 if ship["target_kind"] == "station" else 45.0
+	var arrive: float = arrive_radius(ship)
 	if dist <= arrive:
-		_on_arrive(world, ship)
+		on_arrive(world, ship)
 		return
 	var dir: Vector3 = to / dist
 	ship["heading"] = dir
@@ -68,6 +68,18 @@ func _travel(world: Dictionary, ship: Dictionary, dt: float) -> void:
 	var step: float = minf(dist - arrive * 0.5, speed * dt)
 	ship["position"] = pos + dir * step
 	ship["velocity"] = dir * speed
+
+
+func arrive_radius(ship: Dictionary) -> float:
+	return 35.0 if ship["target_kind"] == "station" else 45.0
+
+
+func target_position(world: Dictionary, ship: Dictionary) -> Variant:
+	return _target_position(world, ship)
+
+
+func on_arrive(world: Dictionary, ship: Dictionary) -> void:
+	_on_arrive(world, ship)
 
 
 func _on_arrive(world: Dictionary, ship: Dictionary) -> void:
