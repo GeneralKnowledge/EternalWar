@@ -9,6 +9,8 @@ Reference repositories inspected:
 - [JoshParnell/libphx](https://github.com/JoshParnell/libphx) — engine-as-library philosophy
 - [Limit-Theory-Redux/ltheory](https://github.com/Limit-Theory-Redux/ltheory) — Rust + Lua community continuation
 
+**Deep dive:** [`limit-theory-redux-code-study.md`](limit-theory-redux-code-study.md) — frame stages, FFI boundary, RigidBody/flight, InstanceBatch / asteroid instancing, economy modules, and EternalWar kernel mapping.
+
 ---
 
 ## 1. Script-driven gameplay over a thin native core

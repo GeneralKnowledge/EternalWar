@@ -44,9 +44,15 @@ Builds `Basis.looking_at` + scale transforms and writes them to a `MultiMesh`. U
 
 ## Next candidates (when profiled)
 
-- Bulk asteroid / starfield instance transforms
-- Hierarchical seed / galaxy generation
-- Mesh build helpers (SurfaceTool-heavy paths)
+Ordered by evidence from the [LTR code study](limit-theory-redux-code-study.md):
+
+1. Ship MultiMesh transform+color in one native call (extend current apply)
+2. Asteroid / starfield instance packing (LTR `AsteroidInstancedRenderer` / `InstanceBatch`)
+3. Bulk distance → LOD classify SoA
+4. Mesh build helpers — only if `mesh_ms` dominates
+5. Hierarchical seed / galaxy generation
+
+Keep the boundary at explicit packed arrays or Godot objects (`MultiMesh`), never world dictionaries.
 
 ## Verify
 

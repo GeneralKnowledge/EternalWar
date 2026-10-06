@@ -6,7 +6,7 @@ This is **not** a clone. It studies publicly released Limit Theory / Limit Theor
 
 **Current focus:** procedural visuals — come close to how brilliant Limit Theory *looked*. Systems work (economy, AI) is foundation and frozen until the look clears the screenshot bar.
 
-See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) and [`docs/visual-generation-devnote.md`](docs/visual-generation-devnote.md).
+See [`docs/limit-theory-research.md`](docs/limit-theory-research.md), [`docs/limit-theory-redux-code-study.md`](docs/limit-theory-redux-code-study.md), and [`docs/visual-generation-devnote.md`](docs/visual-generation-devnote.md).
 
 ## What works in this prototype
 
