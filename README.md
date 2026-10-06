@@ -13,6 +13,7 @@ See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) and [`docs/
 - Deterministic seeded star system with **hierarchical child seeds**
 - Deep-space sky as a **composition system** (`SkyComposition`): galactic axis, volumetric nebula masses (bounded raymarch + wisps), voids, 4-tier stars, mono palette
 - Nebula forensics: [`docs/limit-theory-nebula-analysis.md`](docs/limit-theory-nebula-analysis.md)
+- Screenshot matching: [`docs/limit-theory-rendering-forensics.md`](docs/limit-theory-rendering-forensics.md), [`tools/visual_compare/`](tools/visual_compare/), `scenes/lt_compare.tscn`
 - Planet classes with fresnel atmospheres, rings, class-distinct shaders
 - ShapeLib-lite modular ships & stations (near-field per-design meshes)
 - Composition-driven asteroid fields (iron / silicate / carbon / ice)

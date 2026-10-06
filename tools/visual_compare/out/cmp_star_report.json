@@ -1,0 +1,67 @@
+{
+  "lt": "tools/visual_compare/reference/lt_star_system.jpg",
+  "ew": "tools/visual_compare/eternalwar/ew_star.png",
+  "score": 71.77148803104588,
+  "lt_stats": {
+    "mean_Y": 0.3084866404533386,
+    "p10_Y": 0.09561176598072052,
+    "p50_Y": 0.2881051003932953,
+    "p90_Y": 0.5563867092132568,
+    "dark_frac": 0.028234953703703703,
+    "bright_frac": 0.10411844135802469,
+    "mid_frac": 0.8676466049382716,
+    "mean_sat": 0.42082586884498596,
+    "mean_rgb": [
+      0.2840641438961029,
+      0.30015549063682556,
+      0.4707503616809845
+    ]
+  },
+  "ew_stats": {
+    "mean_Y": 0.28792378306388855,
+    "p10_Y": 0.0,
+    "p50_Y": 0.20923922955989838,
+    "p90_Y": 0.9988674521446228,
+    "dark_frac": 0.28312114197530863,
+    "bright_frac": 0.14960455246913582,
+    "mid_frac": 0.5672743055555556,
+    "mean_sat": 0.5063213109970093,
+    "mean_rgb": [
+      0.2273108810186386,
+      0.3017983138561249,
+      0.33387964963912964
+    ]
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.44248074293136597,
+      "category": "luminance"
+    },
+    {
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.2548861882716049,
+      "category": "composition/luminance"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.14817970012863702,
+      "category": "colour"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.08549544215202332,
+      "category": "colour"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.04548611111111113,
+      "category": "luminance"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.020562857389450073,
+      "category": "luminance"
+    }
+  ]
+}
