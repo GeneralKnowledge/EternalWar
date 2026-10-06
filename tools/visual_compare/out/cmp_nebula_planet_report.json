@@ -1,7 +1,7 @@
 {
   "lt": "tools/visual_compare/reference/lt_nebula_planet.jpg",
   "ew": "tools/visual_compare/eternalwar/ew_nebula.png",
-  "score": 58.398264832408344,
+  "score": 86.8533700135019,
   "lt_stats": {
     "mean_Y": 0.1753760129213333,
     "p10_Y": 0.008409412577748299,
@@ -18,50 +18,50 @@
     ]
   },
   "ew_stats": {
-    "mean_Y": 0.26270896196365356,
-    "p10_Y": 0.10724236071109772,
-    "p50_Y": 0.24541883170604706,
-    "p90_Y": 0.4371553063392639,
-    "dark_frac": 0.06747106481481481,
-    "bright_frac": 0.019812885802469135,
-    "mid_frac": 0.912716049382716,
-    "mean_sat": 0.7172908186912537,
+    "mean_Y": 0.15465816855430603,
+    "p10_Y": 0.00028313728398643434,
+    "p50_Y": 0.14085334539413452,
+    "p90_Y": 0.3155129551887512,
+    "dark_frac": 0.3681423611111111,
+    "bright_frac": 0.01568094135802469,
+    "mid_frac": 0.6161766975308642,
+    "mean_sat": 0.6999475359916687,
     "mean_rgb": [
-      0.1280573159456253,
-      0.2911333739757538,
-      0.37906011939048767
+      0.0790335088968277,
+      0.17069421708583832,
+      0.22058263421058655
     ]
   },
   "ranked_mismatches": [
     {
-      "name": "Background darkness (dark_frac)",
-      "delta": 0.31094907407407407,
-      "category": "composition/luminance"
-    },
-    {
       "name": "Saturation",
-      "delta": 0.19201993942260742,
+      "delta": 0.17467665672302246,
       "category": "colour"
-    },
-    {
-      "name": "Colour balance",
-      "delta": 0.17764607748373018,
-      "category": "colour"
-    },
-    {
-      "name": "Mean luminance",
-      "delta": 0.08733294904232025,
-      "category": "luminance"
-    },
-    {
-      "name": "Bright-area coverage",
-      "delta": 0.05435763888888889,
-      "category": "luminance"
     },
     {
       "name": "Highlight level (p90_Y)",
-      "delta": 0.04062008857727051,
+      "delta": 0.1622624397277832,
       "category": "luminance"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.0744785688636451,
+      "category": "colour"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.05848958333333334,
+      "category": "luminance"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.020717844367027283,
+      "category": "luminance"
+    },
+    {
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.010277777777777775,
+      "category": "composition/luminance"
     }
   ]
 }

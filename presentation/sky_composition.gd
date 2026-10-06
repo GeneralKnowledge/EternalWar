@@ -73,11 +73,12 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 		var vdir := rng.dir3()
 		if not masses.is_empty():
 			var primary: Vector3 = masses[0]["dir"]
-			if vdir.dot(primary) > 0.2:
-				vdir = (-primary + rng.dir3() * 0.4).normalized()
+			if vdir.dot(primary) > 0.15:
+				vdir = (-primary + rng.dir3() * 0.55).normalized()
 		voids.append({
 			"dir": vdir,
-			"radius": rng.randf_range(0.35, 0.7),
+			# Wider voids → more near-black coverage (LT dark_frac ~28–40%).
+			"radius": rng.randf_range(0.48, 0.85),
 		})
 
 	var gems: Array = []
@@ -139,41 +140,41 @@ static func _palette_for(mood: String, rng: SeededRNG, hint: Color) -> Dictionar
 	var accent: Color
 	match mood:
 		"amber_gold":
-			primary = Color.from_hsv(0.1, 0.7, 0.55)
-			secondary = Color.from_hsv(0.08, 0.55, 0.35)
-			band = Color.from_hsv(0.12, 0.35, 0.7)
-			bg = Color(0.04, 0.03, 0.05)
-			accent = Color.from_hsv(0.08, 0.4, 0.9)
+			primary = Color.from_hsv(0.1, 0.62, 0.48)
+			secondary = Color.from_hsv(0.08, 0.48, 0.28)
+			band = Color.from_hsv(0.12, 0.28, 0.55)
+			bg = Color(0.018, 0.014, 0.022)
+			accent = Color.from_hsv(0.08, 0.35, 0.85)
 		"cyan_teal":
-			primary = Color.from_hsv(0.52, 0.65, 0.5)
-			secondary = Color.from_hsv(0.58, 0.45, 0.35)
-			band = Color.from_hsv(0.55, 0.3, 0.65)
-			bg = Color(0.03, 0.045, 0.07)
-			accent = Color.from_hsv(0.5, 0.35, 0.85)
+			primary = Color.from_hsv(0.52, 0.55, 0.42)
+			secondary = Color.from_hsv(0.58, 0.38, 0.28)
+			band = Color.from_hsv(0.55, 0.22, 0.5)
+			bg = Color(0.012, 0.02, 0.032)
+			accent = Color.from_hsv(0.5, 0.3, 0.8)
 		"magenta_rose":
-			primary = Color.from_hsv(0.9, 0.7, 0.55)
-			secondary = Color.from_hsv(0.85, 0.5, 0.32)
-			band = Color.from_hsv(0.92, 0.35, 0.7)
-			bg = Color(0.05, 0.03, 0.055)
-			accent = Color.from_hsv(0.95, 0.4, 0.9)
+			primary = Color.from_hsv(0.9, 0.62, 0.48)
+			secondary = Color.from_hsv(0.85, 0.42, 0.26)
+			band = Color.from_hsv(0.92, 0.28, 0.55)
+			bg = Color(0.022, 0.012, 0.024)
+			accent = Color.from_hsv(0.95, 0.35, 0.85)
 		"crimson":
-			primary = Color.from_hsv(0.0, 0.72, 0.48)
-			secondary = Color.from_hsv(0.97, 0.55, 0.28)
-			band = Color.from_hsv(0.02, 0.4, 0.6)
-			bg = Color(0.05, 0.025, 0.04)
-			accent = Color.from_hsv(0.05, 0.45, 0.85)
+			primary = Color.from_hsv(0.0, 0.65, 0.42)
+			secondary = Color.from_hsv(0.97, 0.48, 0.24)
+			band = Color.from_hsv(0.02, 0.32, 0.48)
+			bg = Color(0.022, 0.01, 0.016)
+			accent = Color.from_hsv(0.05, 0.4, 0.8)
 		"cold_white":
-			primary = Color.from_hsv(0.6, 0.25, 0.55)
-			secondary = Color.from_hsv(0.65, 0.2, 0.35)
-			band = Color.from_hsv(0.58, 0.12, 0.75)
-			bg = Color(0.035, 0.04, 0.06)
-			accent = Color(0.85, 0.9, 1.0)
+			primary = Color.from_hsv(0.6, 0.2, 0.45)
+			secondary = Color.from_hsv(0.65, 0.15, 0.28)
+			band = Color.from_hsv(0.58, 0.1, 0.55)
+			bg = Color(0.014, 0.016, 0.028)
+			accent = Color(0.8, 0.85, 0.95)
 		_:
-			primary = Color.from_hsv(0.72, 0.6, 0.5)
-			secondary = Color.from_hsv(0.62, 0.45, 0.35)
-			band = Color.from_hsv(0.68, 0.3, 0.65)
-			bg = Color(0.03, 0.035, 0.08)
-			accent = Color.from_hsv(0.58, 0.35, 0.9)
+			primary = Color.from_hsv(0.72, 0.52, 0.42)
+			secondary = Color.from_hsv(0.62, 0.38, 0.28)
+			band = Color.from_hsv(0.68, 0.22, 0.5)
+			bg = Color(0.012, 0.014, 0.032)
+			accent = Color.from_hsv(0.58, 0.28, 0.85)
 	primary = primary.lerp(hint, 0.22)
 	secondary = secondary.lerp(hint, 0.12)
 	primary = Color.from_hsv(

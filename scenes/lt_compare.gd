@@ -140,8 +140,8 @@ func _process(_dt: float) -> void:
 			_capturing = false
 			if label:
 				label.visible = true
-			if DisplayServer.get_name() == "headless":
-				get_tree().quit()
+			# Auto-quit after batch capture (headless or DISPLAY session).
+			get_tree().quit()
 
 
 func _write_capture() -> void:

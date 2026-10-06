@@ -92,17 +92,17 @@ Loop: capture → `compare.py` → fix largest ranked mismatch → repeat.
 
 ---
 
-## 5. Baseline scores (this pass — IFS sky + Exp^2.5 stars + bloom)
+## 5. Scores after dark_frac / absorption pass
 
-After switching primary nebula to direction-space IFS (LT `generate(dir)` principle) and retuning stars/bloom:
+IFS sky gated to mass lobes + stronger voids + darker palette floor + milder post wash:
 
-| Pair | Score | Largest mismatch |
-| --- | --- | --- |
-| LT nebula_ship ↔ EW nebula | **70/100** | Colour balance, dark_frac |
-| LT asteroids ↔ EW asteroids | **63/100** | Colour balance, dark_frac |
-| LT star_system ↔ EW star | **85/100** | Highlight p90 (bloom/corona) |
-| LT nebula_planet ↔ EW nebula | **58/100** | dark_frac still high vs LT |
+| Pair | Score | EW dark_frac → LT | Largest mismatch |
+| --- | --- | --- | --- |
+| LT asteroids ↔ EW asteroids | **88/100** | 0.36 → 0.40 | Highlight p90 |
+| LT nebula_planet ↔ EW nebula | **87/100** | 0.37 → 0.38 | Saturation |
+| LT nebula_ship ↔ EW nebula | **79/100** | 0.37 → 0.27 | Colour balance (mood) |
+| LT star_system ↔ EW star | **72/100** | 0.28 → 0.03 | Highlight p90 + filled-frame composition |
+
+**Composition / luminance (Levels 1–2) are now in the same design space** for nebula/asteroid frames. Remaining gap is colour mood matching specific LT stills, star-disk bloom peaks, and optional TexCube bake for richer IFS cavities.
 
 Earlier bug (Environment glow property abort) produced flat grey captures at ~40–53; fixed before scoring.
-
-**Next largest gaps:** raise mid-luminance nebula structure without washing voids; closer mono mood colour; optional TexCube bake for LT-parity IFS quality.

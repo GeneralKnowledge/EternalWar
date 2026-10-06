@@ -78,31 +78,35 @@ float mass_bias(vec3 dir) {
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	vec3 col = bg_color * 0.85;
+	// Dark floor — aim for LT dark_frac ~28–40% without killing lobe cores.
+	vec3 col = bg_color * 0.55;
 
 	// Soft voids — intentional negative space
 	float void_w = 0.0;
-	void_w = max(void_w, smoothstep(void0_radius, void0_radius * 0.2, 1.0 - max(dot(dir, normalize(void0_dir)), 0.0)));
-	void_w = max(void_w, smoothstep(void1_radius, void1_radius * 0.2, 1.0 - max(dot(dir, normalize(void1_dir)), 0.0)));
+	void_w = max(void_w, smoothstep(void0_radius * 1.05, void0_radius * 0.15, 1.0 - max(dot(dir, normalize(void0_dir)), 0.0)));
+	void_w = max(void_w, smoothstep(void1_radius * 1.05, void1_radius * 0.15, 1.0 - max(dot(dir, normalize(void1_dir)), 0.0)));
 	void_w = clamp(void_w, 0.0, 1.0);
 
 	// Galactic band — structure, not fog wash
 	vec3 gn = normalize(galaxy_normal);
 	float plane = 1.0 - abs(dot(dir, gn));
-	float band = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.9, 2.4));
-	col += band_color * band * 0.22 * band_strength;
+	float band = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.95, 2.5));
+	col += band_color * band * 0.14 * band_strength * (1.0 - void_w * 0.55);
 
 	// LT-style absorption along direction (short loop for realtime)
 	float bias = mass_bias(dir);
-	vec3 c = vec3(0.04 + 0.03 * noise3(dir * 4.0 + seed));
-	c += primary_color * 0.03;
+	// Soft gate: keep lobe cores bright; off-lobe directions stay darker (not black).
+	float lobe = smoothstep(0.015, 0.4, bias);
+	float gas_gate = mix(0.32, 1.0, lobe) * (1.0 - void_w * 0.8);
+	vec3 c = vec3(0.028 + 0.022 * noise3(dir * 4.0 + seed));
+	c += primary_color * 0.024 * gas_gate;
 
 	// Central / local star contribution in sky (LT generate())
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
-	float dd = 6.0 * exp(-sqrt(3500.0 * dstar)) + 2.5 * exp(-sqrt(sqrt(900.0 * dstar)));
+	float dd = 5.5 * exp(-sqrt(3800.0 * dstar)) + 2.2 * exp(-sqrt(sqrt(1000.0 * dstar)));
 	c += dd * mix(primary_color, vec3(1.0, 0.95, 0.85), 0.35);
 
-	vec3 pdir = dir * (0.045 + bias * 0.01);
+	vec3 pdir = dir * (0.042 + bias * 0.012);
 	const int SAMPLES = 16;
 	float w = 1.0 / float(SAMPLES);
 	vec3 emit_acc = vec3(0.0);
@@ -110,32 +114,36 @@ void sky() {
 		vec3 p = pdir * (float(i) + 0.5) * w * 12.0;
 		float t = magic(p);
 		t = exp(-t * t);
+		// Prefer bright filaments; leave mid densities quieter (internal dark structure)
+		float filament = pow(clamp(t, 0.0, 1.0), 1.35);
 		vec3 wave = mix(secondary_color, primary_color, clamp(t, 0.0, 1.0));
 		wave = sqrt(max(wave, vec3(0.0)));
-		vec3 vs = exp(-1.0 * wave * t);
-		vs -= 0.85 * exp(-pow(8.0 * abs(t - 0.9), 0.75));
-		vec3 emit = 0.65 * primary_color * exp(-pow(9.0 * abs(t - 0.88), 0.55));
-		emit += 0.25 * secondary_color * (1.0 - t);
-		c *= exp(-3.2 * w * max(vs, vec3(0.0)));
-		emit_acc += (1.0 - void_w) * emit * w * (0.55 + bias * 0.35);
+		vec3 vs = exp(-1.15 * wave * t);
+		vs -= 0.88 * exp(-pow(8.0 * abs(t - 0.9), 0.75));
+		vec3 emit = 0.85 * primary_color * exp(-pow(9.0 * abs(t - 0.88), 0.55));
+		emit += 0.28 * secondary_color * filament;
+		c *= exp(-3.5 * w * max(vs, vec3(0.0)));
+		emit_acc += gas_gate * emit * w * (0.5 + bias * 0.45) * (0.4 + filament * 0.6);
 	}
 	c += emit_acc;
 
 	// Mass bias lifts luminous regions without filling voids
-	c += mix(primary_color, secondary_color, 0.35) * bias * 0.32 * (1.0 - void_w);
-	c += band_color * band * 0.12 * band_strength;
+	c += mix(primary_color, secondary_color, 0.32) * bias * 0.28 * gas_gate;
+	c += band_color * band * 0.1 * band_strength * gas_gate;
 
-	col += c * (0.85 + band * 0.2);
-	col = mix(col, bg_color * 0.4, void_w * 0.65);
-	col *= 1.0 - void_w * 0.28;
+	col += c * (0.88 + band * 0.18);
+	col = mix(col, bg_color * 0.28, void_w * 0.7);
+	col *= 1.0 - void_w * 0.35;
+	// Mild off-lobe darken — target ~0.28–0.4 dark_frac on nebula frames
+	col *= mix(0.72, 1.0, clamp(gas_gate + dd * 0.06 + band * 0.22, 0.0, 1.0));
 
 	// Sparse sparks (supporting cast; MultiMesh owns dense field)
 	vec2 suv = dir.xy * 110.0 + dir.z * 45.0 + seed;
 	float cell = hash21(floor(suv));
-	if (cell > 0.985 && void_w < 0.45) {
+	if (cell > 0.986 && void_w < 0.42) {
 		vec2 f = fract(suv) - 0.5;
-		float spark = exp(-dot(f, f) * 140.0) * (0.25 + cell * 0.35);
-		col += vec3(0.85, 0.9, 1.0) * spark * 0.55;
+		float spark = exp(-dot(f, f) * 150.0) * (0.22 + cell * 0.32);
+		col += vec3(0.85, 0.9, 1.0) * spark * 0.48;
 	}
 
 	COLOR = max(col, vec3(0.0));

@@ -1,7 +1,7 @@
 {
   "lt": "tools/visual_compare/reference/lt_star_system.jpg",
   "ew": "tools/visual_compare/eternalwar/ew_star.png",
-  "score": 84.95034779737026,
+  "score": 71.77148803104588,
   "lt_stats": {
     "mean_Y": 0.3084866404533386,
     "p10_Y": 0.09561176598072052,
@@ -18,50 +18,50 @@
     ]
   },
   "ew_stats": {
-    "mean_Y": 0.376911461353302,
-    "p10_Y": 0.11678902804851532,
-    "p50_Y": 0.2914847135543823,
-    "p90_Y": 1.0,
-    "dark_frac": 0.03394097222222222,
-    "bright_frac": 0.16368248456790124,
-    "mid_frac": 0.8023765432098765,
-    "mean_sat": 0.5787808299064636,
+    "mean_Y": 0.28792378306388855,
+    "p10_Y": 0.0,
+    "p50_Y": 0.20923922955989838,
+    "p90_Y": 0.9988674521446228,
+    "dark_frac": 0.28312114197530863,
+    "bright_frac": 0.14960455246913582,
+    "mid_frac": 0.5672743055555556,
+    "mean_sat": 0.5063213109970093,
     "mean_rgb": [
-      0.2669569253921509,
-      0.40082141757011414,
-      0.46768495440483093
+      0.2273108810186386,
+      0.3017983138561249,
+      0.33387964963912964
     ]
   },
   "ranked_mismatches": [
     {
       "name": "Highlight level (p90_Y)",
-      "delta": 0.44361329078674316,
-      "category": "luminance"
-    },
-    {
-      "name": "Saturation",
-      "delta": 0.15795496106147766,
-      "category": "colour"
-    },
-    {
-      "name": "Colour balance",
-      "delta": 0.10215518827768293,
-      "category": "colour"
-    },
-    {
-      "name": "Mean luminance",
-      "delta": 0.06842482089996338,
-      "category": "luminance"
-    },
-    {
-      "name": "Bright-area coverage",
-      "delta": 0.05956404320987656,
+      "delta": 0.44248074293136597,
       "category": "luminance"
     },
     {
       "name": "Background darkness (dark_frac)",
-      "delta": 0.0057060185185185165,
+      "delta": 0.2548861882716049,
       "category": "composition/luminance"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.14817970012863702,
+      "category": "colour"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.08549544215202332,
+      "category": "colour"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.04548611111111113,
+      "category": "luminance"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.020562857389450073,
+      "category": "luminance"
     }
   ]
 }

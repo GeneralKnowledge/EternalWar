@@ -87,14 +87,16 @@ Do **not** move shaders to Rust. Do **not** rewrite simulation.
 
 ## Iteration order (largest mismatch first)
 
-1. Background luminance / dark fraction vs LT refs  
-2. Nebula representation (IFS sky vs fog volumes)  
-3. Star magnitude hierarchy / density  
-4. Bloom + tonemap character  
-5. Colour mood / saturation  
-6. Object lighting  
-7. Fine detail  
+1. ~~Background luminance / dark fraction vs LT refs~~ — nebula/asteroid frames now ~match LT dark_frac  
+2. ~~Nebula representation (IFS sky vs fog volumes)~~ — primary is direction-space IFS  
+3. Colour mood / saturation vs specific LT stills (largest remaining on nebula_ship)  
+4. Star-disk bloom peaks (p90) + star-system filled-frame composition  
+5. Star magnitude hierarchy polish  
+6. Object lighting / silhouettes  
+7. Optional TexCube bake + fine detail  
 
 ## Definition of progress
 
 A compare.py score climbing on the five reference situations, with dark_frac and mean_Y within a small band of LT stats — not “more pretty effects.”
+
+Current band (after dark_frac pass): asteroids **88**, nebula_planet **87**, nebula_ship **79**, star **72**.

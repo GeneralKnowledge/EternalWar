@@ -127,28 +127,28 @@ func _build_environment() -> void:
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = ambient_c
-	e.ambient_light_energy = 0.22
+	e.ambient_light_energy = 0.16
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 0.95
+	e.tonemap_exposure = 0.92
 	# LT post uses aggressive bloom (radius ~48) but keeps blacks — aim for that character.
 	e.glow_enabled = true
-	e.glow_intensity = 0.55
-	e.glow_bloom = 0.18
-	e.glow_hdr_threshold = 0.95
-	e.glow_hdr_scale = 1.35
+	e.glow_intensity = 0.58
+	e.glow_bloom = 0.16
+	e.glow_hdr_threshold = 1.0
+	e.glow_hdr_scale = 1.4
 	e.set_glow_level(2, 0.7)
 	e.set_glow_level(3, 1.0)
 	e.set_glow_level(4, 0.85)
 	e.set_glow_level(5, 0.55)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
-	e.fog_light_color = fog_c.lerp(bg, 0.65)
-	e.fog_density = 0.000004
-	e.fog_aerial_perspective = 0.04
+	e.fog_light_color = fog_c.lerp(bg, 0.7)
+	e.fog_density = 0.000003
+	e.fog_aerial_perspective = 0.035
 	e.adjustment_enabled = true
-	e.adjustment_saturation = 0.98
-	e.adjustment_contrast = 1.12
-	e.adjustment_brightness = 0.98
+	e.adjustment_saturation = 0.92
+	e.adjustment_contrast = 1.16
+	e.adjustment_brightness = 0.95
 	env.environment = e
 	_env_node = env
 	add_child(env)
@@ -233,8 +233,8 @@ func _build_nebula_wisps_only(primary: Color, secondary: Color) -> void:
 		var depth_near := float(m.get("depth_near", 2800.0))
 		var depth_far := float(m.get("depth_far", 6200.0))
 		var shells := [
-			{"dist": lerpf(depth_near, depth_far, 0.35), "bright": 0.16, "dens": 0.38, "size": 0.7},
-			{"dist": lerpf(depth_near, depth_far, 0.75), "bright": 0.12, "dens": 0.42, "size": 0.95},
+			{"dist": lerpf(depth_near, depth_far, 0.35), "bright": 0.11, "dens": 0.32, "size": 0.62},
+			{"dist": lerpf(depth_near, depth_far, 0.75), "bright": 0.08, "dens": 0.36, "size": 0.82},
 		]
 		var si := 0
 		for shell in shells:

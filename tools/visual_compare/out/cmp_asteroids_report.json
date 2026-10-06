@@ -1,7 +1,7 @@
 {
   "lt": "tools/visual_compare/reference/lt_asteroids.jpg",
   "ew": "tools/visual_compare/eternalwar/ew_asteroids.png",
-  "score": 63.380994292247436,
+  "score": 87.96347195704779,
   "lt_stats": {
     "mean_Y": 0.15106616914272308,
     "p10_Y": 0.01904156804084778,
@@ -18,49 +18,49 @@
     ]
   },
   "ew_stats": {
-    "mean_Y": 0.24012653529644012,
+    "mean_Y": 0.14538288116455078,
     "p10_Y": 0.0,
-    "p50_Y": 0.25131136178970337,
-    "p90_Y": 0.4091317653656006,
-    "dark_frac": 0.1413773148148148,
-    "bright_frac": 0.009814814814814814,
-    "mid_frac": 0.8488078703703704,
-    "mean_sat": 0.6167616844177246,
+    "p50_Y": 0.15487214922904968,
+    "p90_Y": 0.2919270694255829,
+    "dark_frac": 0.3615702160493827,
+    "bright_frac": 0.009720293209876543,
+    "mid_frac": 0.6287094907407408,
+    "mean_sat": 0.5674857497215271,
     "mean_rgb": [
-      0.11985360831022263,
-      0.2653471827507019,
-      0.3447358310222626
+      0.07616155594587326,
+      0.15979570150375366,
+      0.20604626834392548
     ]
   },
   "ranked_mismatches": [
     {
-      "name": "Colour balance",
-      "delta": 0.28237611407520147,
-      "category": "colour"
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.1604023575782776,
+      "category": "luminance"
     },
     {
-      "name": "Background darkness (dark_frac)",
-      "delta": 0.2559394290123457,
-      "category": "composition/luminance"
+      "name": "Colour balance",
+      "delta": 0.14988447778139147,
+      "category": "colour"
     },
     {
       "name": "Saturation",
-      "delta": 0.16550534963607788,
+      "delta": 0.11622941493988037,
       "category": "colour"
     },
     {
-      "name": "Mean luminance",
-      "delta": 0.08906036615371704,
-      "category": "luminance"
-    },
-    {
       "name": "Bright-area coverage",
-      "delta": 0.05971450617283951,
+      "delta": 0.05980902777777778,
       "category": "luminance"
     },
     {
-      "name": "Highlight level (p90_Y)",
-      "delta": 0.04319766163825989,
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.03574652777777776,
+      "category": "composition/luminance"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.005683287978172302,
       "category": "luminance"
     }
   ]
