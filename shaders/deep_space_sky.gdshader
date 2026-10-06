@@ -1,13 +1,11 @@
 shader_type sky;
 
-// Soft deep-space backdrop for Compatibility/OpenGL3.
-// Dense star *points* come from MultiMesh billboards; this fills voids with
-// a lifted indigo base, galactic band, and soft nebula lobes — never pure black.
+// Deep indigo void + coloured nebula structure. Nebula tint accents, never muddies the floor.
 
 uniform float seed = 42.0;
-uniform vec3 nebula_tint = vec3(0.35, 0.22, 0.55);
-uniform float nebula_strength = 0.65;
-uniform float band_strength = 0.55;
+uniform vec3 nebula_tint = vec3(0.4, 0.35, 0.85);
+uniform float nebula_strength = 0.85;
+uniform float band_strength = 0.8;
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21) + seed * 0.01);
@@ -41,35 +39,33 @@ float fbm(vec2 p) {
 void sky() {
 	vec3 dir = normalize(EYEDIR);
 
-	// Lifted void — readable indigo, not crushed black under ACES.
-	vec3 col = vec3(0.02, 0.024, 0.045);
-	col = mix(col, nebula_tint * 0.22, 0.55);
+	// Cool indigo floor — readable, not olive, not #000.
+	vec3 col = vec3(0.035, 0.04, 0.085);
+	// Light nebula influence on the floor only
+	col = mix(col, nebula_tint * 0.28, 0.35);
 
-	// Galactic band
 	vec3 band_n = normalize(vec3(0.18, 1.0, 0.1));
 	float band = 1.0 - abs(dot(dir, band_n));
-	band = pow(clamp(band, 0.0, 1.0), 3.8);
-	vec2 band_uv = vec2(atan(dir.z, dir.x), dir.y) * 2.2 + seed * 0.01;
-	float band_noise = fbm(band_uv * 1.6);
-	col += nebula_tint * band * band_noise * band_strength * 0.85;
-	col += vec3(0.18, 0.2, 0.32) * band * 0.28 * band_strength;
+	band = pow(clamp(band, 0.0, 1.0), 3.4);
+	vec2 band_uv = vec2(atan(dir.z, dir.x), dir.y) * 2.0 + seed * 0.01;
+	float band_noise = fbm(band_uv * 1.5);
+	col += nebula_tint * band * (0.35 + band_noise * 0.65) * band_strength;
+	col += vec3(0.12, 0.16, 0.32) * band * 0.4 * band_strength;
 
-	// Asymmetric nebula lobes (structure, not full-sky wash)
-	vec2 nuv = dir.xy * 1.5 + dir.z * 0.85 + vec2(seed * 0.02, seed * 0.015);
-	float n1 = fbm(nuv * 1.1);
-	float n2 = fbm(nuv * 2.8 + 9.0);
-	float veil = smoothstep(0.38, 0.82, n1 * 0.6 + n2 * 0.5);
+	vec2 nuv = dir.xy * 1.4 + dir.z * 0.8 + vec2(seed * 0.02, seed * 0.015);
+	float n1 = fbm(nuv * 1.05);
+	float n2 = fbm(nuv * 2.6 + 9.0);
+	float veil = smoothstep(0.36, 0.82, n1 * 0.58 + n2 * 0.5);
 	float lobe = smoothstep(0.15, 0.75, abs(dir.x + 0.25 * dir.y + n2 * 0.35));
 	col += nebula_tint * veil * lobe * nebula_strength * 0.55;
-	col += nebula_tint.bgr * veil * (1.0 - lobe) * nebula_strength * 0.28;
+	col += mix(nebula_tint.bgr, vec3(0.35, 0.45, 0.9), 0.4) * veil * (1.0 - lobe) * nebula_strength * 0.32;
 
-	// Sparse soft sparkle layer (large cells — survives low-res sky / Compat)
-	vec2 suv = dir.xy * 90.0 + dir.z * 40.0 + seed;
+	vec2 suv = dir.xy * 85.0 + dir.z * 36.0 + seed;
 	float cell = hash21(floor(suv));
-	if (cell > 0.97) {
+	if (cell > 0.968) {
 		vec2 f = fract(suv) - 0.5;
-		float spark = exp(-dot(f, f) * 90.0) * (0.35 + cell);
-		col += mix(vec3(1.0, 0.9, 0.75), vec3(0.7, 0.85, 1.0), hash21(floor(suv) + 3.1)) * spark;
+		float spark = exp(-dot(f, f) * 85.0) * (0.45 + cell);
+		col += mix(vec3(1.0, 0.92, 0.78), vec3(0.7, 0.85, 1.0), hash21(floor(suv) + 3.1)) * spark * 1.15;
 	}
 
 	COLOR = col;
