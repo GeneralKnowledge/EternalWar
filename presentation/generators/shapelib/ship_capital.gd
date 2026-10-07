@@ -1,6 +1,6 @@
 ## Limit Theory ShipCapital.Sausage — ShapeLib port.
 ## Sources: ShipCapital.lua, ShipLib/ShipCapitalHull.lua, ShipDetail.lua, ShipCapitalCockpit.lua
-## Cockpit/detail attachment uses AABB placement (LT uses ray addAtIntersection).
+## Cockpit/plate attach via addAtIntersection (LT ShipDetail / ShipCapitalCockpit).
 ## detail: 2=full, 1=simple, 0=batch (fewer segments / side extrudes / optional bits)
 class_name ShapeLibShipCapital
 extends RefCounted
@@ -25,19 +25,24 @@ static func sausage(seed: int, detail: int = 2) -> ShapeLibShape:
 		var lo: Vector3 = aabb2["lower"]
 		var hi: Vector3 = aabb2["upper"]
 		var cp := cockpit_large(rng, detail)
+		cp.center_at()
 		var cz := absf(hi.z - lo.z) * 0.2 + lo.z
-		var mid_y := (hi.y + lo.y) * 0.5
-		cp.translate_xyz(0.0, hi.y - mid_y * 0.15, cz)
-		shape.add_shape(cp)
+		# Ray from above toward hull — LT addAtIntersection.
+		if not shape.add_at_intersection(Vector3(0.0, hi.y + 4.0, cz), Vector3(0.0, -1.0, 0.0), cp):
+			var mid_y := (hi.y + lo.y) * 0.5
+			cp.translate_xyz(0.0, hi.y - mid_y * 0.15, cz)
+			shape.add_shape(cp)
 	if detail >= 2 and rng.randf() < 0.5:
 		var plate := detail_plate(rng)
 		var aabb3: Dictionary = shape.get_aabb()
 		var lo3: Vector3 = aabb3["lower"]
 		var hi3: Vector3 = aabb3["upper"]
 		plate.scale_xyz(0.5 * absf(hi3.x - lo3.x), 1.0, 0.3 * absf(hi3.z - lo3.z))
-		plate.center_at(0.0, hi3.y * 0.55, 0.0)
+		plate.center_at()
 		shape.center_at()
-		shape.add_shape(plate)
+		if not shape.add_at_intersection(Vector3(0.0, hi3.y + 3.0, 0.0), Vector3(0.0, -1.0, 0.0), plate):
+			plate.center_at(0.0, hi3.y * 0.55, 0.0)
+			shape.add_shape(plate)
 	shape.scale_xyz(rng.randf_range(0.5, 1.5), rng.randf_range(0.5, 1.5), 1.0)
 	var r := shape.get_radius()
 	if r > 1e-4:

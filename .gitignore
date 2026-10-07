@@ -20,3 +20,4 @@ native/ew_kernels/target/
 .env
 .env.local
 *.log
+tmp_vidframes/

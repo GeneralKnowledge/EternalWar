@@ -147,6 +147,25 @@ func warp(fn: Callable) -> ShapeLibShape:
 	return self
 
 
+## Project verts onto unit sphere (LT Warp.sphereize). p≈2 → Euclidean normalize.
+func sphereize(p: float = 2.0) -> ShapeLibShape:
+	for i in verts.size():
+		var v: Vector3 = verts[i]
+		if p >= 1.9 and p <= 2.1:
+			if v.length_squared() > 1e-12:
+				verts[i] = v.normalized()
+		else:
+			# Approximate p-norm normalize
+			var ax := absf(v.x)
+			var ay := absf(v.y)
+			var az := absf(v.z)
+			var pn := pow(ax, p) + pow(ay, p) + pow(az, p)
+			if pn > 1e-12:
+				var inv := 1.0 / pow(pn, 1.0 / p)
+				verts[i] = v * inv
+	return self
+
+
 func scale_xyz(sx: float, sy: float = -1.0, sz: float = -1.0) -> ShapeLibShape:
 	if sy < 0.0:
 		sy = sx
@@ -387,25 +406,151 @@ func triangulate_fan() -> void:
 		i += 1
 
 
-## Finalize → ArrayMesh (LT finalize without UV bake / engine AO).
-func finalize_mesh(hull_color: Color = Color(0.45, 0.45, 0.48)) -> ArrayMesh:
+## LT Shape:addAtIntersection — place `other` at first ray hit on this mesh.
+func add_at_intersection(ray_origin: Vector3, ray_dir: Vector3, other: ShapeLibShape) -> bool:
+	var hit: Variant = intersect_ray(ray_origin, ray_dir)
+	if hit == null:
+		return false
+	var p: Vector3 = hit
+	other.translate_xyz(p.x, p.y, p.z)
+	add_shape(other)
+	return true
+
+
+## Raycast against triangulated polys. Returns hit point or null.
+## WARNING: fan-triangulates this shape (same as LT).
+func intersect_ray(ray_origin: Vector3, ray_dir: Vector3) -> Variant:
+	triangulate_fan()
+	var t_min := 1e30
+	var hit: Variant = null
+	var dir := ray_dir
+	if dir.length_squared() < 1e-12:
+		return null
+	for poly in polys:
+		if not poly_valid(poly) or poly.size() < 3:
+			continue
+		var t: Variant = _check_ray_intersect_tri(ray_origin, dir, poly)
+		if t != null and float(t) < t_min and float(t) > 1e-6:
+			t_min = float(t)
+			hit = ray_origin + dir * t_min
+	return hit
+
+
+## Finalize → ArrayMesh. Soft cavity AO (approx LT computeAO) via neighbour darkening.
+## UV / DiffuseMap bake still deferred.
+func finalize_mesh(hull_color: Color = Color(0.45, 0.45, 0.48), with_ao: bool = true) -> ArrayMesh:
 	var work := clone()
 	work.triangulate_fan()
+	var ao: PackedFloat32Array = PackedFloat32Array()
+	if with_ao and work.verts.size() > 0:
+		ao = work._soft_ao(0.55 * work.get_radius())
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for poly in work.polys:
 		if not work.poly_valid(poly) or poly.size() < 3:
 			continue
-		var c := hull_color
-		st.set_color(c)
-		st.add_vertex(work.verts[int(poly[0])])
-		st.set_color(c)
-		st.add_vertex(work.verts[int(poly[1])])
-		st.set_color(c)
-		st.add_vertex(work.verts[int(poly[2])])
+		for k in 3:
+			var vi := int(poly[k])
+			var c := hull_color
+			if with_ao and ao.size() > vi:
+				var a := ao[vi]
+				c = Color(c.r * a, c.g * a, c.b * a, c.a)
+			st.set_color(c)
+			st.add_vertex(work.verts[vi])
 	st.generate_normals()
-	var mesh: ArrayMesh = st.commit()
-	return mesh
+	return st.commit()
+
+
+## Cheap AO: verts in dense neighbourhoods darken (stand-in for mesh:computeAO).
+func _soft_ao(radius: float) -> PackedFloat32Array:
+	var n := verts.size()
+	var out := PackedFloat32Array()
+	out.resize(n)
+	var r2 := maxf(radius * radius * 0.04, 1e-4)
+	for i in n:
+		var p: Vector3 = verts[i]
+		var occ := 0.0
+		var samples := 0
+		# Sparse neighbourhood sample — O(n) with stride for large meshes.
+		var stride := maxi(1, n / 64)
+		var j := 0
+		while j < n:
+			if j != i:
+				var d2 := p.distance_squared_to(verts[j])
+				if d2 < r2:
+					occ += 1.0 - d2 / r2
+					samples += 1
+			j += stride
+		var a := 1.0 - clampf(occ / maxf(float(samples), 1.0), 0.0, 1.0) * 0.45
+		out[i] = clampf(a, 0.55, 1.0)
+	return out
+
+
+func _check_ray_intersect_tri(ray_origin: Vector3, ray_dir: Vector3, tri: Array) -> Variant:
+	var p0: Vector3 = verts[int(tri[0])]
+	var p1: Vector3 = verts[int(tri[1])]
+	var p2: Vector3 = verts[int(tri[2])]
+	var n: Variant = get_face_normal(tri)
+	if n == null:
+		return null
+	var nn: Vector3 = n
+	var denom := nn.dot(ray_dir)
+	if denom >= -1e-8:
+		return null # backface / parallel
+	var t := nn.dot(p0 - ray_origin) / denom
+	if t < 0.0:
+		return null
+	var p := ray_origin + ray_dir * t
+	# Barycentric in dominant plane (LT checkRayIntersectTri)
+	var u0: float
+	var u1: float
+	var u2: float
+	var v0: float
+	var v1: float
+	var v2: float
+	if absf(nn.x) > absf(nn.y):
+		if absf(nn.x) > absf(nn.z):
+			u0 = p.y - p0.y
+			u1 = p1.y - p0.y
+			u2 = p2.y - p0.y
+			v0 = p.z - p0.z
+			v1 = p1.z - p0.z
+			v2 = p2.z - p0.z
+		else:
+			u0 = p.x - p0.x
+			u1 = p1.x - p0.x
+			u2 = p2.x - p0.x
+			v0 = p.y - p0.y
+			v1 = p1.y - p0.y
+			v2 = p2.y - p0.y
+	else:
+		if absf(nn.y) > absf(nn.z):
+			u0 = p.x - p0.x
+			u1 = p1.x - p0.x
+			u2 = p2.x - p0.x
+			v0 = p.z - p0.z
+			v1 = p1.z - p0.z
+			v2 = p2.z - p0.z
+		else:
+			u0 = p.x - p0.x
+			u1 = p1.x - p0.x
+			u2 = p2.x - p0.x
+			v0 = p.y - p0.y
+			v1 = p1.y - p0.y
+			v2 = p2.y - p0.y
+	var temp := u1 * v2 - v1 * u2
+	if absf(temp) < 1e-12:
+		return null
+	temp = 1.0 / temp
+	var alpha := (u0 * v2 - v0 * u2) * temp
+	if alpha < 0.0:
+		return null
+	var beta := (u1 * v0 - v1 * u0) * temp
+	if beta < 0.0:
+		return null
+	if 1.0 - alpha - beta < 0.0:
+		return null
+	return t
 
 
 # --- internals ---

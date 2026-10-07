@@ -15,10 +15,13 @@ var _camera: Camera3D
 var _inspect_target: Dictionary = {}
 var _dust: GPUParticles3D
 var _engine_fx: GPUParticles3D
+var _thruster_mesh: MeshInstance3D
 var _env_node: WorldEnvironment
+var _post_layer: CanvasLayer
 var sky_comp: Dictionary = {}
 var _star_packs: Dictionary = {}
 var _nebula_volume_mats: Array = []
+var _starfield_mats: Array = []
 
 const NEAR_SHIP_CAP := 28
 
@@ -93,7 +96,10 @@ func _clear_visuals() -> void:
 	_nebula_volume_mats.clear()
 	_dust = null
 	_engine_fx = null
+	_thruster_mesh = null
 	_env_node = null
+	_post_layer = null
+	_starfield_mats.clear()
 	_built = false
 
 
@@ -149,7 +155,7 @@ func _build_environment() -> void:
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 0.95
 	# Compatibility glow uses hex bokeh that reads as "sphere tiles" on the sky.
-	# Keep glow off for the IFS sky authority; star mesh + thrusters carry peaks.
+	# Keep glow off; LT film curve + vignette live in lt_post fullscreen pass.
 	e.glow_enabled = false
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
@@ -158,11 +164,12 @@ func _build_environment() -> void:
 	e.fog_aerial_perspective = 0.035
 	e.adjustment_enabled = true
 	e.adjustment_saturation = 0.92
-	e.adjustment_contrast = 1.16
-	e.adjustment_brightness = 0.95
+	e.adjustment_contrast = 1.12
+	e.adjustment_brightness = 0.97
 	env.environment = e
 	_env_node = env
 	add_child(env)
+	_build_lt_post()
 
 	# LT path: direction-space IFS sky is the nebula authority (gen/nebula.glsl).
 	# World-space volumes/wisps are off — they reinvent fog and fight the IFS look.
@@ -230,12 +237,12 @@ func _bake_nebula_sky_texture(palette: Dictionary) -> ImageTexture:
 	var star: Dictionary = sim.world.get("star", {})
 	var star_pos: Vector3 = star.get("position", Vector3(0.2, 0.55, 0.15))
 	var star_dir := star_pos.normalized() if star_pos.length() > 0.01 else Vector3(0.2, 0.55, 0.15)
-	# 512×256 / 64 samples is a few hundred ms in Rust+rayon — once per system.
+	# 1024×512 / 96 samples — closer to LT Nebula1 mips; still once per system.
 	var bake: Dictionary = NativeBridge.bake_nebula_panorama({
-		"width": 512,
-		"height": 256,
-		"samples": 64,
-		"iterations": 22,
+		"width": 1024,
+		"height": 512,
+		"samples": 96,
+		"iterations": 24,
 		"seed": float(sim.seed_value),
 		"roughness": float(sky_comp.get("roughness", 0.72)),
 		"primary": Vector3(primary.r, primary.g, primary.b),
@@ -279,6 +286,24 @@ func _nebula_color_luts(system_seed: int, primary: Color, secondary: Color) -> D
 	}
 
 
+func _build_lt_post() -> void:
+	_post_layer = CanvasLayer.new()
+	_post_layer.layer = 80
+	_post_layer.name = "lt_post"
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/lt_post.gdshader")
+	mat.set_shader_parameter("vignette_strength", 0.25)
+	mat.set_shader_parameter("expmap_k", 2.3)
+	mat.set_shader_parameter("expmap_p", 1.0)
+	mat.set_shader_parameter("strength", 1.0)
+	rect.material = mat
+	_post_layer.add_child(rect)
+	add_child(_post_layer)
+
+
 func _build_starfield_layer(key: String) -> void:
 	if _star_packs.is_empty():
 		_star_packs = StarfieldGen.build_from_composition(sky_comp)
@@ -287,6 +312,12 @@ func _build_starfield_layer(key: String) -> void:
 		return
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/starfield.gdshader")
+	var palette: Dictionary = sky_comp.get("palette", {})
+	var primary: Color = palette.get("primary", Color(0.4, 0.3, 0.7))
+	mat.set_shader_parameter("nebula_tint", Vector3(primary.r, primary.g, primary.b))
+	mat.set_shader_parameter("ir_suppress", 0.32 if key == "field" or key == "micro" else 0.18)
+	mat.set_shader_parameter("ir_tint", 0.2)
+	_starfield_mats.append(mat)
 	var node := MultiMeshInstance3D.new()
 	node.multimesh = mm
 	node.material_override = mat
@@ -392,7 +423,7 @@ func set_nebula_quality(steps: int) -> void:
 
 func _build_dust(nebula: Color) -> void:
 	_dust = GPUParticles3D.new()
-	_dust.amount = 140
+	_dust.amount = 160
 	_dust.lifetime = 8.0
 	_dust.preprocess = 4.0
 	_dust.visibility_aabb = AABB(Vector3(-400, -400, -400), Vector3(800, 800, 800))
@@ -402,22 +433,16 @@ func _build_dust(nebula: Color) -> void:
 	mat.initial_velocity_min = 0.5
 	mat.initial_velocity_max = 4.0
 	mat.gravity = Vector3.ZERO
-	mat.scale_min = 0.12
-	mat.scale_max = 0.55
-	mat.color = Color(nebula.r + 0.25, nebula.g + 0.25, nebula.b + 0.35, 0.28)
+	mat.scale_min = 0.08
+	mat.scale_max = 0.45
+	mat.color = Color(nebula.r + 0.25, nebula.g + 0.25, nebula.b + 0.35, 0.22)
 	_dust.process_material = mat
-	var draw := SphereMesh.new()
-	draw.radius = 0.3
-	draw.height = 0.6
-	draw.radial_segments = 4
-	draw.rings = 2
-	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(nebula.r + 0.3, nebula.g + 0.3, nebula.b + 0.4, 0.22)
-	dm.emission_enabled = true
-	dm.emission = nebula
-	dm.emission_energy_multiplier = 0.45
-	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var draw := QuadMesh.new()
+	draw.size = Vector2(0.35, 1.1)
+	var dm := ShaderMaterial.new()
+	dm.shader = load("res://shaders/dustfleck.gdshader")
+	dm.set_shader_parameter("fleck_cool", Vector3(0.1, 0.5, 1.0))
+	dm.set_shader_parameter("fleck_warm", Vector3(1.0, 0.5, 0.1))
 	draw.material = dm
 	_dust.draw_pass_1 = draw
 	add_child(_dust)
@@ -786,34 +811,41 @@ func _build_ships() -> void:
 
 
 func _build_life_fx() -> void:
+	# LT effect/thruster.glsl plume billboard (primary light event).
+	_thruster_mesh = MeshInstance3D.new()
+	var plume := QuadMesh.new()
+	plume.size = Vector2(2.4, 6.5)
+	_thruster_mesh.mesh = plume
+	var tm := ShaderMaterial.new()
+	tm.shader = load("res://shaders/thruster.gdshader")
+	tm.set_shader_parameter("thruster_color", Vector3(1.0, 0.55, 0.25))
+	tm.set_shader_parameter("alpha", 1.0)
+	tm.set_shader_parameter("time_scale", 1.0)
+	_thruster_mesh.material_override = tm
+	_thruster_mesh.name = "thruster_plume"
+	add_child(_thruster_mesh)
+	# Soft particle spray behind plume
 	_engine_fx = GPUParticles3D.new()
-	_engine_fx.amount = 64
-	_engine_fx.lifetime = 1.2
+	_engine_fx.amount = 48
+	_engine_fx.lifetime = 1.0
 	_engine_fx.emitting = true
 	_engine_fx.visibility_aabb = AABB(Vector3(-2000, -2000, -2000), Vector3(4000, 4000, 4000))
 	var mat := ParticleProcessMaterial.new()
 	mat.direction = Vector3(0, 0, 1)
-	mat.spread = 12.0
-	mat.initial_velocity_min = 8.0
-	mat.initial_velocity_max = 28.0
+	mat.spread = 10.0
+	mat.initial_velocity_min = 10.0
+	mat.initial_velocity_max = 32.0
 	mat.gravity = Vector3.ZERO
-	mat.scale_min = 0.3
-	mat.scale_max = 1.2
-	# Warm amber default — style-specific exhaust lives on the mesh; FX stays neutral-warm.
-	mat.color = Color(1.0, 0.55, 0.25, 0.5)
+	mat.scale_min = 0.2
+	mat.scale_max = 0.8
+	mat.color = Color(1.0, 0.55, 0.25, 0.4)
 	_engine_fx.process_material = mat
-	var draw := SphereMesh.new()
-	draw.radius = 0.6
-	draw.height = 1.2
-	draw.radial_segments = 4
-	draw.rings = 2
-	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(1.0, 0.6, 0.3, 0.4)
-	dm.emission_enabled = true
-	dm.emission = Color(1.0, 0.5, 0.2)
-	dm.emission_energy_multiplier = 2.0
-	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var draw := QuadMesh.new()
+	draw.size = Vector2(0.5, 1.4)
+	var dm := ShaderMaterial.new()
+	dm.shader = load("res://shaders/thruster.gdshader")
+	dm.set_shader_parameter("thruster_color", Vector3(1.0, 0.5, 0.22))
+	dm.set_shader_parameter("alpha", 0.55)
 	draw.material = dm
 	_engine_fx.draw_pass_1 = draw
 	add_child(_engine_fx)
@@ -1018,14 +1050,34 @@ func sync_ships() -> void:
 	_prune_near_ships(keep)
 	_inspect_target = nearest
 
-	if _engine_fx != null and not nearest.is_empty():
+	if not nearest.is_empty():
 		var np: Vector3 = nearest.get("position", Vector3.ZERO)
 		var nh: Vector3 = nearest.get("heading", Vector3(0, 0, -1))
 		if nh.length_squared() < 0.001:
 			nh = Vector3(0, 0, -1)
 		var aft := np - nh.normalized() * 6.0
-		_engine_fx.global_position = aft
-		_engine_fx.look_at_from_position(aft, np - nh.normalized() * 20.0, Vector3.UP)
+		var look := np - nh.normalized() * 20.0
+		var exhaust := Color(1.0, 0.55, 0.25)
+		var design_n: Dictionary = nearest.get("design", {})
+		if design_n.has("exhaust"):
+			exhaust = design_n["exhaust"]
+		elif design_n.has("accent"):
+			exhaust = (design_n["accent"] as Color).lerp(Color(1.0, 0.6, 0.25), 0.55)
+		if _engine_fx != null:
+			_engine_fx.global_position = aft
+			_engine_fx.look_at_from_position(aft, look, Vector3.UP)
+			var pm: ParticleProcessMaterial = _engine_fx.process_material as ParticleProcessMaterial
+			if pm != null:
+				pm.color = Color(exhaust.r, exhaust.g, exhaust.b, 0.4)
+		if _thruster_mesh != null:
+			_thruster_mesh.global_position = aft - nh.normalized() * 2.5
+			_thruster_mesh.look_at_from_position(_thruster_mesh.global_position, look, Vector3.UP)
+			var tm: ShaderMaterial = _thruster_mesh.material_override as ShaderMaterial
+			if tm != null:
+				tm.set_shader_parameter("thruster_color", Vector3(exhaust.r, exhaust.g, exhaust.b))
+			_thruster_mesh.visible = true
+	elif _thruster_mesh != null:
+		_thruster_mesh.visible = false
 
 
 func _process(_dt: float) -> void:

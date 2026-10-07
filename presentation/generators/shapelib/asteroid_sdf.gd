@@ -1,26 +1,38 @@
 ## Limit Theory asteroid SDF — cell-noise sphere displacement.
 ## Source: res/shader/fragment/sdf/asteroid.glsl + script/Gen/Asteroid.lua
 ## d = length(p) - mix(0.05, 1.0, fCellNoise(2p, seed, octaves, smoothness))
+## LOD bands approximate LT LodMesh 8-band distance ranges (sphere densify, not Tex3D bake).
 class_name ShapeLibAsteroid
 extends RefCounted
 
+## LT Asteroid.lua: 8 bands with res lac=1.5. We map VisualLOD/detail → band.
+const BAND_COUNT := 8
+
 
 static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35, 0.32, 0.28)) -> ArrayMesh:
-	var key := "shapelib_asteroid:%d:%d" % [seed, detail]
+	var band := clampi(detail, 0, BAND_COUNT - 1)
+	# Map EW detail 0/1/2 → denser bands (higher = nearer)
+	if detail <= 0:
+		band = 0
+	elif detail == 1:
+		band = 3
+	else:
+		band = 6
+	var key := "shapelib_asteroid:%d:b%d" % [seed, band]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
 
 	var rng := SeededRNG.new(seed)
 	var noise_seed := rng.randf_range(0.0, 1000.0)
-	var octaves := 6 if detail <= 0 else (8 if detail >= 2 else 7)
+	# Near bands: more octaves + subdiv; far bands: cheap hull.
+	var octaves := clampi(4 + band, 4, 10)
 	var smoothness := 2.5
+	var subdiv := clampi(1 + band / 2, 1, 5)
 
-	# Sphere base, then displace along radial by SDF residual
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var mesh_base := SphereMesh.new()
-	var subdiv := 1 if detail <= 0 else (3 if detail >= 2 else 2)
 	mesh_base.radial_segments = 8 * (subdiv + 1)
 	mesh_base.rings = 4 * (subdiv + 1)
 	mesh_base.radius = 1.0
@@ -30,10 +42,10 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 	var src_idx_v: Variant = arr[Mesh.ARRAY_INDEX]
 	var out_verts: PackedVector3Array = PackedVector3Array()
 	out_verts.resize(src_verts.size())
+	var search_iters := 8 if band <= 2 else (10 if band <= 5 else 12)
 	for i in src_verts.size():
 		var p: Vector3 = src_verts[i].normalized()
-		# Sample density along ray — find approximate surface where d≈0
-		var r := _surface_radius(p, noise_seed, octaves, smoothness)
+		var r := _surface_radius(p, noise_seed, octaves, smoothness, search_iters)
 		out_verts[i] = p * r
 	if src_idx_v == null:
 		for i in range(0, out_verts.size(), 3):
@@ -60,11 +72,10 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 	return MeshCache.store(key, mesh) as ArrayMesh
 
 
-static func _surface_radius(dir: Vector3, seed: float, octaves: int, smoothness: float) -> float:
-	# Binary search radius where length(p)-mix(0.05,1,n) ≈ 0 with p = dir*r
+static func _surface_radius(dir: Vector3, seed: float, octaves: int, smoothness: float, iters: int = 10) -> float:
 	var lo := 0.05
 	var hi := 1.35
-	for _k in 10:
+	for _k in iters:
 		var mid := (lo + hi) * 0.5
 		var p := dir * mid
 		var n := _f_cell_noise(p * 2.0, seed, octaves, smoothness)
@@ -76,7 +87,6 @@ static func _surface_radius(dir: Vector3, seed: float, octaves: int, smoothness:
 	return (lo + hi) * 0.5
 
 
-## Worley / cell-noise approximation matching LT fCellNoise spirit (not bit-identical).
 static func _f_cell_noise(p: Vector3, seed: float, octaves: int, smoothness: float) -> float:
 	var amp := 1.0
 	var freq := 1.0

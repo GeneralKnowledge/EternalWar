@@ -85,13 +85,13 @@ float gain_fn(float x, float k) {
 	return (x < 0.5) ? a : 1.0 - a;
 }
 
-// LT genHeight — Kaliset-style IFS (reduced iters for live shading)
+// LT genHeight — Kaliset-style IFS (live: 18 iters; bake target 32)
 float gen_height(vec3 p) {
 	vec4 z = vec4(p / 4.0 + 0.75, 0.3);
 	float a = 0.0;
 	float l = 0.0;
 	float w = 1.0;
-	for (int i = 0; i < 12; i++) {
+	for (int i = 0; i < 18; i++) {
 		float m = dot(z, z);
 		z = abs(z) / max(m, 1e-4) - vec4(0.4, 0.5, 0.6, 0.3);
 		z += 0.1 * log(1.0e-10 + noise4(float(i) + seed_offset));
@@ -107,12 +107,12 @@ float gen_height(vec3 p) {
 	return gain_fn(pow(0.5 + 0.5 * sin(freq * a), power), 4.0);
 }
 
-// LT genColor
+// LT genColor (live: 16 iters; bake target 24)
 float gen_color(vec3 p) {
 	vec4 z = vec4(p / 4.0 + 0.75, 0.3);
 	float a = 0.0;
 	float w = 1.0;
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 16; i++) {
 		float m = dot(z, z);
 		z = abs(z) / max(m, 1e-4) - vec4(0.4, 0.5, 0.6, 0.4);
 		z += 0.1 * log(1.0e-10 + noise4(float(i) + seed_offset + 58.329));
@@ -141,10 +141,10 @@ void fragment() {
 	float cfield = gen_color(nrm);
 	float clouds_f = gen_clouds(nrm);
 
-	// Gas giant: use colour field as bands instead of inventing sine stripes
-	float bands = 0.5 + 0.5 * sin(nrm.y * 14.0 + cfield * 6.0 + seed_offset);
-	vec3 gas = mix(color_a.rgb, color_b.rgb, bands);
-	gas = mix(gas, color_c.rgb, smoothstep(0.35, 0.85, cfield) * 0.45);
+	// Gas giant: colour field only (no invented latitude sine stripes)
+	vec3 gas = mix(color_a.rgb, color_b.rgb, smoothstep(0.15, 0.85, cfield));
+	gas = mix(gas, color_c.rgb, smoothstep(0.45, 0.95, h) * 0.4);
+	gas = mix(gas, color_d.rgb * 0.85, smoothstep(0.7, 0.95, abs(nrm.y)) * 0.25);
 
 	vec3 land = mix(color_a.rgb, color_b.rgb, smoothstep(0.22, 0.78, cfield));
 	land = mix(land, color_c.rgb, smoothstep(0.4, 0.95, h));
