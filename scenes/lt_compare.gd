@@ -237,10 +237,12 @@ func _write_capture() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
-				scenario_i = event.keycode - KEY_1
-				_capturing = false
-				_apply_scenario()
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
+				var idx := event.keycode - KEY_1
+				if idx >= 0 and idx < SCENARIOS.size():
+					scenario_i = idx
+					_capturing = false
+					_apply_scenario()
 			KEY_C:
 				_capture_queue = [scenario_i]
 				_capturing = true
@@ -272,5 +274,5 @@ func _refresh_label() -> void:
 		"mood=%s masses=%s  fov=65  backend=%s" % [
 			str(sky.get("mood", "?")), str(sky.get("masses", "?")), NativeBridge.backend_name(),
 		],
-		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids   C capture  A all   Esc main",
+		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids 7 planet   C capture  A all   Esc main",
 	]))
