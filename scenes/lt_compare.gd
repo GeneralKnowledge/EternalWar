@@ -146,30 +146,19 @@ func _apply_scenario() -> void:
 			distance = float(sc["dist"])
 			yaw = float(sc["yaw"])
 		_:
-			# Look into the primary nebula mass (not at the star at origin).
+			# Aim into the primary nebula mass lobe on the IFS sky.
 			var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
-			var pm: Dictionary = SkyComposition.primary_mass(presenter.sky_comp)
-			var mass_center: Vector3 = pm.get("center", sky_dir * 5000.0)
+			focus = Vector3.ZERO
+			distance = float(sc["dist"])
 			if str(sc["id"]) == "nebula":
-				# Outside the mass looking through it — gas fills FOV with mild graze.
-				var radius := float(pm.get("radius", 2500.0))
-				var lateral := sky_dir.cross(Vector3.UP)
-				if lateral.length_squared() < 0.01:
-					lateral = sky_dir.cross(Vector3.RIGHT)
-				lateral = lateral.normalized()
-				focus = mass_center + lateral * radius * 0.12
-				distance = maxf(radius * 1.4, 2800.0)
-				var view_dir := -sky_dir.normalized()
-				yaw = atan2(view_dir.x, view_dir.z)
-				pitch = clampf(-asin(clampf(view_dir.y, -1.0, 1.0)) * 0.5 + float(sc["pitch"]), -1.2, 1.2)
+				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.15
+			elif sc["yaw"] == null:
+				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
 			else:
-				focus = Vector3.ZERO
-				distance = float(sc["dist"])
-				if sc["yaw"] == null:
-					yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
-				else:
-					yaw = float(sc["yaw"])
-	if str(sc["id"]) != "nebula":
+				yaw = float(sc["yaw"])
+	if str(sc["id"]) == "nebula":
+		pitch = clampf(float(sc["pitch"]) - 0.05, -1.2, 1.2)
+	else:
 		pitch = float(sc["pitch"])
 	_frames = 0
 	_hide_hud_for_capture = false

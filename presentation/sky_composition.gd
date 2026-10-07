@@ -120,8 +120,9 @@ static func build(
 		"star_micro_count": rng.randi_range(10000, 15000),
 		"star_notable_count": rng.randi_range(120, 220),
 		"dust_count": rng.randi_range(380, 620),
-		"volume_quality": 36, # default ray steps; showcase can override
+		"volume_quality": 0, # world volumes demoted — IFS sky is the nebula
 		"debug_nebula": 0,
+		"roughness": rng.randf_range(0.62, 0.78), # LT nebula IFS roughness
 	}
 
 
