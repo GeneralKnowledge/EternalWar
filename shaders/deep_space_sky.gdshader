@@ -189,10 +189,7 @@ vec3 generate(vec3 dir) {
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	// Cubemap bake = LT TexCube generate(); background samples the baked radiance.
-	if (AT_CUBEMAP_PASS) {
-		COLOR = generate(dir);
-	} else {
-		COLOR = texture(RADIANCE, dir).rgb;
-	}
+	// Always generate for the visible sky (Compatibility/OpenGL3 RADIANCE sampling
+	// can return black). Cubemap pass still bakes for IBL — LT TexCube intent.
+	COLOR = generate(dir);
 }

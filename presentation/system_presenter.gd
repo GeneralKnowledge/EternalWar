@@ -119,10 +119,11 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	# Bake IFS into radiance cubemap once (LT TexCube path). REALTIME forces 256² and
-	# looks tiled on Compatibility — QUALITY + 512 matches Nebula1.lua intent.
-	sky.process_mode = Sky.PROCESS_MODE_QUALITY
-	sky.radiance_size = Sky.RADIANCE_SIZE_512
+	# Visible sky runs generate() every pixel (see deep_space_sky.gdshader).
+	# REALTIME + 256 is fine for IBL; avoid QUALITY 512 bake on Compatibility
+	# (minutes per system seed with heavy IFS).
+	sky.process_mode = Sky.PROCESS_MODE_REALTIME
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
 	_apply_sky_uniforms(sky_mat, palette)

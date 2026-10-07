@@ -178,11 +178,11 @@ func _process(_dt: float) -> void:
 	_frames += 1
 	if not _capturing:
 		return
-	if _frames == 6:
+	if _frames == 10:
 		_hide_hud_for_capture = true
 		if label:
 			label.visible = false
-	elif _frames == 8:
+	elif _frames == 14:
 		_write_capture()
 		if not _capture_queue.is_empty():
 			var nxt = _capture_queue.pop_front()
