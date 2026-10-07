@@ -4,10 +4,12 @@ shader_type sky;
 // Structure comes from Kaliset IFS + absorption along the view ray into dir-space,
 // NOT soft lobes / lattices painted on a sky sphere.
 //
-// LT runtime path: bake this into a TexCube, then sample with skybox.glsl.
-// We evaluate live (Godot Sky). Compatibility displays via the radiance
-// cubemap, so the shader must stay cheap enough to bake and numerically
-// stable in mediump (pure `c *= exp(...)` underflows to irreversible black).
+// Live notes (Godot Compatibility / mediump radiance cubemap):
+// - Pure LT `c *= exp(-k*w*vs)` underflows to irreversible black.
+// - Wide un-gated emission washes the whole dome cyan (sphere look).
+// - Working live recipe: clamp absorb, additive filament emit_acc, and a larger
+//   dir-space sample extent so magic() actually walks the IFS (LT bake uses
+//   128 samples offline; we use fewer with extent scale).
 
 uniform float seed = 42.0;
 uniform vec3 bg_color = vec3(0.02, 0.025, 0.05);
@@ -40,15 +42,15 @@ uniform vec3 void1_dir = vec3(0.5, -0.5, 0.4);
 uniform float void1_radius = 0.45;
 
 const float kScale = 0.040;
-// LT bake uses 128×30. Live/Compatibility budget: enough structure, no mediump death.
-const int kSamplesBg = 40;
-const int kSamplesCube = 28;
-const int kIterations = 20;
-const float kBrightConstant = 0.070;
-const float kBrightCell = 0.110;
-// Softer than LT k=6 for mediump; contrast comes from narrow cavity emission.
-const float kAbsorb = 4.8;
-const float kEmitGain = 1.35;
+// Live extent: LT offline uses 128 samples along kScale; with ~48 samples we
+// stretch the march so magic() still explores filamentary IFS structure.
+const float kExtent = 12.0;
+const int kSamplesBg = 48;
+const int kSamplesCube = 32;
+const int kIterations = 22;
+const float kBrightConstant = 0.075;
+const float kBrightCell = 0.100;
+const float kAbsorb = 3.6;
 
 float hash11(float x) {
 	return fract(sin(x * 127.1 + seed * 0.13) * 43758.5453);
@@ -60,7 +62,6 @@ float hash21(vec2 p) {
 	return fract(p.x * p.y);
 }
 
-// Cheap stand-in for LT noise4(float) used inside magic().
 float noise4(float x) {
 	float i = floor(x);
 	float f = fract(x);
@@ -68,7 +69,6 @@ float noise4(float x) {
 	return mix(hash11(i), hash11(i + 1.0), f);
 }
 
-// fSmoothNoise-ish: multi-octave value noise for bgDensity (LT uses 8 octaves).
 float smooth_noise3(vec3 p) {
 	vec3 i = floor(p);
 	vec3 f = fract(p);
@@ -105,7 +105,6 @@ float f_smooth_noise(vec3 p, int octaves, float lac) {
 	return sum / max(norm, 1e-4);
 }
 
-// LT magic() — Kaliset 4D with noise injection (gen/nebula.glsl)
 float magic(vec3 p) {
 	vec4 z = vec4(vec3(0.53) + p, 0.0);
 	float a = 0.0;
@@ -118,7 +117,6 @@ float magic(vec3 p) {
 			break;
 		}
 		float m = dot(z, z);
-		// LT divides by m directly; guard only the singularity.
 		z = abs(z) / max(m, 1e-8) - c;
 		z += 0.02 * log(1.0e-10 + noise4(float(i) + seed));
 		z += 0.25 * sin(z);
@@ -136,7 +134,6 @@ float magic(vec3 p) {
 }
 
 float bg_density(vec3 p) {
-	// LT: kBrightConstant + kBrightCell * fSmoothNoise(p*4 + seed, 8, 2.0)
 	return kBrightConstant + kBrightCell * f_smooth_noise(p * 4.0 + vec3(seed), 6, 2.0);
 }
 
@@ -155,80 +152,65 @@ float lut1(float t, float a, float b, float c, float d, float e) {
 }
 
 vec3 lut_wave(float t) {
-	// Approximate texture1D(lut*, t) then wave *= sqrt(wave) as in LT.
 	float r = lut1(t, lut_r.x * 0.35, lut_r.x, lut_rg_mid.x, lut_r.y, lut_r.z);
 	float g = lut1(t, lut_g.x * 0.35, lut_g.x, lut_rg_mid.y, lut_g.y, lut_g.z);
 	float b = lut1(t, lut_b.x * 0.4, lut_b_edge.x, lut_b.x, lut_b_edge.y, lut_b.z);
 	vec3 wave = vec3(r, g, b);
-	// Mild mood tint — keep LUT-driven structure dominant (not a dome wash).
-	wave = mix(wave, mix(secondary_color, primary_color, t), 0.18);
+	wave = mix(wave, mix(secondary_color, primary_color, t), 0.22);
 	wave *= sqrt(max(wave, vec3(0.0)));
 	return wave;
 }
 
-// LT Nebula1 / gen/nebula.glsl generate(dir) — absorption IFS, no dome paints.
-// Compatibility mediump cannot survive a long product of exp(-k*w*vs); we keep the
-// LT absorb term on transmittance and deposit cavity emission additively (same
-// energy LT gets from negative vs, without irreversible underflow to black).
+// Direction-space IFS only — no mass lobes, void discs, galaxy band, or sparkle grid.
 vec3 generate(vec3 dir_in, int sample_count) {
 	vec3 dir = normalize(dir_in);
-	vec3 bg = vec3(bg_density(dir));
+	vec3 c = vec3(bg_density(dir)) * 1.25;
 
-	// Central star term (also present as a mesh; this matches LT bake energy).
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
-	bg += dd * primary_color;
+	c += dd * primary_color;
 
-	// Critical LT path: sample along dir * kScale * i / N  (NOT a sphere surface paint).
 	vec3 march = dir * kScale;
 	float w = 1.0 / float(sample_count);
 	vec3 c_emit = primary_color;
-
-	vec3 T = vec3(1.0);
 	vec3 emit_acc = vec3(0.0);
 
 	for (int i = 0; i < 64; i++) {
 		if (i >= sample_count) {
 			break;
 		}
-		vec3 p = march * float(i) * w;
+		// Centered samples across an extended IFS interval (live stand-in for
+		// LT's denser 128-sample bake). Still pure direction-space.
+		vec3 p = march * (float(i) + 0.5) * w * kExtent;
 		float m = magic(p);
 		float t = exp(-m * m);
 		vec3 wave = lut_wave(t);
 
-		// LT constants: q=1.2, cavity at t≈0.90, emit 0.50*cEmit.
-		// Narrow the live peaks — magic() often lands near t≈0.9, and wide
-		// LT kernels then wash the whole dome cyan (sphere look again).
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
-		float cavity = exp(-pow(18.0 * abs(t - 0.90), 0.90));
-		float filament = exp(-pow(24.0 * abs(t - 0.88), 0.70));
-		// High-frequency IFS rings (from magic field) gate emission so gas is
-		// filamentary, not a constant dome wash.
-		float rings = clamp(0.5 + 0.5 * sin(48.0 * m) * cos(36.0 * m), 0.0, 1.0);
-		float gate = pow(rings, 1.4) * (0.25 + 0.75 * filament);
-		vs -= 1.25 * cavity;
-		vs += 0.50 * c_emit * filament;
+		float cavity = exp(-pow(8.0 * abs(t - 0.90), 0.75));
+		float filament = exp(-pow(10.0 * abs(t - 0.88), 0.50));
+		vs -= 1.15 * cavity;
+		vec3 filament_emit = 0.55 * c_emit * filament;
+		filament_emit += 0.22 * secondary_color * pow(clamp(t, 0.0, 1.0), 1.4);
+		// Ring modulation from the IFS field — breaks constant wash without
+		// painting lobes on the dome.
+		float rings = 0.55 + 0.45 * sin(40.0 * m) * cos(30.0 * m);
+		filament_emit *= clamp(rings, 0.15, 1.0);
+		vs += filament_emit;
 
-		// Split signed vs: absorb via transmittance, emit via additive deposit.
-		vec3 absorb = max(vs, vec3(0.0));
-		vec3 boost = max(-vs, vec3(0.0));
-		T *= exp(-kAbsorb * w * absorb);
-		T = max(T, vec3(1.0e-3));
-		vec3 filament_emit = (0.55 * c_emit * filament) + (0.22 * secondary_color * cavity);
-		filament_emit += boost * wave * 0.45;
-		filament_emit *= gate;
-		emit_acc += T * filament_emit * w * kEmitGain;
+		c *= exp(-kAbsorb * w * max(vs, vec3(0.0)));
+		emit_acc += filament_emit * w * 0.70 * wave;
 	}
 
-	vec3 c = T * bg + emit_acc;
-	return max(c, bg_color * 0.18);
+	c += emit_acc;
+	c = mix(bg_color * 0.45, c, 0.92);
+	c *= 1.10;
+	return max(c, bg_color * 0.20);
 }
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	// Always evaluate generate() for the visible sky. Compatibility RADIANCE
-	// sampling can return black if we only write during AT_CUBEMAP_PASS.
 	int samples = kSamplesBg;
 	if (AT_CUBEMAP_PASS) {
 		samples = kSamplesCube;
