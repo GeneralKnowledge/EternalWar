@@ -258,21 +258,30 @@ func _apply_mode(design: Dictionary) -> void:
 
 
 func _apply_view(design: Dictionary) -> void:
-	var length := float(ShipDesign.build(design)["length"])
-	var dist := length * 2.9 + 2.4
+	var desc: Dictionary = ShipDesign.build(design)
+	var length := float(desc["length"])
+	var width := float(desc["width"])
+	var height := float(desc["height"])
+	# Frame by AABB / wing span so the ship fills the plate like cropped LT refs.
+	var span_x := width
+	for w in desc.get("wings", []):
+		span_x = maxf(span_x, absf(float(w.get("root", Vector3.ZERO).x)) + absf(float(w.get("span", 0.0))))
+	var extent := maxf(length, maxf(span_x * 2.0, height * 2.2))
+	var dist := extent * 1.55 + 1.8
 	var mode := str(MODES[mode_i])
 	var view := str(ORTHO_VIEWS[ortho_i]) if mode == "ortho" else str(VIEWS[view_i])
 	var pos := Vector3.ZERO
+	var y_bias := height * 0.12
 	match view:
 		# Nose is −Z; front cameras sit on −Z looking toward origin.
 		"front":
-			pos = Vector3(0, length * 0.08, -dist)
+			pos = Vector3(0, y_bias, -dist)
 		"rear":
-			pos = Vector3(0, length * 0.08, dist)
+			pos = Vector3(0, y_bias, dist)
 		"left":
-			pos = Vector3(-dist, length * 0.08, 0)
+			pos = Vector3(-dist, y_bias, 0)
 		"right", "side":
-			pos = Vector3(dist, length * 0.08, 0)
+			pos = Vector3(dist, y_bias, 0)
 		"top":
 			pos = Vector3(0.01, dist, 0.01)
 		"bottom":
@@ -283,7 +292,7 @@ func _apply_view(design: Dictionary) -> void:
 			# three_quarter_front
 			pos = Vector3(dist * 0.6, dist * 0.32, -dist * 0.65)
 	if mode == "ortho":
-		camera.size = length * 2.2
+		camera.size = extent * 1.35
 	camera.global_position = pos
 	camera.look_at(Vector3(0, 0, 0), Vector3.UP)
 

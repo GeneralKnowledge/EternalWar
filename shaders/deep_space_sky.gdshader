@@ -65,7 +65,9 @@ float magic(vec3 p) {
 		c = c.yzwx;
 	}
 	float t = a / max(tw, 1e-4);
-	return 0.5 + 0.5 * min(cos(30.0 * t), sin(40.0 * t));
+	// Soften high-frequency concentric banding behind volumes
+	float rings = min(cos(12.0 * t), sin(18.0 * t));
+	return 0.5 + 0.5 * mix(t, rings, 0.35);
 }
 
 float mass_bias(vec3 dir) {

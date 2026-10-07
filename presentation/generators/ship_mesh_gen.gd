@@ -188,12 +188,12 @@ static func _emit_wing(st: SurfaceTool, w: Dictionary, accent: Color, lod: int) 
 	if lod >= VisualLOD.LOD_BATCH:
 		ShapePrims.box(st, root.lerp(tip, 0.45), Vector3(absf(span) * 0.9, thick, chord * 0.7), accent.darkened(0.1))
 		return
-	# Optional root fairing: short loft from inboard toward wing root (fills negative-space gap)
+	# Optional root fairing: slim bridge — leave a visible gap beside the hull
 	if bool(w.get("fairing", false)) and lod <= VisualLOD.LOD_SIMPLE:
-		var inboard := root - Vector3(signf(span) * absf(span) * 0.08, 0, 0)
+		var inboard := root - Vector3(signf(span) * absf(span) * 0.05, 0, 0)
 		var fair_stations: Array = [
-			GeometryKernel.station(root.z - chord * 0.35, thick * 2.2, thick * 1.6, root.y, inboard.x, "box", 4),
-			GeometryKernel.station(root.z + chord * 0.25, thick * 1.8, thick * 1.3, root.y, root.x, "box", 4),
+			GeometryKernel.station(root.z - chord * 0.28, thick * 1.4, thick * 1.15, root.y, inboard.x, "box", 4),
+			GeometryKernel.station(root.z + chord * 0.18, thick * 1.2, thick * 1.0, root.y, root.x, "box", 4),
 		]
 		GeometryKernel.loft_hull(st, fair_stations, accent.darkened(0.05), 0.1, 1, true, true)
 	GeometryKernel.wing_planform(

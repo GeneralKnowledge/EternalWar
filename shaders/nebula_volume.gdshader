@@ -2,7 +2,7 @@ shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, blend_mix, specular_disabled;
 
 // Bounded volumetric nebula — density(world_pos), not noise(UV).
-// Raymarches only inside the mass sphere described by SkyComposition.
+// Anisotropic filament ridges + domain warp; emission ≠ density.
 
 uniform vec3 volume_center = vec3(0.0);
 uniform float volume_radius = 3000.0;
@@ -58,7 +58,6 @@ float fbm3(vec3 p) {
 	for (int i = 0; i < 5; i++) {
 		v += a * noise3(p);
 		p = p * 2.02 + vec3(1.7, 9.2, 3.1);
-		// rotate-ish without mat3 (GLES-friendly)
 		p = vec3(p.y + p.z * 0.6, p.z - p.x * 0.8, p.x * 0.6 + p.y * 0.48);
 		a *= 0.5;
 	}
@@ -68,9 +67,16 @@ float fbm3(vec3 p) {
 vec3 sample_density_pack(vec3 world_p) {
 	// returns dens, emit_w, absorb_w
 	vec3 local = (world_p - volume_center) / max(volume_radius, 1.0);
+	// Stronger domain warp breaks concentric radial shells
+	vec3 warp = vec3(
+		fbm3(local * 1.3 + vec3(seed * 0.01, 2.1, 0.0)),
+		fbm3(local * 1.1 + vec3(0.0, seed * 0.013, 4.7)),
+		fbm3(local * 1.4 + vec3(3.3, 0.0, seed * 0.017))
+	) - 0.5;
+	local += warp * 0.42;
 	vec3 stretched = local / max(elongation, vec3(0.2));
 	float r = length(stretched);
-	float large = 1.0 - smoothstep(0.2, 1.02, r);
+	float large = 1.0 - smoothstep(0.12, 1.05, r + warp.x * 0.18);
 	if (large <= 0.001) {
 		return vec3(0.0);
 	}
@@ -80,17 +86,35 @@ vec3 sample_density_pack(vec3 world_p) {
 	float n_mid = fbm3(q * 2.1 + 11.0);
 	float n_hi = fbm3(q * 5.4 + 29.0);
 
-	float clouds = smoothstep(0.22, 0.72, n_lo * 0.65 + n_mid * 0.4);
-	float filaments = smoothstep(0.4, 0.88, n_mid * 0.45 + n_hi * 0.55) * filament_strength;
-	// Cavities carve holes but leave substantial gas
-	float cavity = smoothstep(0.35, 0.8, abs(n_lo - 0.48) * 2.2);
-	float cavity_mask = mix(1.0, 1.0 - cavity_strength * 0.75, cavity);
-	float core = exp(-r * r * mix(1.6, 4.2, 1.0 - core_strength)) * core_strength;
+	// Noise-modulate envelope so large scale is not a pure sphere
+	large *= smoothstep(0.08, 0.55, n_lo * 0.65 + n_mid * 0.25);
 
-	float dens = large * (0.15 + clouds * 0.7 + filaments * 0.55 + core * 0.65) * cavity_mask * density_scale;
+	float clouds = smoothstep(0.18, 0.7, n_lo * 0.6 + n_mid * 0.45);
+
+	// Anisotropic filament ridges (elongated mid-frequency edges, not isotropic fill)
+	vec3 q_fil = vec3(q.x * elongation.z, q.y * 2.2, q.z * elongation.x);
+	float n_fil = fbm3(q_fil * 3.4 + 19.0);
+	float ridge = 1.0 - abs(n_fil * 2.0 - 1.0);
+	float filaments = smoothstep(0.42, 0.78, ridge * 0.7 + n_mid * 0.35) * filament_strength;
+	float filament_ridges = pow(smoothstep(0.62, 0.95, ridge), 1.8) * filament_strength;
+
+	// Tight cavities — dark lanes without washing the mass
+	float cavity = smoothstep(0.55, 0.92, abs(n_lo - 0.5) * 2.2);
+	float lane = smoothstep(0.65, 0.95, abs(n_mid - 0.45) * 1.7);
+	float cavity_mask = mix(1.0, 1.0 - cavity_strength * 0.38, cavity * 0.8 + lane * 0.3);
+
+	float core = exp(-r * r * mix(1.4, 3.8, 1.0 - core_strength)) * core_strength;
+	core *= smoothstep(0.08, 0.5, n_lo + warp.y * 0.25);
+
+	// Structure as edges: lower filament density, higher filament emission
+	float dens = large * (
+		0.12 + clouds * 0.65 + filaments * 0.45 + filament_ridges * 0.35 + core * 0.6
+	) * cavity_mask * density_scale;
 	dens = max(dens, 0.0);
-	float emit_w = (filaments * 1.5 + core * 1.0 + clouds * 0.55) * mix(1.1, 0.55, clouds);
-	float absorb_w = dens * (0.7 + clouds * 1.1) * absorb_strength;
+	float emit_w = (
+		filaments * 2.1 + filament_ridges * 1.6 + core * 1.0 + clouds * 0.28
+	) * mix(1.15, 0.55, clouds);
+	float absorb_w = dens * (0.55 + clouds * 0.65 + filament_ridges * 0.3) * absorb_strength;
 	return vec3(dens, emit_w, absorb_w);
 }
 
@@ -121,8 +145,10 @@ void fragment() {
 	float abs_acc = 0.0;
 
 	for (int i = 0; i < 48; i++) {
-		if (i < steps && alpha <= 0.92) {
-			float t = t0 + (float(i) + 0.5) * dt;
+		if (i < steps && alpha <= 0.90) {
+			// Jitter sample t to break step-ring banding
+			float jitter = hash13(rd * float(i + 1) + vec3(seed * 0.001)) * 0.3;
+			float t = t0 + (float(i) + 0.5 + jitter) * dt;
 			vec3 p = ro + rd * t;
 			vec3 pack = sample_density_pack(p);
 			float d = pack.x;
@@ -132,7 +158,7 @@ void fragment() {
 				float step_scale = dt * 0.0024;
 				float step_a = 1.0 - exp(-absorb_w * step_scale);
 				vec3 tint = mix(secondary_color, primary_color, clamp(emit_w, 0.0, 1.0));
-				tint *= mix(1.25, 0.5, clamp(d * 1.1, 0.0, 1.0));
+				tint *= mix(1.15, 0.78, clamp(d * 0.65, 0.0, 1.0));
 				vec3 emit = tint * emit_w * emission_strength * d * step_scale * 1.8;
 				col += (1.0 - alpha) * emit;
 				alpha += (1.0 - alpha) * step_a;
@@ -149,7 +175,8 @@ void fragment() {
 
 	vec3 out_alb = col;
 	vec3 out_emi = col * 1.15;
-	float out_a = clamp(alpha, 0.0, 0.88);
+	// Lower alpha cap so IFS sky colour shows through the mass
+	float out_a = clamp(alpha, 0.0, 0.72);
 
 	if (debug_mode == 1) {
 		float dnorm = clamp(dens_acc * 0.00025, 0.0, 1.0);

@@ -100,14 +100,34 @@ func _apply_scenario() -> void:
 			distance = float(sc["dist"])
 			yaw = float(sc["yaw"])
 		_:
-			focus = Vector3.ZERO
-			distance = float(sc["dist"])
+			# Look into the primary nebula mass (not at the star at origin).
 			var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
-			if sc["yaw"] == null:
-				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
+			var pm: Dictionary = SkyComposition.primary_mass(presenter.sky_comp)
+			var mass_center: Vector3 = pm.get("center", sky_dir * 5000.0)
+			if str(sc["id"]) == "nebula":
+				# Graze the mass limb — filaments silhouette against darker sky
+				# (center punch maximizes optical depth and washes colour).
+				var radius := float(pm.get("radius", 2500.0))
+				var lateral := sky_dir.cross(Vector3.UP)
+				if lateral.length_squared() < 0.01:
+					lateral = sky_dir.cross(Vector3.RIGHT)
+				lateral = lateral.normalized()
+				focus = mass_center + lateral * radius * 0.35
+				distance = maxf(radius * 1.6, 2800.0)
+				var view_dir := (mass_center - focus).normalized()
+				if view_dir.length_squared() < 0.01:
+					view_dir = -sky_dir
+				yaw = atan2(view_dir.x, view_dir.z)
+				pitch = clampf(-asin(clampf(view_dir.y, -1.0, 1.0)) * 0.55 + float(sc["pitch"]), -1.2, 1.2)
 			else:
-				yaw = float(sc["yaw"])
-	pitch = float(sc["pitch"])
+				focus = Vector3.ZERO
+				distance = float(sc["dist"])
+				if sc["yaw"] == null:
+					yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
+				else:
+					yaw = float(sc["yaw"])
+	if str(sc["id"]) != "nebula":
+		pitch = float(sc["pitch"])
 	_frames = 0
 	_hide_hud_for_capture = false
 	if label:
