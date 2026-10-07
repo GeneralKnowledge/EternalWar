@@ -11,6 +11,7 @@ const SCENARIOS := [
 	{"id": "ship", "seed": 42, "view": "ship", "yaw": 0.55, "pitch": -0.1, "dist": 45.0},
 	{"id": "station", "seed": 42, "view": "station", "yaw": 0.7, "pitch": -0.18, "dist": 200.0},
 	{"id": "asteroids", "seed": 42, "view": "asteroid", "yaw": 1.1, "pitch": -0.2, "dist": 240.0},
+	{"id": "planet", "seed": 42, "view": "planet", "yaw": 0.85, "pitch": -0.08, "dist": 380.0},
 ]
 
 @export var ship_count: int = 80
