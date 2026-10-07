@@ -68,9 +68,16 @@ float fbm3(vec3 p) {
 vec3 sample_density_pack(vec3 world_p) {
 	// returns dens, emit_w, absorb_w
 	vec3 local = (world_p - volume_center) / max(volume_radius, 1.0);
+	// Domain warp breaks concentric banding from a pure radial envelope
+	vec3 warp = vec3(
+		fbm3(local * 1.3 + vec3(seed * 0.01, 2.1, 0.0)),
+		fbm3(local * 1.1 + vec3(0.0, seed * 0.013, 4.7)),
+		fbm3(local * 1.4 + vec3(3.3, 0.0, seed * 0.017))
+	) - 0.5;
+	local += warp * 0.28;
 	vec3 stretched = local / max(elongation, vec3(0.2));
 	float r = length(stretched);
-	float large = 1.0 - smoothstep(0.2, 1.02, r);
+	float large = 1.0 - smoothstep(0.15, 1.05, r + warp.x * 0.12);
 	if (large <= 0.001) {
 		return vec3(0.0);
 	}
@@ -80,17 +87,19 @@ vec3 sample_density_pack(vec3 world_p) {
 	float n_mid = fbm3(q * 2.1 + 11.0);
 	float n_hi = fbm3(q * 5.4 + 29.0);
 
-	float clouds = smoothstep(0.22, 0.72, n_lo * 0.65 + n_mid * 0.4);
-	float filaments = smoothstep(0.4, 0.88, n_mid * 0.45 + n_hi * 0.55) * filament_strength;
-	// Cavities carve holes but leave substantial gas
-	float cavity = smoothstep(0.35, 0.8, abs(n_lo - 0.48) * 2.2);
-	float cavity_mask = mix(1.0, 1.0 - cavity_strength * 0.75, cavity);
-	float core = exp(-r * r * mix(1.6, 4.2, 1.0 - core_strength)) * core_strength;
+	float clouds = smoothstep(0.18, 0.7, n_lo * 0.6 + n_mid * 0.45);
+	float filaments = smoothstep(0.48, 0.82, n_mid * 0.4 + n_hi * 0.65) * filament_strength;
+	float filament_ridges = pow(smoothstep(0.55, 0.92, n_hi), 1.6) * filament_strength;
+	float cavity = smoothstep(0.32, 0.8, abs(n_lo - 0.5) * 2.2);
+	float lane = smoothstep(0.55, 0.92, abs(n_mid - 0.45) * 1.7);
+	float cavity_mask = mix(1.0, 1.0 - cavity_strength * 0.55, max(cavity, lane * 0.5));
+	float core = exp(-r * r * mix(1.4, 3.8, 1.0 - core_strength)) * core_strength;
+	core *= smoothstep(0.08, 0.5, n_lo + warp.y * 0.25);
 
-	float dens = large * (0.15 + clouds * 0.7 + filaments * 0.55 + core * 0.65) * cavity_mask * density_scale;
+	float dens = large * (0.14 + clouds * 0.7 + filaments * 0.7 + filament_ridges * 0.55 + core * 0.65) * cavity_mask * density_scale;
 	dens = max(dens, 0.0);
-	float emit_w = (filaments * 1.5 + core * 1.0 + clouds * 0.55) * mix(1.1, 0.55, clouds);
-	float absorb_w = dens * (0.7 + clouds * 1.1) * absorb_strength;
+	float emit_w = (filaments * 1.7 + filament_ridges * 1.3 + core * 1.0 + clouds * 0.5) * mix(1.15, 0.5, clouds);
+	float absorb_w = dens * (0.7 + clouds * 1.05 + filament_ridges * 0.35) * absorb_strength;
 	return vec3(dens, emit_w, absorb_w);
 }
 

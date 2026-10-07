@@ -1,11 +1,11 @@
 {
   "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_engines.jpg",
   "ew": "tools/visual_compare/eternalwar/fighter/ew_fighter_s42_clay_three_quarter_front.png",
-  "score": 32.94868457518946,
-  "score_legacy": 40.84163367071723,
-  "silhouette_iou": 0.26490817133394007,
-  "edge_overlap": 0.07835503102567222,
-  "silhouette_score": 26.490817133394007,
+  "score": 31.022747158142685,
+  "score_legacy": 36.262410651250775,
+  "silhouette_iou": 0.26735749754690613,
+  "edge_overlap": 0.07482662124346028,
+  "silhouette_score": 26.735749754690612,
   "lt_stats": {
     "mean_Y": 0.15111899375915527,
     "dark_frac": 0.3966753472222222,
@@ -26,47 +26,47 @@
     "emissive_frac": 0.021302083333333333
   },
   "ew_stats": {
-    "mean_Y": 0.19191239774227142,
-    "dark_frac": 0.0027256944444444446,
-    "mean_sat": 0.1551658809185028,
-    "mask_frac": 0.044631075114011765,
-    "aspect": 1.7114361702127658,
+    "mean_Y": 0.23503310978412628,
+    "dark_frac": 0.0002777777777777778,
+    "mean_sat": 0.13260695338249207,
+    "mask_frac": 0.04509548470377922,
+    "aspect": 1.693421052631579,
     "bbox": [
       0.2078125,
-      0.3888888888888889,
+      0.3861111111111111,
       0.446875,
-      0.2611111111111111
+      0.2638888888888889
     ],
     "mean_rgb": [
-      0.1829048991203308,
-      0.19155144691467285,
-      0.21694786846637726
+      0.22288630902767181,
+      0.23555631935596466,
+      0.25832656025886536
     ],
-    "emissive_frac": 0.001814236111111111
+    "emissive_frac": 0.0020789930555555557
   },
   "ranked_mismatches": [
     {
       "name": "Aspect ratio",
-      "delta": 0.24900265957446802,
-      "weighted": 0.29880319148936163,
+      "delta": 0.2426973684210526,
+      "weighted": 0.2912368421052631,
       "category": "proportion"
     },
     {
       "name": "Saturation",
-      "delta": 0.2928183376789093,
-      "weighted": 0.23425467014312745,
+      "delta": 0.31537726521492004,
+      "weighted": 0.25230181217193604,
       "category": "colour"
     },
     {
       "name": "Colour balance",
-      "delta": 0.13139952669325716,
-      "weighted": 0.11825957402393145,
+      "delta": 0.19290324416950183,
+      "weighted": 0.17361291975255166,
       "category": "colour"
     },
     {
       "name": "BBox height",
-      "delta": 0.7388888888888889,
-      "weighted": 0.11083333333333334,
+      "delta": 0.7361111111111112,
+      "weighted": 0.11041666666666668,
       "category": "proportion"
     },
     {
@@ -77,20 +77,20 @@
     },
     {
       "name": "Silhouette coverage",
-      "delta": 0.29754774644970894,
-      "weighted": 0.07438693661242723,
+      "delta": 0.2970833368599415,
+      "weighted": 0.07427083421498537,
       "category": "silhouette"
     },
     {
       "name": "Mean luminance",
-      "delta": 0.04079340398311615,
-      "weighted": 0.020396701991558075,
+      "delta": 0.08391411602497101,
+      "weighted": 0.041957058012485504,
       "category": "lighting"
     },
     {
       "name": "Emissive / engine",
-      "delta": 0.019487847222222222,
-      "weighted": 0.019487847222222222,
+      "delta": 0.019223090277777778,
+      "weighted": 0.019223090277777778,
       "category": "engine"
     }
   ]

@@ -1,0 +1,111 @@
+{
+  "lt": "tools/visual_compare/reference/lt_nebula_planet.jpg",
+  "ew": "tools/visual_compare/eternalwar/ew_nebula.png",
+  "score": 81.2148174835007,
+  "lt_stats": {
+    "mean_Y": 0.1753760129213333,
+    "p10_Y": 0.008409412577748299,
+    "p50_Y": 0.09704313427209854,
+    "p90_Y": 0.4777753949165344,
+    "dark_frac": 0.37842013888888887,
+    "bright_frac": 0.07417052469135803,
+    "mid_frac": 0.5474093364197531,
+    "mean_sat": 0.5252708792686462,
+    "mean_rgb": [
+      0.14922066032886505,
+      0.17682480812072754,
+      0.24473293125629425
+    ],
+    "flatness_score": 0.4249163324817963,
+    "block_std_8": 0.03573356196284294,
+    "block_std_32": 0.05700263753533363,
+    "block_std_64": 0.08607354015111923,
+    "contrast_ratio_32_8": 1.5952128588414178,
+    "cavity_near_bright": 0.13052662037037038,
+    "mid_edge_frac": 0.33015432098765435,
+    "soft_edge_frac": 0.5417226080246914,
+    "gradient_anisotropy": 0.605177104473114,
+    "edge_p90": 0.0788450837135315
+  },
+  "ew_stats": {
+    "mean_Y": 0.15465816855430603,
+    "p10_Y": 0.00028313728398643434,
+    "p50_Y": 0.14085334539413452,
+    "p90_Y": 0.3155129551887512,
+    "dark_frac": 0.3681423611111111,
+    "bright_frac": 0.01568094135802469,
+    "mid_frac": 0.6161766975308642,
+    "mean_sat": 0.6999475359916687,
+    "mean_rgb": [
+      0.0790335088968277,
+      0.17069421708583832,
+      0.22058263421058655
+    ],
+    "flatness_score": 0.4646301457318266,
+    "block_std_8": 0.014064596965909004,
+    "block_std_32": 0.0307313185185194,
+    "block_std_64": 0.04618711769580841,
+    "contrast_ratio_32_8": 2.1850123820119873,
+    "cavity_near_bright": 0.07990162037037037,
+    "mid_edge_frac": 0.1665605709876543,
+    "soft_edge_frac": 0.6636766975308642,
+    "gradient_anisotropy": 0.026511119678616524,
+    "edge_p90": 0.014157833531498909
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Saturation",
+      "delta": 0.17467665672302246,
+      "category": "colour"
+    },
+    {
+      "name": "Mid-frequency edges",
+      "delta": 0.16359375000000004,
+      "category": "structure"
+    },
+    {
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.1622624397277832,
+      "category": "luminance"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.0744785688636451,
+      "category": "colour"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.05848958333333334,
+      "category": "luminance"
+    },
+    {
+      "name": "Cavity / dark lanes",
+      "delta": 0.05062500000000002,
+      "category": "structure"
+    },
+    {
+      "name": "Flatness (structure)",
+      "delta": 0.039713813250030316,
+      "category": "structure"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.020717844367027283,
+      "category": "luminance"
+    },
+    {
+      "name": "Background darkness (dark_frac)",
+      "delta": 0.010277777777777775,
+      "category": "composition/luminance"
+    }
+  ],
+  "flatness": {
+    "lt": 0.4249163324817963,
+    "ew": 0.4646301457318266,
+    "ew_flatter_than_lt": false,
+    "cavity_lt": 0.13052662037037038,
+    "cavity_ew": 0.07990162037037037,
+    "mid_edge_lt": 0.33015432098765435,
+    "mid_edge_ew": 0.1665605709876543
+  }
+}
