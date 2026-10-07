@@ -28,10 +28,12 @@ git lfs install
 
 # generate
 cd lt-wallpaper/ltheory
-./tools/wallpaper.sh seed=42 preset=ship width=1920 height=1080 out=wallpaper/out.png
+./tools/wallpaper.sh seed=42 preset=sky width=1920 height=1080 out=wallpaper/out.png
 ```
 
-See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags and details.
+Presets: `sky` · `nebula` (=sky) · `ship` · `asteroids` · `planet`
+
+See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags. Web notes: [`WEB.md`](WEB.md).
 
 ## What the overlay changes
 
