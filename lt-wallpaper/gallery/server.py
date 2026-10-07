@@ -74,12 +74,12 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "fleet": {
         "preset": "fleet",
         "label": "Fleet",
-        "blurb": "Lead ship with ShapeLib escorts",
+        "blurb": "V formation — many hulls in frame",
     },
     "skirmish": {
         "preset": "skirmish",
         "label": "Skirmish",
-        "blurb": "Two wings mid-fight — turrets live",
+        "blurb": "Two wings facing off — turrets firing",
     },
     "station": {
         "preset": "station",

@@ -55,8 +55,9 @@ local DEFAULT_FRAMES = {
   asteroids = 4,
   planet = 5,
   station = 6,
-  fleet = 8,
-  skirmish = 18,
+  fleet = 4,
+  -- Turret volleys need a few frames for pulses to be in-flight; no Attack AI.
+  skirmish = 10,
   system = 10,
 }
 
@@ -181,14 +182,38 @@ local function refreshShipType (system)
   system.shipType = nil
 end
 
-local function spawnOwnedShip (system, owner, pos)
-  refreshShipType(system)
+local function faceToward (entity, forward)
+  entity:setRot(Quat.FromLookUp(forward:normalize(), Vec3f(0, 1, 0)))
+end
+
+--- Spawn a ship. reuseType=true keeps the current ShapeLib hull (fleet cohesion).
+local function spawnOwnedShip (system, owner, pos, reuseType)
+  if not reuseType then
+    refreshShipType(system)
+  end
   local ship = system:spawnShip()
   if pos then ship:setPos(pos) end
   ship:setFriction(0)
   ship:setSleepThreshold(0, 0)
   if owner then ship:setOwner(owner) end
   return ship
+end
+
+--- Plate camera: optional world center, or follow entity (camFollow).
+local function setPlateCamera (app, center, radius, yaw, pitch)
+  app.camCenter = center
+  app.camRadius = radius
+  app.camYaw = yaw
+  app.camPitch = pitch
+end
+
+local function fireTurretsAt (from, at)
+  if not from or not at then return end
+  local pos = at:getPos()
+  for turret in from:iterSocketsByType(SocketType.Turret) do
+    turret:aimAtTarget(at, pos)
+    turret:fire()
+  end
 end
 
 function Wallpaper:ensureOpts ()
@@ -237,6 +262,12 @@ function Wallpaper:generate ()
   self.focus = ship
   self.skyOnly = isSkyPreset(preset)
   self.hideHud = self.skyOnly
+  self.camCenter = nil
+  self.camRadius = nil
+  self.camYaw = nil
+  self.camPitch = nil
+  self.camFollow = nil
+  self.skirmishPairs = nil
 
   if isSkyPreset(preset) then
     ship:setPos(Vec3f(1e7, 1e7, 1e7))
@@ -266,59 +297,93 @@ function Wallpaper:generate ()
     local station = self.system:spawnStation()
     self.focus = station
     self.hideHud = true
-    -- Light traffic around the station
+    -- Light traffic around the station (local offsets for Escort)
     for i = 1, 4 do
-      local offset = rng:getSphere():scale(180 + 40 * i)
-      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset)
+      local offset = Vec3f(
+        (i % 2 == 0 and 1 or -1) * (90 + 35 * i),
+        10 * (i - 2),
+        70 + 20 * i)
+      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset, true)
+      faceToward(traffic, Vec3f(0, 0, 1))
       traffic:pushAction(Actions.Escort(station, offset))
     end
 
   elseif preset == 'fleet' then
-    self.system:spawnAsteroidField(40, 4)
-    local escorts = {}
-    for i = 1, 8 do
-      local offset = rng:getSphere():scale(40 + 12 * i)
-      local escort = spawnOwnedShip(self.system, self.player, ship:getPos() + offset)
-      escort:pushAction(Actions.Escort(ship, offset))
-      insert(escorts, escort)
-    end
-    self.focus = ship
-
-  elseif preset == 'skirmish' then
-    -- Two wings mid-engagement. Extra settle frames let Attack aim/fire.
-    local enemy = Entities.Player()
-    insert(self.system.players, enemy)
-    local wingA, wingB = {}, {}
-    for i = 1, 4 do
-      local a = spawnOwnedShip(
-        self.system, self.player,
-        Config.gen.origin + Vec3f(-60 - 15 * i, 8 * (i % 3 - 1), 20 * (i - 2.5)))
-      insert(wingA, a)
-    end
-    ship = wingA[1]
-    self.player:setControlling(ship)
-    for i = 1, 4 do
-      local b = spawnOwnedShip(
-        self.system, enemy,
-        Config.gen.origin + Vec3f(70 + 15 * i, -6 * (i % 3 - 1), -18 * (i - 2.5)))
-      insert(wingB, b)
-    end
-    for i = 1, #wingA do
-      wingA[i]:pushAction(Actions.Attack(wingB[((i - 1) % #wingB) + 1]))
-    end
-    for i = 1, #wingB do
-      wingB[i]:pushAction(Actions.Attack(wingA[((i - 1) % #wingA) + 1]))
+    -- Static V in frame. Do NOT push Escort: toWorldScaled×shipScale flings
+    -- escorts to 4× offsets and they leave the plate during settle.
+    local origin = Config.gen.origin
+    local forward = Vec3f(0, 0, 1)
+    ship:setPos(origin)
+    faceToward(ship, forward)
+    local slots = {
+      Vec3f(-14,  3, -12),
+      Vec3f( 14, -2, -12),
+      Vec3f(-28,  5, -26),
+      Vec3f( 28,  1, -26),
+      Vec3f(-42,  2, -42),
+      Vec3f( 42, -3, -42),
+      Vec3f(  0,  7, -22),
+    }
+    for i = 1, #slots do
+      local escort = spawnOwnedShip(self.system, self.player, origin + slots[i], true)
+      faceToward(escort, forward)
     end
     self.focus = ship
     self.hideHud = true
+    -- Orbit the lead (works like solo) with a pullback that fits the V.
+    setPlateCamera(self, nil, 62, -1.0, 0.26)
+    self.camFollow = ship
+
+  elseif preset == 'skirmish' then
+    -- Static two-wing tableau. Attack AI orbits out to pulseRange (~1000) and
+    -- empties the frame — we aim/fire turrets ourselves during settle instead.
+    local enemy = Entities.Player()
+    insert(self.system.players, enemy)
+    local origin = Config.gen.origin
+    ship:setPos(origin + Vec3f(0, 8000, 0))
+
+    local wingA, wingB = {}, {}
+    refreshShipType(self.system)
+    for i = 1, 5 do
+      local z = (i - 3) * 12
+      local y = ((i % 2) * 2 - 1) * 4
+      local a = spawnOwnedShip(
+        self.system, self.player, origin + Vec3f(-22, y, z), i > 1)
+      faceToward(a, Vec3f(1, 0, 0))
+      insert(wingA, a)
+    end
+    refreshShipType(self.system)
+    for i = 1, 5 do
+      local z = (i - 3) * 12
+      local y = ((i % 2) * 2 - 1) * 4
+      local b = spawnOwnedShip(
+        self.system, enemy, origin + Vec3f(22, -y, z), i > 1)
+      faceToward(b, Vec3f(-1, 0, 0))
+      insert(wingB, b)
+    end
+
+    self.player:setControlling(wingA[3])
+    self.focus = wingA[3]
+    self.hideHud = true
+    self.skirmishPairs = {}
+    for i = 1, #wingA do
+      insert(self.skirmishPairs, { from = wingA[i], at = wingB[i] })
+      insert(self.skirmishPairs, { from = wingB[i], at = wingA[i] })
+    end
+    -- Midpoint plate — both columns stay readable.
+    setPlateCamera(self, origin + Vec3f(0, 6, 0), 70, -1.25, 0.30)
 
   elseif preset == 'system' then
     -- Reminiscing vista: station, rocks, a few ships under the nebula.
     local station = self.system:spawnStation()
     self.system:spawnAsteroidField(60, 6)
     for i = 1, 5 do
-      local offset = rng:getSphere():scale(220 + 30 * i)
-      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset)
+      local offset = Vec3f(
+        (i % 2 == 0 and 1 or -1) * (140 + 40 * i),
+        20 * (i % 3 - 1),
+        100 + 30 * i)
+      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset, true)
+      faceToward(traffic, Vec3f(0, 0, 1))
       traffic:pushAction(Actions.Escort(station, offset))
     end
     -- Park the player stub near the station for camera focus
@@ -347,6 +412,17 @@ function Wallpaper:applyCamera ()
       cam:setPitch(0.12)
       cam:setYaw(-1.1)
     end
+  elseif self.camFollow or self.camCenter then
+    -- Formation plates: follow an entity or orbit a world midpoint.
+    if self.camFollow then
+      cam:setTarget(self.camFollow)
+    else
+      cam:setTarget(nil)
+      cam:setCenter(self.camCenter.x, self.camCenter.y, self.camCenter.z)
+    end
+    cam:setRadius(self.camRadius or 80)
+    cam:setPitch(self.camPitch or 0.25)
+    cam:setYaw(self.camYaw or -1.1)
   else
     cam:setTarget(self.focus)
     if preset == 'asteroids' then
@@ -361,14 +437,6 @@ function Wallpaper:applyCamera ()
       cam:setRadius(420)
       cam:setPitch(0.32)
       cam:setYaw(-0.95)
-    elseif preset == 'fleet' then
-      cam:setRadius(95)
-      cam:setPitch(0.22)
-      cam:setYaw(-1.15)
-    elseif preset == 'skirmish' then
-      cam:setRadius(140)
-      cam:setPitch(0.18)
-      cam:setYaw(-0.7)
     elseif preset == 'system' then
       cam:setRadius(700)
       cam:setPitch(0.28)
@@ -526,6 +594,14 @@ function Wallpaper:onInput ()
 end
 
 function Wallpaper:onUpdate (dt)
+  -- Skirmish: hold the tableau and let turrets speak (no Attack AI drift).
+  if self.skirmishPairs then
+    for i = 1, #self.skirmishPairs do
+      local pair = self.skirmishPairs[i]
+      fireTurretsAt(pair.from, pair.at)
+    end
+  end
+
   self.player:getRoot():update(dt)
   self.canvas:update(dt)
 
