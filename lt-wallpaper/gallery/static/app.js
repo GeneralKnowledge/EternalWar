@@ -6,6 +6,7 @@ const els = {
   seed: document.getElementById("seed"),
   size: document.getElementById("size"),
   quality: document.getElementById("quality"),
+  count: document.getElementById("count"),
   generate: document.getElementById("generate"),
   rand: document.getElementById("rand"),
   status: document.getElementById("status"),
@@ -193,7 +194,15 @@ els.rand.addEventListener("click", () => {
 els.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.generate.disabled = true;
-  setStatus("Baking with native ltheory… this can take a bit.");
+  const maxBatch = state.meta?.maxBatchCount || 8;
+  let count = parseInt(els.count?.value || "1", 10);
+  if (!Number.isFinite(count) || count < 1) count = 1;
+  if (count > maxBatch) count = maxBatch;
+  setStatus(
+    count > 1
+      ? `Baking ${count} plates in one engine launch…`
+      : "Baking with native ltheory… this can take a bit.",
+  );
   try {
     const data = await api("/api/generate", {
       method: "POST",
@@ -203,10 +212,15 @@ els.form.addEventListener("submit", async (e) => {
         seed: els.seed.value.trim(),
         size: els.size.value,
         quality: els.quality.value,
+        count,
       }),
     });
-    setStatus(`Saved ${data.item.label} (${data.item.width}×${data.item.height}).`);
-    if (!els.seed.value.trim()) els.seed.value = data.item.seed;
+    if (data.items && data.items.length > 1) {
+      setStatus(`Saved ${data.items.length} plates (${data.items[0].width}×${data.items[0].height}).`);
+    } else if (data.item) {
+      setStatus(`Saved ${data.item.label} (${data.item.width}×${data.item.height}).`);
+      if (!els.seed.value.trim()) els.seed.value = data.item.seed;
+    }
     renderRate(data);
     await refreshGallery();
   } catch (err) {
@@ -219,6 +233,9 @@ els.form.addEventListener("submit", async (e) => {
 
 async function boot() {
   state.meta = await api("/api/meta");
+  if (els.count && state.meta.maxBatchCount) {
+    els.count.max = String(state.meta.maxBatchCount);
+  }
   renderCategories();
   fillSelects();
   renderFilters();
@@ -229,7 +246,7 @@ async function boot() {
     ? ` Profile: ${state.meta.profile}${state.meta.profileNote ? ` — ${state.meta.profileNote}` : ""}`
     : "";
   setStatus(
-    `Ready — native wallpaper.sh (1 bake / ${state.meta.rateLimitSec || 60}s).${profileBit}`,
+    `Ready — native wallpaper.sh (1 bake / ${state.meta.rateLimitSec || 60}s). Count keeps the process loaded.${profileBit}`,
   );
 }
 

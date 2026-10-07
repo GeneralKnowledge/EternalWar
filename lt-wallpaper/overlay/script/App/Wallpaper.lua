@@ -8,13 +8,20 @@
 
     bin/lt64r Wallpaper seed=42 width=1920 height=1080 out=out/wp.png preset=fleet
 
+    # Keep the process loaded — cycle N plates, then quit (one engine launch):
+    bin/lt64r Wallpaper count=8 preset=fleet outdir=wallpaper/batch
+    bin/lt64r Wallpaper count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
+
   Flags (key=value):
-    seed=<uint64>       System seed (default: time-based)
+    seed=<uint64>       System seed (default: time-based); batch advances from it
     width=<int>         Window / export width (default 1920)
     height=<int>        Window / export height (default 1080)
-    out=<path>          PNG output path
+    out=<path>          PNG path (count=1) or stem template (count>1 → stem_001.png)
+    outdir=<path>       Directory for batch PNGs (preferred when count>1)
     preset=<name>       sky | nebula | ship | solo | asteroids | planet |
                         station | fleet | skirmish | system
+    presets=<a,b,...>   Cycle these presets across the batch (overrides preset)
+    count=<int>         Captures before quit; process stays loaded (default 1)
     frames=<int>        Settle frames before capture (default depends on preset)
     interactive=1       Keep window; F12 capture, R regen, Esc quit
     nebulaRes=<int>     Override Config.gen.nebulaRes
@@ -57,14 +64,34 @@ local function isSkyPreset (name)
   return name == 'sky' or name == 'nebula'
 end
 
+local function splitPresets (csv)
+  local list = {}
+  if not csv or csv == '' then return list end
+  for part in string.gmatch(csv, '[^,]+') do
+    local name = part:match('^%s*(.-)%s*$')
+    if name and name ~= '' then
+      if PRESETS[name] then
+        insert(list, name)
+      else
+        printf('Wallpaper: ignoring unknown preset in list <%s>', name)
+      end
+    end
+  end
+  return list
+end
+
 local function parseArgs ()
   local opts = {
     seed = nil,
     width = 1920,
     height = 1080,
     out = nil,
+    outdir = nil,
     preset = 'ship',
+    presets = nil,
+    count = 1,
     frames = nil,
+    framesExplicit = false,
     interactive = false,
     nebulaRes = nil,
   }
@@ -88,10 +115,17 @@ local function parseArgs ()
       opts.height = tonumber(v) or opts.height
     elseif k == 'out' then
       opts.out = v
+    elseif k == 'outdir' then
+      opts.outdir = v
     elseif k == 'preset' then
       opts.preset = v
+    elseif k == 'presets' then
+      opts.presets = splitPresets(v)
+    elseif k == 'count' then
+      opts.count = math.max(1, math.floor(tonumber(v) or 1))
     elseif k == 'frames' then
       opts.frames = math.max(1, math.floor(tonumber(v) or 4))
+      opts.framesExplicit = true
     elseif k == 'interactive' then
       opts.interactive = (v == '1' or v == 'true' or v == 'yes')
     elseif k == 'nebulaRes' then
@@ -100,19 +134,34 @@ local function parseArgs ()
       printf('Wallpaper: ignoring unrecognized flag <%s>', k)
     end
   end
-  if not PRESETS[opts.preset] then
+  if opts.presets and #opts.presets > 0 then
+    opts.preset = opts.presets[1]
+  elseif not PRESETS[opts.preset] then
     printf('Wallpaper: unknown preset <%s>, using ship', tostring(opts.preset))
     opts.preset = 'ship'
   end
   if not opts.frames then
     opts.frames = DEFAULT_FRAMES[opts.preset] or 4
   end
+  -- Batch mode never uses the interactive keep-alive path.
+  if opts.count > 1 then
+    opts.interactive = false
+  end
   return opts
+end
+
+local function seedToArg (seed)
+  -- tostring(uint64) may append "ULL"; CLI / next-plate args want digits only.
+  local s = tostring(seed)
+  return (s:gsub('[Uu][Ll][Ll]$', ''))
 end
 
 local function parseSeed (s)
   if s == nil or s == '' then
     return RNG.FromTime():get64()
+  end
+  if type(s) == 'string' then
+    s = s:gsub('[Uu][Ll][Ll]$', '')
   end
   if s:match('^%d+$') then
     local ok, seed = pcall(function ()
@@ -333,33 +382,123 @@ function Wallpaper:applyCamera ()
   cam:warp()
 end
 
-function Wallpaper:capture ()
-  local out = self.opts.out
-  if not out or out == '' then
-    Directory.Create('./wallpaper')
-    out = string.format('./wallpaper/lt_%s_%s.png',
-      tostring(self.seed), self.opts.preset)
-  else
-    local dir = out:match('^(.+)/[^/]+$')
-    if dir then Directory.Create(dir) end
+function Wallpaper:resolveOutPath ()
+  local o = self.opts
+  local preset = o.preset
+  local seedStr = seedToArg(self.seed)
+  local idx = self.batchIndex or 1
+
+  if o.outdir and o.outdir ~= '' then
+    local dir = o.outdir:gsub('/+$', '')
+    Directory.Create(dir)
+    return string.format('%s/lt_%03d_%s_%s.png', dir, idx, preset, seedStr)
   end
 
+  local out = o.out
+  if not out or out == '' then
+    Directory.Create('./wallpaper')
+    if o.count > 1 then
+      return string.format('./wallpaper/lt_%03d_%s_%s.png', idx, preset, seedStr)
+    end
+    return string.format('./wallpaper/lt_%s_%s.png', seedStr, preset)
+  end
+
+  if out:match('/$') then
+    local dir = out:gsub('/+$', '')
+    Directory.Create(dir)
+    return string.format('%s/lt_%03d_%s_%s.png', dir, idx, preset, seedStr)
+  end
+
+  local dir = out:match('^(.+)/[^/]+$')
+  if dir then Directory.Create(dir) end
+
+  if o.count <= 1 then
+    return out
+  end
+
+  local stem = out:gsub('%.png$', '')
+  return string.format('%s_%03d.png', stem, idx)
+end
+
+function Wallpaper:capture ()
+  local out = self:resolveOutPath()
   local tex = Tex2D.ScreenCapture()
   tex:save(out)
   tex:free()
-  printf('Wallpaper written: %s', out)
+  printf('Wallpaper written: %s  (%d/%d)', out, self.batchIndex or 1, self.opts.count)
   self.wrote = out
+  if not self.wroteList then self.wroteList = {} end
+  insert(self.wroteList, out)
+end
+
+function Wallpaper:settleFramesForPreset (preset)
+  if self.opts.framesExplicit then
+    return self.opts.frames
+  end
+  return DEFAULT_FRAMES[preset] or 4
+end
+
+function Wallpaper:selectBatchPlate ()
+  local o = self.opts
+  local idx = self.batchIndex
+  if o.presets and #o.presets > 0 then
+    o.preset = o.presets[((idx - 1) % #o.presets) + 1]
+  end
+  o.frames = self:settleFramesForPreset(o.preset)
+
+  if idx == 1 then
+    -- First plate uses the user-supplied seed (or time).
+    return
+  end
+  -- Advance seed in-process so each plate differs without relaunching.
+  if not self.batchSeedRng then
+    self.batchSeedRng = RNG.Create(1 + (idx * 2654435761) % 2147483647):managed()
+  end
+  o.seed = seedToArg(self.batchSeedRng:get64())
+end
+
+function Wallpaper:beginPlate ()
+  self:selectBatchPlate()
+  self:generate()
+  -- Batch plates are always HUD-free (wallpapers).
+  if self.opts.count > 1 then
+    self.hideHud = true
+  end
+  if self.gameView then
+    self:applyCamera()
+  end
+  self.framesLeft = self.opts.frames
+  self.plateDone = false
+end
+
+function Wallpaper:advanceOrQuit ()
+  if self.batchIndex >= self.opts.count then
+    printf('Wallpaper batch complete: %d plate(s)', self.opts.count)
+    self:quit()
+    return
+  end
+  self.batchIndex = self.batchIndex + 1
+  printf('Wallpaper batch next: %d/%d', self.batchIndex, self.opts.count)
+  self:beginPlate()
 end
 
 function Wallpaper:onInit ()
   self:ensureOpts()
   self.player = Entities.Player()
-  self:generate()
+  self.batchIndex = 1
+  self.wroteList = {}
+
+  -- World first; GameView needs a controlling body from generate().
+  self:beginPlate()
+  do
+    local n = tonumber(seedToArg(self.seed):sub(-9)) or 1
+    self.batchSeedRng = RNG.Create(1 + (n % 2147483646)):managed()
+  end
 
   DebugControl.ltheory = self
   self.gameView = GUI.GameView(self.player)
   self.canvas = UI.Canvas()
-  if self.hideHud or self.skyOnly then
+  if self.hideHud or self.skyOnly or self.opts.count > 1 then
     self.canvas:add(self.gameView)
   else
     self.canvas:add(self.gameView
@@ -367,9 +506,6 @@ function Wallpaper:onInit ()
   end
 
   self:applyCamera()
-
-  self.framesLeft = self.opts.frames
-  self.captured = false
   self.wrote = nil
 end
 
@@ -393,10 +529,10 @@ function Wallpaper:onUpdate (dt)
   self.player:getRoot():update(dt)
   self.canvas:update(dt)
 
-  if not self.opts.interactive and not self.captured then
+  if not self.opts.interactive and not self.plateDone then
     self.framesLeft = self.framesLeft - 1
     if self.framesLeft <= 0 then
-      self.captured = true
+      self.plateDone = true
       self.doCapture = true
     end
   end
@@ -407,7 +543,7 @@ function Wallpaper:onDraw ()
   if self.doCapture then
     self.doCapture = false
     self:capture()
-    self:quit()
+    self:advanceOrQuit()
   end
 end
 

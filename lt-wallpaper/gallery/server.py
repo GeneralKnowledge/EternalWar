@@ -51,6 +51,7 @@ STATIC = ROOT / "static"
 
 RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
 BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
+MAX_BATCH_COUNT = int(os.environ.get("LT_GALLERY_MAX_BATCH", "8"))
 DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8080"))
 
@@ -242,56 +243,21 @@ def random_seed() -> str:
     return f"{hi}{lo:06d}"
 
 
-def run_bake(
+def _ingest_png(
+    src: Path,
     *,
     category: str,
+    preset: str,
     seed: str,
     width: int,
     height: int,
     nebula_res: int,
+    label: str,
 ) -> dict[str, Any]:
-    global _busy, _last_error
-    cat = CATEGORIES[category]
-    preset = cat["preset"]
     item_id = uuid.uuid4().hex[:12]
-    out_path = IMAGES / f"{item_id}.png"
-    ltheory = find_ltheory_root()
-    script = ltheory / "tools" / "wallpaper.sh"
-
-    args = [
-        str(script),
-        f"seed={seed}",
-        f"preset={preset}",
-        f"width={width}",
-        f"height={height}",
-        f"nebulaRes={nebula_res}",
-        f"out={out_path}",
-        "frames=3",
-    ]
-
-    with _bake_lock:
-        _busy = True
-        _last_error = None
-        try:
-            proc = subprocess.run(
-                args,
-                cwd=str(ltheory),
-                capture_output=True,
-                text=True,
-                timeout=BAKE_TIMEOUT_SEC,
-                env={**os.environ, "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", "")},
-            )
-            if proc.returncode != 0 or not out_path.is_file():
-                detail = (proc.stderr or proc.stdout or "bake failed").strip()
-                _last_error = detail[-800:]
-                raise RuntimeError(_last_error)
-        except subprocess.TimeoutExpired as exc:
-            _last_error = f"bake timed out after {BAKE_TIMEOUT_SEC}s"
-            raise RuntimeError(_last_error) from exc
-        finally:
-            _busy = False
-
-    item = {
+    dest = IMAGES / f"{item_id}.png"
+    dest.write_bytes(src.read_bytes())
+    return {
         "id": item_id,
         "category": category,
         "preset": preset,
@@ -302,13 +268,142 @@ def run_bake(
         "file": f"images/{item_id}.png",
         "source": "generated",
         "createdAt": utc_now(),
-        "label": f"{cat['label']} · {seed[:16]}",
+        "label": label,
     }
+
+
+def run_bake(
+    *,
+    category: str,
+    seed: str,
+    width: int,
+    height: int,
+    nebula_res: int,
+    count: int = 1,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    """Run one Wallpaper process. count>1 keeps the engine loaded across plates."""
+    global _busy, _last_error
+    cat = CATEGORIES[category]
+    preset = cat["preset"]
+    count = max(1, min(int(count), MAX_BATCH_COUNT))
+    ltheory = find_ltheory_root()
+    script = ltheory / "tools" / "wallpaper.sh"
+    IMAGES.mkdir(parents=True, exist_ok=True)
+
+    batch_dir: Path | None = None
+    out_path: Path | None = None
+    args = [
+        str(script),
+        f"seed={seed}",
+        f"preset={preset}",
+        f"width={width}",
+        f"height={height}",
+        f"nebulaRes={nebula_res}",
+        "frames=3",
+        f"count={count}",
+    ]
+    if count > 1:
+        batch_dir = IMAGES / f"_batch_{uuid.uuid4().hex[:10]}"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        args.append(f"outdir={batch_dir}")
+        # Batch settle can take longer; scale timeout lightly.
+        timeout = BAKE_TIMEOUT_SEC + max(0, count - 1) * 45
+    else:
+        out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
+        args.append(f"out={out_path}")
+        timeout = BAKE_TIMEOUT_SEC
+
+    with _bake_lock:
+        _busy = True
+        _last_error = None
+        try:
+            proc = subprocess.run(
+                args,
+                cwd=str(ltheory),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={**os.environ, "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", "")},
+            )
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                _last_error = detail[-800:]
+                raise RuntimeError(_last_error)
+            if count == 1:
+                assert out_path is not None
+                if not out_path.is_file():
+                    detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                    _last_error = detail[-800:]
+                    raise RuntimeError(_last_error)
+            else:
+                assert batch_dir is not None
+                pngs = sorted(batch_dir.glob("lt_*.png"))
+                if len(pngs) < 1:
+                    detail = (proc.stderr or proc.stdout or "batch produced no PNGs").strip()
+                    _last_error = detail[-800:]
+                    raise RuntimeError(_last_error)
+        except subprocess.TimeoutExpired as exc:
+            _last_error = f"bake timed out after {timeout}s"
+            raise RuntimeError(_last_error) from exc
+        finally:
+            _busy = False
+
+    if count == 1:
+        assert out_path is not None
+        item = {
+            "id": out_path.stem,
+            "category": category,
+            "preset": preset,
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "nebulaRes": nebula_res,
+            "file": f"images/{out_path.name}",
+            "source": "generated",
+            "createdAt": utc_now(),
+            "label": f"{cat['label']} · {seed[:16]}",
+        }
+        with _lock:
+            manifest = load_manifest()
+            manifest.setdefault("items", []).insert(0, item)
+            save_manifest(manifest)
+        return item
+
+    assert batch_dir is not None
+    items: list[dict[str, Any]] = []
+    for png in sorted(batch_dir.glob("lt_*.png")):
+        # Filename: lt_001_preset_seed.png — seed may contain digits only.
+        parts = png.stem.split("_", 3)
+        plate_preset = parts[2] if len(parts) >= 3 else preset
+        plate_seed = parts[3] if len(parts) >= 4 else seed
+        plate_cat = category
+        for cid, cinfo in CATEGORIES.items():
+            if cinfo["preset"] == plate_preset:
+                plate_cat = cid
+                break
+        label_cat = CATEGORIES.get(plate_cat, cat)
+        item = _ingest_png(
+            png,
+            category=plate_cat,
+            preset=plate_preset,
+            seed=plate_seed,
+            width=width,
+            height=height,
+            nebula_res=nebula_res,
+            label=f"{label_cat['label']} · {str(plate_seed)[:16]}",
+        )
+        items.append(item)
+    # Clean staging dir
+    for png in batch_dir.glob("*.png"):
+        png.unlink(missing_ok=True)
+    batch_dir.rmdir()
+
     with _lock:
         manifest = load_manifest()
-        manifest.setdefault("items", []).insert(0, item)
+        for item in reversed(items):
+            manifest.setdefault("items", []).insert(0, item)
         save_manifest(manifest)
-    return item
+    return items
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -361,6 +456,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "profileNote": cfg["note"],
                     "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
+                    "maxBatchCount": MAX_BATCH_COUNT,
                     "ltheory": str(find_ltheory_root()),
                 },
             )
@@ -493,14 +589,27 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "bad seed"})
             return
 
+        try:
+            count = int(body.get("count") or 1)
+        except (TypeError, ValueError):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad count"})
+            return
+        if count < 1 or count > MAX_BATCH_COUNT:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"count must be 1..{MAX_BATCH_COUNT}"},
+            )
+            return
+
         _rate[ip] = time.monotonic()
         try:
-            item = run_bake(
+            result = run_bake(
                 category=category,
                 seed=seed,
                 width=width,
                 height=height,
                 nebula_res=nebula_res,
+                count=count,
             )
         except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
             self._json(
@@ -509,7 +618,13 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        self._json(HTTPStatus.OK, {"item": item, **rate_status(ip)})
+        if isinstance(result, list):
+            self._json(
+                HTTPStatus.OK,
+                {"items": result, "item": result[0] if result else None, **rate_status(ip)},
+            )
+        else:
+            self._json(HTTPStatus.OK, {"item": result, **rate_status(ip)})
 
 
 def main() -> None:

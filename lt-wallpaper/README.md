@@ -29,6 +29,10 @@ git lfs install
 # generate
 cd lt-wallpaper/ltheory
 ./tools/wallpaper.sh seed=42 preset=sky width=1920 height=1080 out=wallpaper/out.png
+
+# batch — one engine launch, cycle plates, then quit
+./tools/wallpaper.sh count=8 preset=fleet outdir=wallpaper/batch
+./tools/wallpaper.sh count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
 ```
 
 Presets: `sky` · `ship` · `solo` · `fleet` · `skirmish` · `station` · `system` · `asteroids` · `planet`

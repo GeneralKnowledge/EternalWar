@@ -32,6 +32,10 @@ Binary: `bin/lt64r` (Release) or `bin/lt64` (RelWithDebInfo).
 # Headless-friendly wrapper (uses Xvfb when DISPLAY is unset)
 ./tools/wallpaper.sh seed=42 preset=ship width=1920 height=1080 out=wallpaper/demo.png
 
+# Batch — one engine launch, cycle plates, then quit
+./tools/wallpaper.sh count=8 preset=fleet outdir=wallpaper/batch
+./tools/wallpaper.sh count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
+
 # Or directly:
 LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
   seed=42 preset=nebula width=2560 height=1440 out=wallpaper/nebula.png
@@ -41,11 +45,14 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 
 | Flag | Meaning |
 |------|---------|
-| `seed=` | System seed (decimal string) |
+| `seed=` | System seed (decimal string); batch advances from it |
 | `width=` / `height=` | Resolution (default 1920×1080) |
-| `out=` | PNG path |
+| `out=` | PNG path (`count=1`) or stem template (`count>1` → `stem_001.png`) |
+| `outdir=` | Directory for batch PNGs (preferred when `count>1`) |
 | `preset=` | `sky` · `nebula` · `ship` · `solo` · `fleet` · `skirmish` · `station` · `system` · `asteroids` · `planet` |
-| `frames=` | Settle frames before capture (default 4) |
+| `presets=` | Comma list to cycle across the batch (e.g. `fleet,skirmish,station`) |
+| `count=` | Captures before quit; process stays loaded (default 1) |
+| `frames=` | Settle frames before capture (default depends on preset) |
 | `interactive=1` | Keep window; **F12** capture, **R** regen, **Esc** quit |
 | `nebulaRes=` | Override nebula bake resolution |
 

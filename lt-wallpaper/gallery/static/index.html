@@ -41,9 +41,13 @@
           <span>Quality</span>
           <select id="quality"></select>
         </label>
+        <label class="field">
+          <span>Count</span>
+          <input id="count" type="number" min="1" max="8" value="1" title="Plates in one engine launch" />
+        </label>
         <button type="submit" class="primary" id="generate">Generate</button>
       </form>
-      <p class="status" id="status">Ready — uses the real <code>wallpaper.sh</code> binary (1 per minute).</p>
+      <p class="status" id="status">Ready — uses the real <code>wallpaper.sh</code> binary (1 per minute). Count &gt; 1 keeps the process loaded.</p>
     </section>
 
     <section class="gallery-wrap" aria-label="Gallery">

@@ -58,4 +58,4 @@ sudo ./scripts/install.sh
 | GET | `/api/status` | rate-limit / busy |
 | GET | `/api/gallery` | optional `?category=` |
 | GET | `/api/image/<id>` | PNG |
-| POST | `/api/generate` | `{category, seed?, size, quality}` |
+| POST | `/api/generate` | `{category, seed?, size, quality, count?}` — `count`>1 keeps one engine process for N plates (max 8) |
