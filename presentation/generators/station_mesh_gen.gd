@@ -35,8 +35,9 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	if lt_mesh.get_surface_count() > 0:
 		var arrs := lt_mesh.surface_get_arrays(0)
 		var vs: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
-		var ix: PackedInt32Array = arrs[Mesh.ARRAY_INDEX]
-		if ix.is_empty():
+		var ix_v: Variant = arrs[Mesh.ARRAY_INDEX]
+		# SurfaceTool finalize emits non-indexed tris; SphereMesh may omit INDEX.
+		if ix_v == null:
 			for i in range(0, vs.size(), 3):
 				st.set_color(accent)
 				st.add_vertex(vs[i])
@@ -45,13 +46,23 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 				st.set_color(accent)
 				st.add_vertex(vs[i + 2])
 		else:
-			for i in range(0, ix.size(), 3):
-				st.set_color(accent)
-				st.add_vertex(vs[ix[i]])
-				st.set_color(accent)
-				st.add_vertex(vs[ix[i + 1]])
-				st.set_color(accent)
-				st.add_vertex(vs[ix[i + 2]])
+			var ix: PackedInt32Array = ix_v
+			if ix.is_empty():
+				for i in range(0, vs.size(), 3):
+					st.set_color(accent)
+					st.add_vertex(vs[i])
+					st.set_color(accent)
+					st.add_vertex(vs[i + 1])
+					st.set_color(accent)
+					st.add_vertex(vs[i + 2])
+			else:
+				for i in range(0, ix.size(), 3):
+					st.set_color(accent)
+					st.add_vertex(vs[ix[i]])
+					st.set_color(accent)
+					st.add_vertex(vs[ix[i + 1]])
+					st.set_color(accent)
+					st.add_vertex(vs[ix[i + 2]])
 
 	# Role modules as secondary accents (gameplay readability), not the silhouette authority.
 	for node in desc["nodes"]:
