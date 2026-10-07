@@ -174,11 +174,11 @@ static func _role_dims(ship_class: int, rng: SeededRNG, profile: Dictionary) -> 
 				"cargo": 6,
 			}
 		SimEntities.ShipClass.PATROL:
-			# Blocky interceptor prism — target seed-42 W/H ~1.2–1.5 (not a pancake).
+			# Blocky interceptor prism — target seed-42 W/H ~1.2–1.4 (not a pancake).
 			return {
 				"length": rng.randf_range(2.4, 3.2) * stretch,
-				"width": rng.randf_range(1.15, 1.55),
-				"height": rng.randf_range(0.85, 1.15),
+				"width": rng.randf_range(1.10, 1.45),
+				"height": rng.randf_range(0.95, 1.25),
 				"engines": 2,
 				"cargo": 0,
 			}
@@ -375,14 +375,14 @@ static func _role_wings(
 	# Root sits outboard of wing mounts → gap / negative space beside fuselage
 	var root_x := width * lerpf(0.55, 0.72, float(profile.get("negative_space", 0.4)))
 	if ship_class == SimEntities.ShipClass.PATROL:
-		# Shorter thicker wings — target span/L ~1.0–1.3 (not span-dominant)
-		span = width * 0.52
-		root_chord = length * 0.36
-		tip_chord = root_chord * 0.34
-		thick = height * 0.28
-		sweep = 0.22
-		dihedral = -0.06
-		root_x = width * 0.52
+		# Shorter thicker wings — target span/L ~1.0–1.25 (not span-dominant)
+		span = width * 0.48
+		root_chord = length * 0.34
+		tip_chord = root_chord * 0.36
+		thick = height * 0.30
+		sweep = 0.20
+		dihedral = -0.05
+		root_x = width * 0.50
 	wings.append({
 		"root": Vector3(root_x, -height * 0.02, length * 0.04),
 		"span": span,

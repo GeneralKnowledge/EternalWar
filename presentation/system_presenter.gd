@@ -250,11 +250,11 @@ func _build_nebula_volumes(primary: Color, secondary: Color) -> void:
 			mat.set_shader_parameter("primary_color", Vector3(layer_col.r, layer_col.g, layer_col.b))
 			mat.set_shader_parameter("secondary_color", Vector3(sec_col.r, sec_col.g, sec_col.b))
 			mat.set_shader_parameter("seed", float(m.get("seed", i * 97)))
-			mat.set_shader_parameter("density_scale", float(m.get("density", 1.0)) * 1.05)
-			mat.set_shader_parameter("core_strength", float(m.get("core", 0.55)) * 1.0)
+			mat.set_shader_parameter("density_scale", float(m.get("density", 1.0)) * 1.10)
+			mat.set_shader_parameter("core_strength", float(m.get("core", 0.55)) * 0.95)
 			mat.set_shader_parameter("cavity_strength", float(m.get("dark", 0.45)) * 0.52)
-			mat.set_shader_parameter("filament_strength", float(m.get("filament", 0.55)) * 1.65)
-			mat.set_shader_parameter("emission_strength", float(m.get("emission", 0.85)) * 1.20)
+			mat.set_shader_parameter("filament_strength", float(m.get("filament", 0.55)) * 1.75)
+			mat.set_shader_parameter("emission_strength", float(m.get("emission", 0.85)) * 1.25)
 			mat.set_shader_parameter("absorb_strength", 0.85)
 			mat.set_shader_parameter("elongation", m.get("elongation", Vector3(1.0, 0.7, 1.15)))
 			mat.set_shader_parameter("ray_steps", quality)
@@ -265,16 +265,15 @@ func _build_nebula_volumes(primary: Color, secondary: Color) -> void:
 			add_child(mi)
 			_nebula_volume_mats.append(mat)
 
-		# Thin near/mid wisps — supporting mid-edge accents, not fog wash
+		# Thin near/mid wisps — accents only; volumes carry primary structure
 		var depth_near := float(m.get("depth_near", 2800.0))
 		var depth_far := float(m.get("depth_far", 6200.0))
 		var shells: Array = [
-			{"dist": lerpf(depth_near, depth_far, 0.25), "bright": 0.22, "dens": 0.38, "size": 0.55},
-			{"dist": lerpf(depth_near, depth_far, 0.55), "bright": 0.16, "dens": 0.42, "size": 0.78},
-			{"dist": lerpf(depth_near, depth_far, 0.85), "bright": 0.11, "dens": 0.36, "size": 0.95},
+			{"dist": lerpf(depth_near, depth_far, 0.30), "bright": 0.16, "dens": 0.36, "size": 0.58},
+			{"dist": lerpf(depth_near, depth_far, 0.65), "bright": 0.11, "dens": 0.40, "size": 0.80},
 		]
 		if i >= 2:
-			shells = [shells[0], shells[1]]
+			shells = [shells[0]]
 		var si := 0
 		for shell in shells:
 			var wmi := MeshInstance3D.new()
@@ -288,9 +287,9 @@ func _build_nebula_volumes(primary: Color, secondary: Color) -> void:
 			wmat.set_shader_parameter("secondary_color", sec_col)
 			wmat.set_shader_parameter("seed_offset", float(m.get("seed", 0)) * 0.01 + float(si) * 31.7 + float(i) * 7.3)
 			wmat.set_shader_parameter("density", float(shell["dens"]))
-			wmat.set_shader_parameter("soft_edge", 0.42)
+			wmat.set_shader_parameter("soft_edge", 0.48)
 			wmat.set_shader_parameter("brightness", float(shell["bright"]))
-			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.28)
+			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.22)
 			wmat.set_shader_parameter("dark_lanes", float(m.get("dark", 0.45)))
 			wmi.material_override = wmat
 			wmi.position = m["dir"] * float(shell["dist"])

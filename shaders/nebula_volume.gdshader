@@ -92,11 +92,13 @@ vec3 sample_density_pack(vec3 world_p) {
 	float clouds = smoothstep(0.18, 0.7, n_lo * 0.6 + n_mid * 0.45);
 
 	// Anisotropic filament ridges (elongated mid-frequency edges, not isotropic fill)
-	vec3 q_fil = vec3(q.x * elongation.z, q.y * 2.2, q.z * elongation.x);
-	float n_fil = fbm3(q_fil * 3.4 + 19.0);
+	vec3 q_fil = vec3(q.x * elongation.z * 1.4, q.y * 2.6, q.z * elongation.x * 1.2);
+	float n_fil = fbm3(q_fil * 3.8 + 19.0);
+	float n_fil2 = fbm3(q_fil * 7.2 + 41.0);
 	float ridge = 1.0 - abs(n_fil * 2.0 - 1.0);
-	float filaments = smoothstep(0.42, 0.78, ridge * 0.7 + n_mid * 0.35) * filament_strength;
-	float filament_ridges = pow(smoothstep(0.62, 0.95, ridge), 1.8) * filament_strength;
+	float ridge2 = 1.0 - abs(n_fil2 * 2.0 - 1.0);
+	float filaments = smoothstep(0.36, 0.7, ridge * 0.65 + ridge2 * 0.25 + n_mid * 0.25) * filament_strength;
+	float filament_ridges = pow(smoothstep(0.5, 0.9, ridge * 0.7 + ridge2 * 0.4), 1.45) * filament_strength;
 
 	// Tight cavities — dark lanes without washing the mass
 	float cavity = smoothstep(0.55, 0.92, abs(n_lo - 0.5) * 2.2);
@@ -108,12 +110,12 @@ vec3 sample_density_pack(vec3 world_p) {
 
 	// Structure as edges: lower filament density, higher filament emission
 	float dens = large * (
-		0.12 + clouds * 0.65 + filaments * 0.45 + filament_ridges * 0.35 + core * 0.6
+		0.12 + clouds * 0.55 + filaments * 0.5 + filament_ridges * 0.42 + core * 0.55
 	) * cavity_mask * density_scale;
 	dens = max(dens, 0.0);
 	float emit_w = (
-		filaments * 2.1 + filament_ridges * 1.6 + core * 1.0 + clouds * 0.28
-	) * mix(1.15, 0.55, clouds);
+		filaments * 2.4 + filament_ridges * 2.0 + core * 0.95 + clouds * 0.22
+	) * mix(1.2, 0.5, clouds);
 	float absorb_w = dens * (0.55 + clouds * 0.65 + filament_ridges * 0.3) * absorb_strength;
 	return vec3(dens, emit_w, absorb_w);
 }
@@ -146,8 +148,8 @@ void fragment() {
 
 	for (int i = 0; i < 48; i++) {
 		if (i < steps && alpha <= 0.90) {
-			// Jitter sample t to break step-ring banding
-			float jitter = hash13(rd * float(i + 1) + vec3(seed * 0.001)) * 0.3;
+			// Stronger jitter to break raymarch step banding / slices
+			float jitter = hash13(rd * float(i + 1) + vec3(seed * 0.001)) * 0.85 - 0.2;
 			float t = t0 + (float(i) + 0.5 + jitter) * dt;
 			vec3 p = ro + rd * t;
 			vec3 pack = sample_density_pack(p);
@@ -158,8 +160,10 @@ void fragment() {
 				float step_scale = dt * 0.0024;
 				float step_a = 1.0 - exp(-absorb_w * step_scale);
 				vec3 tint = mix(secondary_color, primary_color, clamp(emit_w, 0.0, 1.0));
-				tint *= mix(1.15, 0.78, clamp(d * 0.65, 0.0, 1.0));
-				vec3 emit = tint * emit_w * emission_strength * d * step_scale * 1.8;
+				tint *= mix(1.1, 0.72, clamp(d * 0.7, 0.0, 1.0));
+				// Soft-knee emission — avoid blown white cores that flatten mid-edges
+				float e_lin = emit_w * emission_strength * d * step_scale * 1.55;
+				vec3 emit = tint * (e_lin / (1.0 + e_lin * 1.8));
 				col += (1.0 - alpha) * emit;
 				alpha += (1.0 - alpha) * step_a;
 				dens_acc += d * dt;

@@ -110,10 +110,30 @@ PATROL / wedge designs emit `hull.language = "loft"` with ≥4 stations from `Sh
 
 ### Negative space (canonical fighter)
 
-- Wing roots outboard of fuselage (`root_x ≈ 0.62 × width`) with side mount prisms
-- Twin engines spaced with rear gap
+- Wing roots near shoulder (`root_x ≈ 0.50 × width`) with slim mount prisms — leave a gap beside hull
+- Twin engines spaced with rear gap (`spacing ≈ 0.40 × width`)
 - Raised cockpit leaves deck shoulder visible
 - Recessed exhaust wells
+
+### Proportion targets (seed 42 military PATROL)
+
+| Metric | Target | Measured |
+| --- | --- | --- |
+| `W/H` | 1.2–1.5 | **1.405** |
+| `span/L` | 1.0–1.3 | **1.118** |
+| Length / width / height | blocky prism | L=2.557 W=1.429 H=1.018 |
+
+Gallery framing uses AABB / wing span (not length alone) so plates fill like cropped LT refs.
+
+### Cropped silhouette compare (matched engines plate)
+
+| Pair | Silhouette IoU | Edge overlap | Aspect Δ |
+| --- | --- | --- | --- |
+| Clay 3Q vs `lt_fighter_engines_crop` | **0.502** | **0.155** | **0.071** |
+| Silhouette 3Q vs engines crop | **0.534** | 0.070 | — |
+| Lit rear vs `lt_fighter_rear_crop` | 0.252 | 0.353 | 0.042 |
+
+Prefer engines/rear crops over full combat stills (combat crops retain nebula/projectiles and inflate mismatch).
 
 ### Material regions (vertex colour cues)
 

@@ -113,7 +113,7 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 		"star_micro_count": rng.randi_range(10000, 15000),
 		"star_notable_count": rng.randi_range(120, 220),
 		"dust_count": rng.randi_range(380, 620),
-		"volume_quality": 24, # default ray steps; showcase can override
+		"volume_quality": 36, # default ray steps; showcase can override
 		"debug_nebula": 0,
 	}
 

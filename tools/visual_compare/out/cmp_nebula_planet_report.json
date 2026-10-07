@@ -1,7 +1,7 @@
 {
   "lt": "tools/visual_compare/reference/lt_nebula_planet.jpg",
   "ew": "tools/visual_compare/eternalwar/ew_nebula.png",
-  "score": 86.8533700135019,
+  "score": 85.01979359403069,
   "lt_stats": {
     "mean_Y": 0.1753760129213333,
     "p10_Y": 0.008409412577748299,
@@ -15,53 +15,97 @@
       0.14922066032886505,
       0.17682480812072754,
       0.24473293125629425
-    ]
+    ],
+    "flatness_score": 0.4249163324817963,
+    "block_std_8": 0.03573356196284294,
+    "block_std_32": 0.05700263753533363,
+    "block_std_64": 0.08607354015111923,
+    "contrast_ratio_32_8": 1.5952128588414178,
+    "cavity_near_bright": 0.13052662037037038,
+    "mid_edge_frac": 0.33015432098765435,
+    "soft_edge_frac": 0.5417226080246914,
+    "gradient_anisotropy": 0.605177104473114,
+    "edge_p90": 0.0788450837135315
   },
   "ew_stats": {
-    "mean_Y": 0.15465816855430603,
-    "p10_Y": 0.00028313728398643434,
-    "p50_Y": 0.14085334539413452,
-    "p90_Y": 0.3155129551887512,
-    "dark_frac": 0.3681423611111111,
-    "bright_frac": 0.01568094135802469,
-    "mid_frac": 0.6161766975308642,
-    "mean_sat": 0.6999475359916687,
+    "mean_Y": 0.1473974734544754,
+    "p10_Y": 0.0,
+    "p50_Y": 0.07918902486562729,
+    "p90_Y": 0.42948079109191895,
+    "dark_frac": 0.45721257716049385,
+    "bright_frac": 0.012146990740740741,
+    "mid_frac": 0.5306404320987654,
+    "mean_sat": 0.5153757929801941,
     "mean_rgb": [
-      0.0790335088968277,
-      0.17069421708583832,
-      0.22058263421058655
-    ]
+      0.08675965666770935,
+      0.15922152996063232,
+      0.20879708230495453
+    ],
+    "flatness_score": 0.3556806841563786,
+    "block_std_8": 0.00943576917052269,
+    "block_std_32": 0.026424089446663857,
+    "block_std_64": 0.04458457604050636,
+    "contrast_ratio_32_8": 2.8004171116449754,
+    "cavity_near_bright": 0.10226851851851852,
+    "mid_edge_frac": 0.1986304012345679,
+    "soft_edge_frac": 0.674110725308642,
+    "gradient_anisotropy": 0.0200095996260643,
+    "edge_p90": 0.011082857847213745
   },
   "ranked_mismatches": [
     {
-      "name": "Saturation",
-      "delta": 0.17467665672302246,
-      "category": "colour"
-    },
-    {
-      "name": "Highlight level (p90_Y)",
-      "delta": 0.1622624397277832,
-      "category": "luminance"
-    },
-    {
-      "name": "Colour balance",
-      "delta": 0.0744785688636451,
-      "category": "colour"
-    },
-    {
-      "name": "Bright-area coverage",
-      "delta": 0.05848958333333334,
-      "category": "luminance"
-    },
-    {
-      "name": "Mean luminance",
-      "delta": 0.020717844367027283,
-      "category": "luminance"
+      "name": "Mid-frequency edges",
+      "delta": 0.13152391975308644,
+      "category": "structure"
     },
     {
       "name": "Background darkness (dark_frac)",
-      "delta": 0.010277777777777775,
+      "delta": 0.07879243827160498,
       "category": "composition/luminance"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.07417976557117241,
+      "category": "colour"
+    },
+    {
+      "name": "Flatness (structure)",
+      "delta": 0.06923564832541768,
+      "category": "structure"
+    },
+    {
+      "name": "Bright-area coverage",
+      "delta": 0.062023533950617285,
+      "category": "luminance"
+    },
+    {
+      "name": "Highlight level (p90_Y)",
+      "delta": 0.04829460382461548,
+      "category": "luminance"
+    },
+    {
+      "name": "Cavity / dark lanes",
+      "delta": 0.02825810185185186,
+      "category": "structure"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.02797853946685791,
+      "category": "luminance"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.009895086288452148,
+      "category": "colour"
     }
-  ]
+  ],
+  "flatness": {
+    "lt": 0.4249163324817963,
+    "ew": 0.3556806841563786,
+    "ew_flatter_than_lt": false,
+    "cavity_lt": 0.13052662037037038,
+    "cavity_ew": 0.10226851851851852,
+    "mid_edge_lt": 0.33015432098765435,
+    "mid_edge_ew": 0.1986304012345679
+  }
 }
