@@ -11,8 +11,8 @@
     width=<int>         Window / export width (default 1920)
     height=<int>        Window / export height (default 1080)
     out=<path>          PNG output path (default ./wallpaper/lt_<seed>_<preset>.png)
-    preset=<name>       sky | nebula | ship | asteroids | planet  (default ship)
-                        (nebula is an alias for sky)
+    preset=<name>       sky | nebula | ship | solo | asteroids | planet
+                        (nebula → sky; solo = ship without asteroid field)
     frames=<int>        Settle frames before capture (default 4)
     interactive=1       Keep window open; F12 captures, Esc quits
     nebulaRes=<int>     Override Config.gen.nebulaRes (default keep Config)
@@ -28,7 +28,8 @@ Wallpaper.opts = nil
 local PRESETS = {
   sky = true,
   nebula = true, -- alias → sky (pure backdrop, no ship)
-  ship = true,
+  ship = true,   -- ship + asteroid field
+  solo = true,   -- ship only, clean plate
   asteroids = true,
   planet = true,
 }
@@ -166,6 +167,8 @@ function Wallpaper:generate ()
     ship:setPos(Vec3f(1e7, 1e7, 1e7))
   elseif preset == 'asteroids' or preset == 'ship' then
     self.system:spawnAsteroidField(80, 8)
+  elseif preset == 'solo' then
+    -- Ship against sky only — no rocks.
   end
   if preset == 'planet' then
     self.system:spawnPlanet()
@@ -219,8 +222,8 @@ function Wallpaper:applyCamera ()
       cam:setRadius(self.focus.getScale and (self.focus:getScale() * 3.5) or 8000)
       cam:setPitch(0.25)
       cam:setYaw(-Math.Pi2)
-    else -- ship
-      cam:setRadius(28)
+    else -- ship / solo
+      cam:setRadius(preset == 'solo' and 22 or 28)
       cam:setPitch(0.28)
       cam:setYaw(-1.0)
     end

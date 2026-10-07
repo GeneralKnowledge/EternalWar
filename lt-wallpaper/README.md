@@ -31,9 +31,19 @@ cd lt-wallpaper/ltheory
 ./tools/wallpaper.sh seed=42 preset=sky width=1920 height=1080 out=wallpaper/out.png
 ```
 
-Presets: `sky` · `nebula` (=sky) · `ship` · `asteroids` · `planet`
+Presets: `sky` · `nebula` (=sky) · `ship` · `solo` · `asteroids` · `planet`
 
-See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags. Web notes: [`WEB.md`](WEB.md). Browser sky toy: [`web/`](web/).
+See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
+
+### Gallery UI (native bake, not WebGL)
+
+```bash
+cd lt-wallpaper/gallery
+python3 server.py --port 8787
+# open http://localhost:8787 — categories, 1 bake/min, gallery
+```
+
+Web notes: [`WEB.md`](WEB.md).
 
 ## What the overlay changes
 

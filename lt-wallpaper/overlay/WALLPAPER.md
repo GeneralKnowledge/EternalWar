@@ -44,7 +44,7 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `seed=` | System seed (decimal string) |
 | `width=` / `height=` | Resolution (default 1920×1080) |
 | `out=` | PNG path |
-| `preset=` | `sky` · `nebula` (=sky) · `ship` · `asteroids` · `planet` |
+| `preset=` | `sky` · `nebula` (=sky) · `ship` · `solo` · `asteroids` · `planet` |
 | `frames=` | Settle frames before capture (default 4) |
 | `interactive=1` | Keep window; **F12** capture, **R** regen, **Esc** quit |
 | `nebulaRes=` | Override nebula bake resolution |
