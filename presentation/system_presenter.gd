@@ -119,8 +119,10 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
-	sky.radiance_size = Sky.RADIANCE_SIZE_256
+	# Bake IFS into radiance cubemap once (LT TexCube path). REALTIME forces 256² and
+	# looks tiled on Compatibility — QUALITY + 512 matches Nebula1.lua intent.
+	sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	sky.radiance_size = Sky.RADIANCE_SIZE_512
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
 	_apply_sky_uniforms(sky_mat, palette)
@@ -131,16 +133,16 @@ func _build_environment() -> void:
 	e.ambient_light_energy = 0.16
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 0.92
-	# LT post uses aggressive bloom (radius ~48) but keeps blacks — aim for that character.
+	# Bloom for star peaks; keep blacks (avoid hex-blob wash on Compatibility).
 	e.glow_enabled = true
-	e.glow_intensity = 0.58
-	e.glow_bloom = 0.16
-	e.glow_hdr_threshold = 1.0
-	e.glow_hdr_scale = 1.4
-	e.set_glow_level(2, 0.7)
-	e.set_glow_level(3, 1.0)
-	e.set_glow_level(4, 0.85)
-	e.set_glow_level(5, 0.55)
+	e.glow_intensity = 0.42
+	e.glow_bloom = 0.08
+	e.glow_hdr_threshold = 1.15
+	e.glow_hdr_scale = 1.2
+	e.set_glow_level(2, 0.55)
+	e.set_glow_level(3, 0.85)
+	e.set_glow_level(4, 0.6)
+	e.set_glow_level(5, 0.35)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)

@@ -122,9 +122,8 @@ float mass_bias(vec3 dir) {
 	return clamp(b, 0.0, 2.0);
 }
 
-void sky() {
-	vec3 dir = normalize(EYEDIR);
-
+// LT Nebula1.lua path: bake generate(dir) into the radiance cubemap, sample as skybox.
+vec3 generate(vec3 dir) {
 	// Soft voids — intentional negative space (composition)
 	float void_w = 0.0;
 	void_w = max(void_w, smoothstep(void0_radius * 1.05, void0_radius * 0.15, 1.0 - max(dot(dir, normalize(void0_dir)), 0.0)));
@@ -135,17 +134,13 @@ void sky() {
 	float lobe = smoothstep(0.02, 0.45, bias);
 	float gas_gate = mix(0.55, 1.0, lobe) * (1.0 - void_w * 0.75);
 
-	// --- LT generate(dir) core ---
-	// Live sky uses fewer samples than the LT bake (128); keep optical depth in range.
 	vec3 c = vec3(bg_density(dir)) * 1.35;
 	c += mix(secondary_color, primary_color, 0.45) * 0.04 * gas_gate;
 
-	// Central / local star contribution (LT)
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
 	c += dd * primary_color;
 
-	// Absorption + emission along direction (LT kSamples loop, exposure-scaled)
 	vec3 march_dir = dir * kScale * (1.0 + bias * 0.08);
 	float w = 1.0 / float(kSamples);
 	vec3 c_emit = primary_color;
@@ -159,7 +154,6 @@ void sky() {
 		t = exp(-t * t);
 		vec3 wave = lut_wave(t);
 
-		// Slightly softer than LT bake k=6 so 48 live samples don't crush to black
 		const float k = 3.6;
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
@@ -172,20 +166,17 @@ void sky() {
 	}
 	c += emit_acc;
 
-	// Galactic band modulates IFS result (structure, not a painted stripe)
 	vec3 gn = normalize(galaxy_normal);
 	float plane = 1.0 - abs(dot(dir, gn));
 	float band = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.95, 2.5));
 	c += band_color * band * 0.10 * band_strength * gas_gate;
 	c += mix(primary_color, secondary_color, 0.35) * bias * 0.18 * gas_gate;
 
-	// Floor + voids — keep LT dark lanes without killing lobe cores
 	vec3 col = mix(bg_color * 0.55, c, 0.95);
 	col = mix(col, bg_color * 0.25, void_w * 0.65);
 	col *= 1.0 - void_w * 0.25;
-	col *= 1.15; // mild exposure so IFS filaments read on screen
+	col *= 1.15;
 
-	// Sparse sparks (MultiMesh owns the dense field)
 	vec2 suv = dir.xy * 110.0 + dir.z * 45.0 + seed;
 	float cell = hash21(floor(suv));
 	if (cell > 0.986 && void_w < 0.42) {
@@ -193,6 +184,15 @@ void sky() {
 		float spark = exp(-dot(f, f) * 150.0) * (0.22 + cell * 0.32);
 		col += vec3(0.85, 0.9, 1.0) * spark * 0.4;
 	}
+	return max(col, vec3(0.0));
+}
 
-	COLOR = max(col, vec3(0.0));
+void sky() {
+	vec3 dir = normalize(EYEDIR);
+	// Cubemap bake = LT TexCube generate(); background samples the baked radiance.
+	if (AT_CUBEMAP_PASS) {
+		COLOR = generate(dir);
+	} else {
+		COLOR = texture(RADIANCE, dir).rgb;
+	}
 }
