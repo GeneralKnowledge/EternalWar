@@ -27,7 +27,7 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 	mesh_base.height = 2.0
 	var arr := mesh_base.surface_get_arrays(0)
 	var src_verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
-	var src_idx: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+	var src_idx_v: Variant = arr[Mesh.ARRAY_INDEX]
 	var out_verts: PackedVector3Array = PackedVector3Array()
 	out_verts.resize(src_verts.size())
 	for i in src_verts.size():
@@ -35,16 +35,26 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 		# Sample density along ray — find approximate surface where d≈0
 		var r := _surface_radius(p, noise_seed, octaves, smoothness)
 		out_verts[i] = p * r
-	for i in range(0, src_idx.size(), 3):
-		var i0 := src_idx[i]
-		var i1 := src_idx[i + 1]
-		var i2 := src_idx[i + 2]
-		st.set_color(color)
-		st.add_vertex(out_verts[i0])
-		st.set_color(color)
-		st.add_vertex(out_verts[i1])
-		st.set_color(color)
-		st.add_vertex(out_verts[i2])
+	if src_idx_v == null:
+		for i in range(0, out_verts.size(), 3):
+			st.set_color(color)
+			st.add_vertex(out_verts[i])
+			st.set_color(color)
+			st.add_vertex(out_verts[i + 1])
+			st.set_color(color)
+			st.add_vertex(out_verts[i + 2])
+	else:
+		var src_idx: PackedInt32Array = src_idx_v
+		for i in range(0, src_idx.size(), 3):
+			var i0 := src_idx[i]
+			var i1 := src_idx[i + 1]
+			var i2 := src_idx[i + 2]
+			st.set_color(color)
+			st.add_vertex(out_verts[i0])
+			st.set_color(color)
+			st.add_vertex(out_verts[i1])
+			st.set_color(color)
+			st.add_vertex(out_verts[i2])
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh

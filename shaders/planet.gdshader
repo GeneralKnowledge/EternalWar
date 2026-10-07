@@ -91,7 +91,7 @@ float gen_height(vec3 p) {
 	float a = 0.0;
 	float l = 0.0;
 	float w = 1.0;
-	for (int i = 0; i < 18; i++) {
+	for (int i = 0; i < 12; i++) {
 		float m = dot(z, z);
 		z = abs(z) / max(m, 1e-4) - vec4(0.4, 0.5, 0.6, 0.3);
 		z += 0.1 * log(1.0e-10 + noise4(float(i) + seed_offset));
@@ -112,7 +112,7 @@ float gen_color(vec3 p) {
 	vec4 z = vec4(p / 4.0 + 0.75, 0.3);
 	float a = 0.0;
 	float w = 1.0;
-	for (int i = 0; i < 14; i++) {
+	for (int i = 0; i < 10; i++) {
 		float m = dot(z, z);
 		z = abs(z) / max(m, 1e-4) - vec4(0.4, 0.5, 0.6, 0.4);
 		z += 0.1 * log(1.0e-10 + noise4(float(i) + seed_offset + 58.329));
@@ -173,5 +173,6 @@ void fragment() {
 	ALBEDO = col;
 	ROUGHNESS = mix(0.18, roughness_val, 1.0 - ocean * 0.75);
 	METALLIC = 0.04 + ocean * 0.08;
-	EMISSION = col * atmosphere_tint * 0.06 + ocean_col * ocean * fres * 0.12;
+	// Mild fill so Compatibility/low-ambient captures still show IFS colour.
+	EMISSION = col * (0.12 + atmosphere_tint * 0.1) + ocean_col * ocean * fres * 0.14;
 }

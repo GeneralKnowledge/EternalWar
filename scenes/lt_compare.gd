@@ -146,6 +146,17 @@ func _apply_scenario() -> void:
 			focus = sim.world["yields"][0]["position"] if not sim.world["yields"].is_empty() else Vector3.ZERO
 			distance = float(sc["dist"])
 			yaw = float(sc["yaw"])
+		"planet":
+			# Frame lit hemisphere: camera on the sunward / terminator side.
+			var pfocus := presenter.get_planet_focus()
+			var star_p: Vector3 = sim.world["star"].get("position", Vector3(200, 80, 100))
+			var to_star := (star_p - pfocus).normalized()
+			# Slight offset off the sun vector so terrain + terminator both read.
+			var view_dir := (to_star + Vector3(0.45, 0.12, 0.28)).normalized()
+			focus = pfocus
+			distance = float(sc["dist"])
+			yaw = atan2(view_dir.x, view_dir.z)
+			pitch = clampf(asin(clampf(view_dir.y, -1.0, 1.0)), -0.75, 0.45)
 		_:
 			# Aim into the primary nebula mass lobe on the IFS sky.
 			var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
@@ -157,9 +168,10 @@ func _apply_scenario() -> void:
 				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
 			else:
 				yaw = float(sc["yaw"])
+	# Preserve custom pitch for nebula / planet framing
 	if str(sc["id"]) == "nebula":
 		pitch = clampf(float(sc["pitch"]) - 0.05, -1.2, 1.2)
-	else:
+	elif str(sc["id"]) != "planet":
 		pitch = float(sc["pitch"])
 	_frames = 0
 	_hide_hud_for_capture = false
