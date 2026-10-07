@@ -134,16 +134,16 @@ func _build_environment() -> void:
 	e.ambient_light_energy = 0.14
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 0.95
-	# Bloom for star peaks; keep blacks (hex bokeh wash reads as "sphere tiles").
+	# Bloom for star peaks only — heavy hex bokeh reads as "sphere tiles".
 	e.glow_enabled = true
-	e.glow_intensity = 0.38
-	e.glow_bloom = 0.06
-	e.glow_hdr_threshold = 1.2
-	e.glow_hdr_scale = 1.1
-	e.set_glow_level(2, 0.45)
-	e.set_glow_level(3, 0.75)
-	e.set_glow_level(4, 0.5)
-	e.set_glow_level(5, 0.28)
+	e.glow_intensity = 0.22
+	e.glow_bloom = 0.03
+	e.glow_hdr_threshold = 1.55
+	e.glow_hdr_scale = 0.85
+	e.set_glow_level(2, 0.35)
+	e.set_glow_level(3, 0.55)
+	e.set_glow_level(4, 0.30)
+	e.set_glow_level(5, 0.12)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)

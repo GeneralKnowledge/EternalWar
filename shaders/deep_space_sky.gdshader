@@ -164,14 +164,14 @@ vec3 lut_wave(float t) {
 // Direction-space IFS only — no mass lobes, void discs, galaxy band, or sparkle grid.
 vec3 generate(vec3 dir_in, int sample_count) {
 	vec3 dir = normalize(dir_in);
-	vec3 c = vec3(bg_density(dir)) * 1.35;
+	vec3 c = vec3(bg_density(dir)) * 1.15;
 
 	// Large-scale IFS mood at this direction (not a painted mass lobe).
 	float m_sky = magic(dir * 0.018);
 	float sky_t = exp(-m_sky * m_sky);
 	vec3 sky_wave = lut_wave(sky_t);
-	c += sky_wave * 0.06;
-	c += mix(secondary_color, primary_color, sky_t) * 0.05 * sky_t;
+	c += sky_wave * 0.035;
+	c += mix(secondary_color, primary_color, sky_t) * 0.03 * sky_t;
 
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
@@ -200,21 +200,22 @@ vec3 generate(vec3 dir_in, int sample_count) {
 		vec3 vs = exp(-q * wave * t);
 		float cavity = exp(-pow(8.0 * abs(t - 0.90), 0.75));
 		float filament = exp(-pow(10.0 * abs(t - 0.88), 0.50));
-		vs -= 1.15 * cavity;
-		vec3 filament_emit = 0.55 * c_emit * filament;
-		filament_emit += 0.22 * secondary_color * pow(clamp(t, 0.0, 1.0), 1.4);
-		float rings = 0.55 + 0.45 * sin(40.0 * m) * cos(30.0 * m);
-		filament_emit *= clamp(rings, 0.20, 1.0);
+		vs -= 1.25 * cavity;
+		vec3 filament_emit = 0.70 * c_emit * filament;
+		filament_emit += 0.28 * secondary_color * cavity;
+		// Sharper ring gate — prefer filaments over soft body wash.
+		float rings = 0.35 + 0.65 * pow(abs(sin(48.0 * m) * cos(36.0 * m)), 1.25);
+		filament_emit *= clamp(rings, 0.08, 1.0);
 		vs += filament_emit;
 
 		c *= exp(-kAbsorb * w * max(vs, vec3(0.0)) * absorb_scale);
-		emit_acc += filament_emit * w * 0.55 * (0.65 + 0.35 * sky_t);
+		emit_acc += filament_emit * w * 0.85 * wave;
 	}
 
 	c += emit_acc;
-	c = mix(bg_color * 0.55, c, 0.95);
-	c *= 1.15;
-	return max(c, bg_color * 0.22);
+	c = mix(bg_color * 0.40, c, 0.96);
+	c *= 1.12;
+	return max(c, bg_color * 0.16);
 }
 
 void sky() {
