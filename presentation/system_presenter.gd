@@ -119,10 +119,10 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	# Compatibility samples the radiance cubemap for the background. REALTIME +
-	# heavy IFS showed face seams ("inside a giant sphere") and often baked black.
-	# QUALITY bakes once from generate(dir); 256 is enough with the cheaper live IFS.
-	sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	# Compatibility samples the radiance cubemap for the background. QUALITY with
+	# heavy IFS often finishes only a face or two before capture (reads as a
+	# black sphere with one lit patch). REALTIME + cheaper IFS stays continuous.
+	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")

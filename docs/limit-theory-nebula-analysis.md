@@ -129,7 +129,7 @@ System hue picks now reserve ~18% amber–gold so random seeds are not cyan-lock
 | `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (18 live iters) |
 | ~128 absorption samples `p = dir*kScale*i/N` | 40 / 28 samples, **same march path** |
 | `ColorLUT` 1D textures | Seeded LUT knots + mild mood tint |
-| TexCube env map at runtime | Godot Sky QUALITY radiance bake from `generate(dir)` |
+| TexCube env map at runtime | Godot Sky REALTIME radiance from `generate(dir)` (QUALITY left half-black faces on Compatibility) |
 | Separate starfield mesh | MultiMesh star layers (no sparkle lattice in sky) |
 
 ### Why it looked like a giant painted sphere

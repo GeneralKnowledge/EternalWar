@@ -53,6 +53,7 @@ func _ready() -> void:
 	hud.add_child(label)
 
 	var auto := false
+	var scenario_locked := false
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--capture" or arg.begins_with("--capture="):
 			auto = true
@@ -63,6 +64,7 @@ func _ready() -> void:
 			for i in SCENARIOS.size():
 				if SCENARIOS[i]["id"] == id:
 					scenario_i = i
+					scenario_locked = true
 		elif arg == "--nebula-sheet":
 			auto = true
 			_nebula_sheet = true
@@ -82,6 +84,11 @@ func _ready() -> void:
 			var first: Dictionary = _capture_queue.pop_front()
 			_apply_capture_item(first)
 			_capturing = true
+		elif scenario_locked:
+			# Single-scenario capture (faster QUALITY sky bake checks).
+			_capture_queue = []
+			_capturing = true
+			_apply_scenario()
 		else:
 			_capture_queue = range(SCENARIOS.size())
 			scenario_i = int(_capture_queue.pop_front())
@@ -191,11 +198,14 @@ func _process(_dt: float) -> void:
 	_frames += 1
 	if not _capturing:
 		return
-	if _frames == 10:
+	# Give REALTIME radiance a few dozen frames to settle on llvmpipe.
+	var hide_at := 24
+	var shot_at := 48
+	if _frames == hide_at:
 		_hide_hud_for_capture = true
 		if label:
 			label.visible = false
-	elif _frames == 14:
+	elif _frames == shot_at:
 		_write_capture()
 		if not _capture_queue.is_empty():
 			var nxt = _capture_queue.pop_front()

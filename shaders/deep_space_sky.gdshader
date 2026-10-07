@@ -41,13 +41,14 @@ uniform float void1_radius = 0.45;
 
 const float kScale = 0.040;
 // LT bake uses 128×30. Live/Compatibility budget: enough structure, no mediump death.
-const int kSamplesBg = 40;
-const int kSamplesCube = 28;
-const int kIterations = 18;
-const float kBrightConstant = 0.075;
-const float kBrightCell = 0.100;
-// Slightly softer than LT k=6 so mediump radiance bake keeps energy.
-const float kAbsorb = 4.5;
+const int kSamplesBg = 36;
+const int kSamplesCube = 24;
+const int kIterations = 16;
+const float kBrightConstant = 0.090;
+const float kBrightCell = 0.140;
+// Softer than LT k=6 so mediump radiance keeps energy; emission carries filaments.
+const float kAbsorb = 3.8;
+const float kEmitGain = 2.4;
 
 float hash11(float x) {
 	return fract(sin(x * 127.1 + seed * 0.13) * 43758.5453);
@@ -209,15 +210,20 @@ vec3 generate(vec3 dir_in, int sample_count) {
 		vec3 absorb = max(vs, vec3(0.0));
 		vec3 boost = max(-vs, vec3(0.0));
 		T *= exp(-kAbsorb * w * absorb);
-		T = max(T, vec3(1.0e-4));
+		T = max(T, vec3(2.0e-3));
 		// Cavity / filament glow — direction-space only (no mass-lobe gates).
-		vec3 filament_emit = (0.55 * c_emit * filament) + (0.20 * secondary_color * cavity);
-		filament_emit += boost * wave * 0.35;
-		emit_acc += T * filament_emit * w * 1.15;
+		vec3 filament_emit = (0.70 * c_emit * filament) + (0.35 * secondary_color * cavity);
+		filament_emit += boost * mix(wave, c_emit, 0.35) * 0.85;
+		// Broad IFS residual so live mediump still shows gas between cavities.
+		float body = pow(clamp(t, 0.0, 1.0), 1.6) * (0.35 + 0.65 * cavity);
+		filament_emit += mix(secondary_color, primary_color, t) * body * 0.55;
+		emit_acc += T * filament_emit * w * kEmitGain;
 	}
 
 	vec3 c = T * bg + emit_acc;
-	return max(c, bg_color * 0.12);
+	// Mild lift so Compatibility radiance doesn't crush near-black cavities to void.
+	c = c * 1.25 + bg_color * 0.20;
+	return max(c, bg_color * 0.35);
 }
 
 void sky() {
