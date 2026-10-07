@@ -1,0 +1,30 @@
+[Unit]
+Description=LT Wallpaper Gallery (native bake UI)
+After=network.target
+Documentation=file:///opt/lt-wallpaper/gallery/DEPLOY.md
+
+[Service]
+Type=simple
+User=ltwallpaper
+Group=ltwallpaper
+WorkingDirectory=/opt/lt-wallpaper/gallery
+EnvironmentFile=-/opt/lt-wallpaper/gallery/.env
+ExecStart=/usr/bin/python3 /opt/lt-wallpaper/gallery/server.py
+Restart=on-failure
+RestartSec=5
+
+# Soft pressure around physical RAM; allow swap for occasional good bakes.
+MemoryHigh=800M
+MemoryMax=2500M
+TimeoutStopSec=30
+Nice=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/lt-wallpaper /opt/lt-wallpaper/gallery/data /opt/lt-wallpaper/ltheory
+
+[Install]
+WantedBy=multi-user.target

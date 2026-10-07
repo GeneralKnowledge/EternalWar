@@ -1,0 +1,181 @@
+:root {
+  --ink: #0a0c10;
+  --panel: rgba(12, 14, 18, 0.82);
+  --line: rgba(220, 228, 240, 0.12);
+  --text: #e8edf4;
+  --muted: #8b95a8;
+  --accent: #c8f06c;
+  --accent-ink: #12160a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--text);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  overflow: hidden;
+}
+
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+#gl {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+#gl:active { cursor: grabbing; }
+
+.vignette {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  /* Light UI legibility only — scene vignette lives in the tonemap shader */
+  background:
+    radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(0,0,0,0.18) 100%);
+}
+
+.brand {
+  position: fixed;
+  top: 1.25rem;
+  left: 1.5rem;
+  z-index: 2;
+  max-width: min(28rem, 70vw);
+  animation: rise 0.8s ease both;
+}
+
+.brand h1 {
+  margin: 0;
+  font-family: Syne, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-shadow: 0 2px 24px rgba(0,0,0,0.55);
+}
+
+.brand p {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.panel {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 2;
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1rem 1.1rem 1.05rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  animation: rise 0.9s 0.08s ease both;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.row { display: flex; gap: 0.4rem; }
+
+input[type="text"],
+select {
+  width: 100%;
+  appearance: none;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0.55rem 0.65rem;
+}
+
+input[type="text"]:focus,
+select:focus {
+  outline: 1px solid var(--accent);
+  border-color: transparent;
+}
+
+button {
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+button:hover {
+  background: rgba(255,255,255,0.1);
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: transparent;
+  font-weight: 500;
+}
+
+button.primary:hover {
+  filter: brightness(1.05);
+}
+
+#rand {
+  min-width: 2.5rem;
+  padding-inline: 0;
+  font-size: 1.1rem;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+}
+
+.hint, .status {
+  margin: 0.75rem 0 0;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: none;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.status { color: #a8b4c8; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (max-width: 720px) {
+  .brand { top: 0.85rem; left: 0.9rem; }
+  .panel {
+    right: 0.75rem;
+    left: 0.75rem;
+    bottom: 0.75rem;
+    width: auto;
+  }
+  .actions { grid-template-columns: 1fr; }
+}

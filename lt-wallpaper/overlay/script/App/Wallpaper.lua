@@ -11,7 +11,8 @@
     width=<int>         Window / export width (default 1920)
     height=<int>        Window / export height (default 1080)
     out=<path>          PNG output path (default ./wallpaper/lt_<seed>_<preset>.png)
-    preset=<name>       nebula | ship | asteroids | planet  (default ship)
+    preset=<name>       sky | nebula | ship | solo | asteroids | planet
+                        (nebula → sky; solo = ship without asteroid field)
     frames=<int>        Settle frames before capture (default 4)
     interactive=1       Keep window open; F12 captures, Esc quits
     nebulaRes=<int>     Override Config.gen.nebulaRes (default keep Config)
@@ -25,11 +26,17 @@ local Wallpaper = Application()
 Wallpaper.opts = nil
 
 local PRESETS = {
-  nebula = true,
-  ship = true,
+  sky = true,
+  nebula = true, -- alias → sky (pure backdrop, no ship)
+  ship = true,   -- ship + asteroid field
+  solo = true,   -- ship only, clean plate
   asteroids = true,
   planet = true,
 }
+
+local function isSkyPreset (name)
+  return name == 'sky' or name == 'nebula'
+end
 
 local function parseArgs ()
   local opts = {
@@ -145,34 +152,33 @@ function Wallpaper:generate ()
   if self.system then self.system:delete() end
   self.system = Entities.System(seed)
 
-  local ship
-  do
-    ship = self.system:spawnShip()
-    ship:setPos(Config.gen.origin)
-    ship:setFriction(0)
-    ship:setSleepThreshold(0, 0)
-    ship:setOwner(self.player)
-    self.system:addChild(ship)
-    self.player:setControlling(ship)
-  end
+  -- GameView requires a controlling body; for sky we keep a tiny stub off-camera.
+  local ship = self.system:spawnShip()
+  ship:setPos(Config.gen.origin)
+  ship:setFriction(0)
+  ship:setSleepThreshold(0, 0)
+  ship:setOwner(self.player)
+  self.system:addChild(ship)
+  self.player:setControlling(ship)
 
   local preset = self.opts.preset
-  if preset == 'asteroids' or preset == 'ship' then
+  if isSkyPreset(preset) then
+    -- No world props — nebula + stars only. Park the stub far off-camera.
+    ship:setPos(Vec3f(1e7, 1e7, 1e7))
+  elseif preset == 'asteroids' or preset == 'ship' then
     self.system:spawnAsteroidField(80, 8)
+  elseif preset == 'solo' then
+    -- Ship against sky only — no rocks.
   end
   if preset == 'planet' then
     self.system:spawnPlanet()
   end
-  if preset == 'nebula' then
-    -- Hide the player ship far away so the sky reads cleanly
-    ship:setPos(Vec3f(1e7, 1e7, 1e7))
-  end
 
   self.focus = ship
+  self.skyOnly = isSkyPreset(preset)
   if preset == 'planet' then
     for _, child in self.system:iterChildren() do
       if child ~= ship and child.getScale then
-        -- Prefer the planet as orbit target when present
         local ok, scale = pcall(function () return child:getScale() end)
         if ok and scale and scale > 1000 then
           self.focus = child
@@ -187,24 +193,40 @@ function Wallpaper:applyCamera ()
   self.gameView:setOrbit(true)
   local cam = self.gameView.camera
   cam:setSmooth(false)
-  cam:setTarget(self.focus)
   local preset = self.opts.preset
-  if preset == 'nebula' then
-    cam:setRadius(40)
-    cam:setPitch(0.15)
-    cam:setYaw(-1.2)
-  elseif preset == 'asteroids' then
-    cam:setRadius(180)
-    cam:setPitch(0.35)
-    cam:setYaw(-0.8)
-  elseif preset == 'planet' then
-    cam:setRadius(self.focus.getScale and (self.focus:getScale() * 3.5) or 8000)
-    cam:setPitch(0.25)
-    cam:setYaw(-Math.Pi2)
-  else -- ship
-    cam:setRadius(28)
-    cam:setPitch(0.28)
-    cam:setYaw(-1.0)
+
+  if self.skyOnly or isSkyPreset(preset) then
+    -- Free camera at origin looking into the nebula / toward the system star.
+    cam:setTarget(nil)
+    cam:setCenter(0, 0, 0)
+    cam:setRadius(1)
+    local sd = self.system.starDir
+    if sd then
+      -- Spherical yaw/pitch that looks roughly toward -starDir (into the glow).
+      local look = Vec3f(-sd.x, -sd.y, -sd.z):normalize()
+      local yaw = math.atan2(look.x, look.z)
+      local pitch = math.asin(Math.Clamp(look.y, -0.49, 0.49))
+      cam:setYaw(yaw)
+      cam:setPitch(pitch)
+    else
+      cam:setPitch(0.12)
+      cam:setYaw(-1.1)
+    end
+  else
+    cam:setTarget(self.focus)
+    if preset == 'asteroids' then
+      cam:setRadius(180)
+      cam:setPitch(0.35)
+      cam:setYaw(-0.8)
+    elseif preset == 'planet' then
+      cam:setRadius(self.focus.getScale and (self.focus:getScale() * 3.5) or 8000)
+      cam:setPitch(0.25)
+      cam:setYaw(-Math.Pi2)
+    else -- ship / solo
+      cam:setRadius(preset == 'solo' and 22 or 28)
+      cam:setPitch(0.28)
+      cam:setYaw(-1.0)
+    end
   end
   cam:warp()
 end
@@ -235,8 +257,13 @@ function Wallpaper:onInit ()
   DebugControl.ltheory = self
   self.gameView = GUI.GameView(self.player)
   self.canvas = UI.Canvas()
-  self.canvas:add(self.gameView
-    :add(Controls.MasterControl(self.gameView, self.player)))
+  if self.skyOnly then
+    -- No ship HUD / chase camera — GameView alone for a clean sky plate.
+    self.canvas:add(self.gameView)
+  else
+    self.canvas:add(self.gameView
+      :add(Controls.MasterControl(self.gameView, self.player)))
+  end
 
   self:applyCamera()
 

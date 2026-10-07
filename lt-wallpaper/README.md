@@ -28,10 +28,28 @@ git lfs install
 
 # generate
 cd lt-wallpaper/ltheory
-./tools/wallpaper.sh seed=42 preset=ship width=1920 height=1080 out=wallpaper/out.png
+./tools/wallpaper.sh seed=42 preset=sky width=1920 height=1080 out=wallpaper/out.png
 ```
 
-See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags and details.
+Presets: `sky` · `nebula` (=sky) · `ship` · `solo` · `asteroids` · `planet`
+
+See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
+
+### Gallery UI (native bake, not WebGL)
+
+```bash
+cd lt-wallpaper/gallery
+cp .env.example .env   # set LTHEORY_ROOT
+./scripts/run.sh
+# open http://localhost:8080 — categories, 1 bake/min, gallery
+```
+
+**Deploy to a VPS / Docker:** [`gallery/DEPLOY.md`](gallery/DEPLOY.md)  
+```bash
+cd lt-wallpaper/gallery && sudo ./scripts/install.sh
+```
+
+Web notes: [`WEB.md`](WEB.md).
 
 ## What the overlay changes
 
