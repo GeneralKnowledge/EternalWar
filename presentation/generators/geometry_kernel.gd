@@ -54,18 +54,18 @@ static func ngon_profile(sides: int, rx: float, ry: float, bevel: float = 0.0, b
 
 ## Wedge / flattened hex fighter profile — wider on sides, flatter top/bottom.
 static func fighter_profile(rx: float, ry: float, bevel: float = 0.22, bevel_segs: int = 1) -> PackedVector2Array:
-	# Non-uniform octagon: shoulders + flat deck (reads as LT prism, not ellipse).
+	# Non-uniform octagon: taller mid-sides so loft reads prism-like, not squash.
 	var raw := PackedVector2Array([
 		Vector2(0.0, ry),
-		Vector2(rx * 0.55, ry * 0.78),
-		Vector2(rx * 0.92, ry * 0.28),
-		Vector2(rx, -ry * 0.15),
-		Vector2(rx * 0.7, -ry * 0.72),
+		Vector2(rx * 0.55, ry * 0.82),
+		Vector2(rx * 0.92, ry * 0.50),
+		Vector2(rx, -ry * 0.05),
+		Vector2(rx * 0.7, -ry * 0.78),
 		Vector2(0.0, -ry),
-		Vector2(-rx * 0.7, -ry * 0.72),
-		Vector2(-rx, -ry * 0.15),
-		Vector2(-rx * 0.92, ry * 0.28),
-		Vector2(-rx * 0.55, ry * 0.78),
+		Vector2(-rx * 0.7, -ry * 0.78),
+		Vector2(-rx, -ry * 0.05),
+		Vector2(-rx * 0.92, ry * 0.50),
+		Vector2(-rx * 0.55, ry * 0.82),
 	])
 	if bevel > 0.0:
 		return bevel_profile(raw, clampf(bevel, 0.0, 0.42), maxi(bevel_segs, 1))

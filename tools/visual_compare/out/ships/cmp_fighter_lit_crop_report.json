@@ -1,0 +1,97 @@
+{
+  "lt": "tools/visual_compare/reference/ships/cropped/lt_fighter_combat_crop.png",
+  "ew": "tools/visual_compare/eternalwar/fighter/ew_fighter_s42_lit_three_quarter_front.png",
+  "score": 34.77482334105666,
+  "score_legacy": 58.43771115675089,
+  "silhouette_iou": 0.1541427876457955,
+  "edge_overlap": 0.38490284005979075,
+  "silhouette_score": 15.414278764579551,
+  "lt_stats": {
+    "mean_Y": 0.2463787943124771,
+    "dark_frac": 0.5104644097222222,
+    "mean_sat": 0.4687153995037079,
+    "mask_frac": 0.3649696111679077,
+    "aspect": 0.7987852664576802,
+    "bbox": [
+      0.146875,
+      0.05555555555555555,
+      0.7078125,
+      0.8861111111111111
+    ],
+    "mean_rgb": [
+      0.303609699010849,
+      0.23144793510437012,
+      0.22439976036548615
+    ],
+    "emissive_frac": 0.12477430555555556
+  },
+  "ew_stats": {
+    "mean_Y": 0.10073383152484894,
+    "dark_frac": 0.07521701388888889,
+    "mean_sat": 0.5566390156745911,
+    "mask_frac": 0.037274304777383804,
+    "aspect": 0.9691265060240963,
+    "bbox": [
+      0.2515625,
+      0.26944444444444443,
+      0.446875,
+      0.46111111111111114
+    ],
+    "mean_rgb": [
+      0.07226096093654633,
+      0.10115218907594681,
+      0.17738132178783417
+    ],
+    "emissive_frac": 0.0
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Colour balance",
+      "delta": 0.2696478325667687,
+      "weighted": 0.24268304931009185,
+      "category": "colour"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.12477430555555556,
+      "weighted": 0.12477430555555556,
+      "category": "engine"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.3276953063905239,
+      "weighted": 0.08192382659763098,
+      "category": "silhouette"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.14564496278762817,
+      "weighted": 0.07282248139381409,
+      "category": "lighting"
+    },
+    {
+      "name": "Aspect ratio",
+      "delta": 0.05961943384824563,
+      "weighted": 0.07154332061789476,
+      "category": "proportion"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.08792361617088318,
+      "weighted": 0.07033889293670655,
+      "category": "colour"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.42499999999999993,
+      "weighted": 0.06374999999999999,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.26093749999999993,
+      "weighted": 0.03914062499999999,
+      "category": "proportion"
+    }
+  ]
+}

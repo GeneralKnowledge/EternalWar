@@ -29,7 +29,8 @@ func setup(p_sim: StarSystemSim, camera: Camera3D = null) -> void:
 	MeshCache.clear()
 	_clear_visuals()
 	var nebula_hint: Color = sim.world.get("nebula_color", Color(0.3, 0.25, 0.55))
-	sky_comp = SkyComposition.build(sim.seed_value, nebula_hint)
+	var mood_override := str(sim.world.get("mood_override", ""))
+	sky_comp = SkyComposition.build(sim.seed_value, nebula_hint, mood_override)
 	var pm := SkyComposition.primary_mass(sky_comp)
 	sim.world["sky_composition"] = {
 		"mood": sky_comp.get("mood", ""),
@@ -153,10 +154,11 @@ func _build_environment() -> void:
 	_env_node = env
 	add_child(env)
 
-	# Stars against IFS sky. Thin wisps only — no primary world-space volume wash.
+	# IFS sky owns far colour. Bounded volumes + thin wisps add world-space depth
+	# (occlusion / cavities / parallax) without replacing the sky as the wash.
 	_build_starfield_layer("micro")
+	_build_nebula_volumes(primary, secondary)
 	_build_starfield_layer("field")
-	_build_nebula_wisps_only(primary, secondary)
 	_build_starfield_layer("notable")
 	_build_starfield_layer("gems")
 	_build_starfield_layer("dust")
@@ -217,30 +219,68 @@ func _build_starfield_layer(key: String) -> void:
 	add_child(node)
 
 
-func _build_nebula_wisps_only(primary: Color, secondary: Color) -> void:
-	## Secondary accent only — LT primary nebula is the IFS sky/env map.
+func _build_nebula_volumes(primary: Color, secondary: Color) -> void:
+	## Hybrid: IFS sky = far colour; major masses = bounded raymarch;
+	## thin wisps = cheap depth accents. Filaments raise mid-edge without cavity wash.
+	var vol_shader: Shader = load("res://shaders/nebula_volume.gdshader")
 	var wisp_shader: Shader = load("res://shaders/nebula.gdshader")
 	var masses: Array = sky_comp.get("masses", [])
+	var quality := int(sky_comp.get("volume_quality", 28))
+	var debug_mode := int(sky_comp.get("debug_nebula", 0))
 	_nebula_volume_mats.clear()
 	var i := 0
 	for m in masses:
-		if i >= 2:
-			break
 		var t := float(m.get("color_t", 0.5))
 		var layer_col := primary.lerp(secondary, t)
 		var sec_col := secondary.lerp(primary, 0.35)
+		var center: Vector3 = m.get("center", m["dir"] * float(m.get("shell", 5000.0)))
 		var radius := float(m.get("radius", 2500.0))
+
+		if bool(m.get("volumetric", true)) and i < 3:
+			var mi := MeshInstance3D.new()
+			var sphere := SphereMesh.new()
+			sphere.radius = radius
+			sphere.height = radius * 2.0
+			sphere.radial_segments = 24
+			sphere.rings = 12
+			mi.mesh = sphere
+			var mat := ShaderMaterial.new()
+			mat.shader = vol_shader
+			mat.set_shader_parameter("volume_center", center)
+			mat.set_shader_parameter("volume_radius", radius)
+			mat.set_shader_parameter("primary_color", Vector3(layer_col.r, layer_col.g, layer_col.b))
+			mat.set_shader_parameter("secondary_color", Vector3(sec_col.r, sec_col.g, sec_col.b))
+			mat.set_shader_parameter("seed", float(m.get("seed", i * 97)))
+			mat.set_shader_parameter("density_scale", float(m.get("density", 1.0)) * 1.10)
+			mat.set_shader_parameter("core_strength", float(m.get("core", 0.55)) * 0.95)
+			mat.set_shader_parameter("cavity_strength", float(m.get("dark", 0.45)) * 0.52)
+			mat.set_shader_parameter("filament_strength", float(m.get("filament", 0.55)) * 1.75)
+			mat.set_shader_parameter("emission_strength", float(m.get("emission", 0.85)) * 1.25)
+			mat.set_shader_parameter("absorb_strength", 0.85)
+			mat.set_shader_parameter("elongation", m.get("elongation", Vector3(1.0, 0.7, 1.15)))
+			mat.set_shader_parameter("ray_steps", quality)
+			mat.set_shader_parameter("debug_mode", debug_mode)
+			mi.material_override = mat
+			mi.position = center
+			mi.name = "nebula_volume_%d" % i
+			add_child(mi)
+			_nebula_volume_mats.append(mat)
+
+		# Thin near/mid wisps — accents only; volumes carry primary structure
 		var depth_near := float(m.get("depth_near", 2800.0))
 		var depth_far := float(m.get("depth_far", 6200.0))
-		var shells := [
-			{"dist": lerpf(depth_near, depth_far, 0.35), "bright": 0.11, "dens": 0.32, "size": 0.62},
-			{"dist": lerpf(depth_near, depth_far, 0.75), "bright": 0.08, "dens": 0.36, "size": 0.82},
+		var shells: Array = [
+			{"dist": lerpf(depth_near, depth_far, 0.30), "bright": 0.16, "dens": 0.36, "size": 0.58},
+			{"dist": lerpf(depth_near, depth_far, 0.65), "bright": 0.11, "dens": 0.40, "size": 0.80},
 		]
+		if i >= 2:
+			shells = [shells[0]]
 		var si := 0
 		for shell in shells:
 			var wmi := MeshInstance3D.new()
 			var plane := PlaneMesh.new()
-			plane.size = Vector2(radius * 2.0 * float(shell["size"]), radius * 2.0 * float(shell["size"]))
+			var sz := radius * 2.0 * float(shell["size"])
+			plane.size = Vector2(sz, sz)
 			wmi.mesh = plane
 			var wmat := ShaderMaterial.new()
 			wmat.shader = wisp_shader
@@ -248,9 +288,9 @@ func _build_nebula_wisps_only(primary: Color, secondary: Color) -> void:
 			wmat.set_shader_parameter("secondary_color", sec_col)
 			wmat.set_shader_parameter("seed_offset", float(m.get("seed", 0)) * 0.01 + float(si) * 31.7 + float(i) * 7.3)
 			wmat.set_shader_parameter("density", float(shell["dens"]))
-			wmat.set_shader_parameter("soft_edge", 0.5)
+			wmat.set_shader_parameter("soft_edge", 0.48)
 			wmat.set_shader_parameter("brightness", float(shell["bright"]))
-			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.3)
+			wmat.set_shader_parameter("core_strength", float(m.get("core", 0.5)) * 0.22)
 			wmat.set_shader_parameter("dark_lanes", float(m.get("dark", 0.45)))
 			wmi.material_override = wmat
 			wmi.position = m["dir"] * float(shell["dist"])

@@ -91,13 +91,40 @@ Put the camera in front of a large mass. Dolly / orbit / pass near dense gas.
 | Cavities stay dark | Whole sky becomes low-opacity wash |
 | Parallax between near wisps and far core | Identical sheet under camera motion |
 
+### Metric gates (hybrid restore)
+
+| Metric | Gate | Latest EW (`ew_nebula.png`) |
+| --- | --- | --- |
+| mid_edge_frac | ≥ 0.25 stretch toward LT planet 0.33 | **0.199** |
+| cavity_near_bright | ≤ 0.14 | **0.102** |
+| mean_Y | ≥ 0.14 | **0.147** |
+| flatness_score | not flatter than LT (+0.05 slack) | **0.356** (`ew_flatter_than_lt=false`) |
+| gradient_anisotropy | > 0.15 (stretch) | 0.020 (still short) |
+
+Planet compare score ≈ **85/100**. Remaining gap is mid-frequency edge density / anisotropy vs LT planet stills — chase with filament ridges, not higher cavity or overall density.
+
+### Mood sheet (palette coverage)
+
+Capture with `lt_compare.tscn --nebula-sheet`. Latest sheet (`out/nebula_mood_sheet.png`):
+
+| Mood | Gas B−R | Family |
+| --- | --- | --- |
+| amber_gold | −0.29 | warm (LT cockpit) |
+| magenta_rose | −0.08 | warm (LT ship gas) |
+| crimson | −0.29 | warm |
+| cyan_teal | +0.23 | cool |
+| indigo_violet | +0.21 | cool |
+| cold_white | +0.10 | cool |
+
+System hue picks now reserve ~18% amber–gold so random seeds are not cyan-locked.
+
 ---
 
 ## 6. Implementation notes (this milestone)
 
-- Shader: `shaders/nebula_volume.gdshader` — sphere-bounded raymarch, hierarchical 3D density, emission ≠ density
-- Wisps: thin `nebula.gdshader` shells at near/far of each mass (Approach A)
-- Sky: mass contribution reduced to faint galactic structure
-- Stars: distances interleaved with mass `depth_near` / `depth_far`
-- Showcase: mode **Nebula Volume** + density/depth debug views
-- Perf: ~20–28 steps per major mass, early exit on high alpha, only 2–4 masses
+- Shader: `shaders/nebula_volume.gdshader` — sphere-bounded raymarch, anisotropic filament ridges, domain warp, soft-knee emission
+- Wisps: thin `nebula.gdshader` shells (2 per major mass) as accents only
+- Sky: IFS far colour; `magic()` banding softened
+- Compare camera: mild graze through primary mass (`lt_compare` nebula scenario)
+- Presenter multipliers: filament↑ emission↑ cavity↓ absorb↓ (do not raise density/cavity to chase mid_edge)
+- Perf: ~36 steps per major mass, early exit on high alpha, only 2–3 volumes

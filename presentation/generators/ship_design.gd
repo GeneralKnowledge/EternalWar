@@ -66,11 +66,14 @@ static func build(design: Dictionary, extras: Dictionary = {}) -> Dictionary:
 		var y_off := -height * eng_rng.randf_range(0.02, 0.12)
 		if ship_class == SimEntities.ShipClass.PATROL:
 			y_off = -height * 0.04
-			# Keep engines inside aft shoulder so housings read as hull terminations
-			t = (float(i) / float(maxi(engine_n - 1, 1)) - 0.5) * width * 0.38
+			# Twin spacing leaves a rear negative-space gap between ports
+			t = (float(i) / float(maxi(engine_n - 1, 1)) - 0.5) * width * 0.40
+		var eng_r := width * 0.09 * float(profile["engine_scale"]) * eng_rng.randf_range(0.9, 1.1)
+		if ship_class == SimEntities.ShipClass.PATROL:
+			eng_r = width * 0.13 * float(profile["engine_scale"]) * eng_rng.randf_range(0.95, 1.08)
 		engines.append({
 			"pos": Vector3(t, y_off, length * 0.44),
-			"radius": width * 0.09 * float(profile["engine_scale"]) * eng_rng.randf_range(0.9, 1.1),
+			"radius": eng_r,
 			"length": length * 0.2 * eng_rng.randf_range(0.9, 1.1),
 			"exhaust": exhaust,
 			"segments": 6 if ship_class == SimEntities.ShipClass.PATROL else 8,
@@ -171,11 +174,11 @@ static func _role_dims(ship_class: int, rng: SeededRNG, profile: Dictionary) -> 
 				"cargo": 6,
 			}
 		SimEntities.ShipClass.PATROL:
-			# Flat interceptor — LT fighter proportions (readable prism, not a pancake).
+			# Blocky interceptor prism — target seed-42 W/H ~1.2–1.4 (not a pancake).
 			return {
 				"length": rng.randf_range(2.4, 3.2) * stretch,
-				"width": rng.randf_range(1.45, 2.05),
-				"height": rng.randf_range(0.48, 0.72),
+				"width": rng.randf_range(1.10, 1.45),
+				"height": rng.randf_range(0.95, 1.25),
 				"engines": 2,
 				"cargo": 0,
 			}
@@ -285,19 +288,19 @@ static func _role_modules(
 				"size": Vector3(width * 0.12, height * 0.18, length * 0.1),
 				"region": "accent",
 			})
-			# Side wing mounts — bridge hull shoulder to wing root (controlled gap, not floating).
-			var mount_x := width * 0.48
+			# Side wing mounts — slim bridge so a gap remains beside the hull.
+			var mount_x := width * 0.42
 			modules.append({
 				"type": "mount",
 				"pos": Vector3(mount_x, -height * 0.02, length * 0.04),
-				"size": Vector3(width * 0.22, height * 0.5, length * 0.38),
+				"size": Vector3(width * 0.14, height * 0.38, length * 0.30),
 				"region": "secondary",
 			})
 			if symmetric:
 				modules.append({
 					"type": "mount",
 					"pos": Vector3(-mount_x, -height * 0.02, length * 0.04),
-					"size": Vector3(width * 0.22, height * 0.5, length * 0.38),
+					"size": Vector3(width * 0.14, height * 0.38, length * 0.30),
 					"region": "secondary",
 				})
 	if float(profile["ornament"]) > 0.45 and rng.randf() < float(profile["ornament"]):
@@ -372,15 +375,14 @@ static func _role_wings(
 	# Root sits outboard of wing mounts → gap / negative space beside fuselage
 	var root_x := width * lerpf(0.55, 0.72, float(profile.get("negative_space", 0.4)))
 	if ship_class == SimEntities.ShipClass.PATROL:
-		# Canonical military fighter: swept planform, mild anhedral, no random TIE panels
-		span = width * 0.95
-		root_chord = length * 0.48
-		tip_chord = root_chord * 0.32
-		thick = height * 0.12
-		sweep = 0.28
-		dihedral = -0.03
-		# Root sits on outer face of wing mount (filled gap, not floating plates)
-		root_x = width * 0.58
+		# Shorter thicker wings — target span/L ~1.0–1.25 (not span-dominant)
+		span = width * 0.48
+		root_chord = length * 0.34
+		tip_chord = root_chord * 0.36
+		thick = height * 0.30
+		sweep = 0.20
+		dihedral = -0.05
+		root_x = width * 0.50
 	wings.append({
 		"root": Vector3(root_x, -height * 0.02, length * 0.04),
 		"span": span,
@@ -462,18 +464,20 @@ static func _fighter_stations(
 	var mid_h := height * rng.randf_range(0.92, 1.05)
 	var nose_w := width * lerpf(0.22, 0.4, 1.0 - nose_taper)
 	var nose_h := height * lerpf(0.2, 0.38, 1.0 - nose_taper)
-	var aft_w := width * aft_taper * rng.randf_range(0.7, 0.88)
-	var aft_h := height * aft_taper * rng.randf_range(0.65, 0.85)
+	var aft_w := width * aft_taper * rng.randf_range(0.78, 0.95)
+	var aft_h := height * aft_taper * rng.randf_range(0.88, 1.02)
 	var cockpit_lift := height * 0.08
 	var bevel := lerpf(0.14, 0.26, float(profile.get("detail_density", 0.5)))
 	var stations: Array = [
-		GeometryKernel.station(-hz, nose_w * 0.28, nose_h * 0.25, height * 0.02, 0.0, "fighter", 6),
-		GeometryKernel.station(-hz * 0.62, nose_w * 0.85, nose_h * 0.8, height * 0.03, 0.0, "fighter", 6),
-		GeometryKernel.station(-hz * 0.2, width * 0.82, mid_h * 0.85, cockpit_lift * 0.5, 0.0, "fighter", 6),
+		# Fatter nose tip — less needle, more prism extrusion
+		GeometryKernel.station(-hz, nose_w * 0.50, nose_h * 0.45, height * 0.02, 0.0, "fighter", 6),
+		GeometryKernel.station(-hz * 0.62, nose_w * 0.9, nose_h * 0.85, height * 0.03, 0.0, "fighter", 6),
+		GeometryKernel.station(-hz * 0.2, width * 0.82, mid_h * 0.9, cockpit_lift * 0.5, 0.0, "fighter", 6),
 		GeometryKernel.station(hz * 0.12, shoulder_w, mid_h, cockpit_lift * 0.15, 0.0, "fighter", 6),
-		GeometryKernel.station(hz * 0.48, width * 0.85, height * 0.9, -height * 0.01, 0.0, "fighter", 6),
-		GeometryKernel.station(hz * 0.78, width * 0.72, height * 0.78, -height * 0.03, 0.0, "ngon", int(profile.get("hull_sides", 6))),
-		GeometryKernel.station(hz * 0.98, aft_w * 0.9, aft_h * 0.85, -height * 0.05, 0.0, "ngon", int(profile.get("hull_sides", 6))),
+		GeometryKernel.station(hz * 0.48, width * 0.88, height * 0.95, -height * 0.01, 0.0, "fighter", 6),
+		GeometryKernel.station(hz * 0.78, width * 0.78, height * 0.9, -height * 0.02, 0.0, "ngon", int(profile.get("hull_sides", 6))),
+		# Raised aft face for rectangular engine termination
+		GeometryKernel.station(hz * 0.98, aft_w * 0.95, aft_h * 0.95, -height * 0.03, 0.0, "ngon", int(profile.get("hull_sides", 6))),
 	]
 	for s in stations:
 		s["bevel"] = bevel
