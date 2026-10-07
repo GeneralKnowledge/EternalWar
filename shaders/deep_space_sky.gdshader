@@ -136,18 +136,20 @@ void sky() {
 	float gas_gate = mix(0.55, 1.0, lobe) * (1.0 - void_w * 0.75);
 
 	// --- LT generate(dir) core ---
-	vec3 c = vec3(bg_density(dir));
-	c *= mix(0.45, 1.0, gas_gate);
+	// Live sky uses fewer samples than the LT bake (128); keep optical depth in range.
+	vec3 c = vec3(bg_density(dir)) * 1.35;
+	c += mix(secondary_color, primary_color, 0.45) * 0.04 * gas_gate;
 
 	// Central / local star contribution (LT)
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
 	c += dd * primary_color;
 
-	// Absorption along direction (LT kSamples loop)
+	// Absorption + emission along direction (LT kSamples loop, exposure-scaled)
 	vec3 march_dir = dir * kScale * (1.0 + bias * 0.08);
 	float w = 1.0 / float(kSamples);
 	vec3 c_emit = primary_color;
+	vec3 emit_acc = vec3(0.0);
 	for (int i = 0; i < 64; i++) {
 		if (i >= kSamples) {
 			break;
@@ -157,25 +159,31 @@ void sky() {
 		t = exp(-t * t);
 		vec3 wave = lut_wave(t);
 
-		const float k = 6.0;
+		// Slightly softer than LT bake k=6 so 48 live samples don't crush to black
+		const float k = 3.6;
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
-		vs -= 1.25 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
-		vs += 0.50 * c_emit * exp(-pow(10.0 * abs(t - 0.90), 0.50));
-		c *= exp(-k * w * max(vs, vec3(0.0)) * gas_gate);
+		vs -= 1.15 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
+		vec3 filament_emit = 0.55 * c_emit * exp(-pow(10.0 * abs(t - 0.88), 0.50));
+		filament_emit += 0.22 * secondary_color * pow(clamp(t, 0.0, 1.0), 1.4);
+		vs += filament_emit;
+		c *= exp(-k * w * max(vs, vec3(0.0)) * mix(0.55, 1.0, gas_gate));
+		emit_acc += filament_emit * w * gas_gate * (0.55 + bias * 0.5);
 	}
+	c += emit_acc;
 
 	// Galactic band modulates IFS result (structure, not a painted stripe)
 	vec3 gn = normalize(galaxy_normal);
 	float plane = 1.0 - abs(dot(dir, gn));
 	float band = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.95, 2.5));
-	c += band_color * band * 0.08 * band_strength * gas_gate;
-	c += mix(primary_color, secondary_color, 0.35) * bias * 0.12 * gas_gate;
+	c += band_color * band * 0.10 * band_strength * gas_gate;
+	c += mix(primary_color, secondary_color, 0.35) * bias * 0.18 * gas_gate;
 
-	// Floor + voids
-	vec3 col = mix(bg_color * 0.4, c, 0.92);
-	col = mix(col, bg_color * 0.22, void_w * 0.72);
-	col *= 1.0 - void_w * 0.3;
+	// Floor + voids — keep LT dark lanes without killing lobe cores
+	vec3 col = mix(bg_color * 0.55, c, 0.95);
+	col = mix(col, bg_color * 0.25, void_w * 0.65);
+	col *= 1.0 - void_w * 0.25;
+	col *= 1.15; // mild exposure so IFS filaments read on screen
 
 	// Sparse sparks (MultiMesh owns the dense field)
 	vec2 suv = dir.xy * 110.0 + dir.z * 45.0 + seed;
