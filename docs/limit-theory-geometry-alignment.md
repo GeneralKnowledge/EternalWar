@@ -10,8 +10,8 @@
 | --- | --- | --- | --- |
 | **Nebula** | `gen/nebula.glsl` IFS TexCube | Direction-space IFS sky | Aligned (live sky; bake later) |
 | **Starfield** | `Starfield.lua` — cluster growth, `Exp^2.5`, blackbody, far quads | `StarfieldGen` MultiMesh tiers | Mostly aligned |
-| **Fighter** | `ShipFighter.Standard` + ShapeLib | **ShapeLib port** for Patrol | **In progress** |
-| **Capital** | `ShipCapital.Sausage` | Loft / spine grammar | Still approximate |
+| **Fighter** | `ShipFighter.Standard` + ShapeLib | **ShapeLib** Patrol + Miner, all LODs | Aligned (detail tiers) |
+| **Capital** | `ShipCapital.Sausage` | **ShapeLib** Hauler + Trader, all LODs | Aligned (detail tiers) |
 | **Station** | Active: `Box` + `greeble` | **ShapeLib station** + role accents | **In progress** |
 | **Asteroid mesh** | `sdf/asteroid.glsl` cell-noise SDF | **ShapeLibAsteroid** SDF displace | **In progress** |
 | **Asteroid field** | `SystemBasic` — exp ball + planetary belts | `system_generator` yields | Layout still EW-specific |
@@ -53,7 +53,9 @@ HullStandard: Prism → pitch90 → extrudePoly forward/aft → scale
 → finalize
 ```
 
-Wired: **Patrol** → `ShapeLibShipFighter.standard` (other roles still loft until Capital port).
+Wired: **Patrol/Miner** → `ShapeLibShipFighter.standard(detail)`; **Hauler/Trader** → `ShapeLibShipCapital.sausage(detail)`.
+All VisualLODs use ShapeLib (no loft dual path). Role framing is **uniform scale to design length** (not AABB squash).
+`detail`: FULL=2, SIMPLE=1, LOW/BATCH=0. Engines appended ≤LOW; BATCH is hull-only.
 
 ---
 

@@ -1,20 +1,24 @@
 ## Limit Theory ShipFighter.Standard — ShapeLib port (no Settings UI).
 ## Source: JoshParnell/ltheory script/Gen/ShipFighter.lua
+## detail: 2=full, 1=simple, 0=batch (cheaper wings / mounts, still beveled silhouette)
 class_name ShapeLibShipFighter
 extends RefCounted
 
 
-static func standard(seed: int) -> ShapeLibShape:
+static func standard(seed: int, detail: int = 2) -> ShapeLibShape:
 	var rng := SeededRNG.new(seed)
-	var shape := hull_standard(rng)
+	var shape := hull_standard(rng, detail)
 	var body_aabb: Dictionary = shape.get_aabb()
 	# 75% classic wings, 25% TIE (LT Distribution)
 	if rng.randf() < 0.75:
-		shape.add_shape(wings_standard(rng, body_aabb))
+		shape.add_shape(wings_standard(rng, body_aabb, detail))
 	else:
-		shape.add_shape(wings_tie(rng))
-	shape.add_shape(wing_mounts(rng, body_aabb, int(rng.choose([3, 4, 6, 8, 10, 20]))))
-	shape = shape.bevel(rng.randf_range(0.1, 0.8))
+		shape.add_shape(wings_tie(rng, detail))
+	if detail >= 1:
+		shape.add_shape(wing_mounts(rng, body_aabb, int(rng.choose([3, 4, 6, 8, 10, 20])), detail))
+	# Always bevel — LT silhouette edge catch; lighter t at batch.
+	var bevel_t := rng.randf_range(0.08, 0.35) if detail <= 0 else rng.randf_range(0.1, 0.8)
+	shape = shape.bevel(bevel_t)
 	var r := shape.get_radius()
 	if r > 1e-4:
 		var s := 3.0 / r
@@ -22,14 +26,15 @@ static func standard(seed: int) -> ShapeLibShape:
 	return shape
 
 
-static func standard_mesh(seed: int, hull_color: Color = Color(0.42, 0.42, 0.45)) -> ArrayMesh:
-	return standard(seed).finalize_mesh(hull_color)
+static func standard_mesh(seed: int, hull_color: Color = Color(0.42, 0.42, 0.45), detail: int = 2) -> ArrayMesh:
+	return standard(seed, detail).finalize_mesh(hull_color)
 
 
-static func hull_standard(rng: SeededRNG) -> ShapeLibShape:
+static func hull_standard(rng: SeededRNG, detail: int = 2) -> ShapeLibShape:
 	var length := rng.randf_range(0.5, 3.0)
 	var cxy := Vector2(rng.randf_range(0.1, 0.5), rng.randf_range(0.1, 0.5))
-	var res: int = int(rng.choose([3, 4, 5, 6, 8, 10, 20, 24, 28, 30]))
+	var res_choices: Array = [3, 4, 5, 6, 8, 10] if detail <= 0 else [3, 4, 5, 6, 8, 10, 20, 24, 28, 30]
+	var res: int = int(rng.choose(res_choices))
 	var r := 1.0
 	# 85% prism, 15% would be sphere — keep prism as LT default weight for now
 	var shape := ShapeLibBasic.prism(2, res)
@@ -49,9 +54,9 @@ static func hull_standard(rng: SeededRNG) -> ShapeLibShape:
 	return shape
 
 
-static func wings_standard(rng: SeededRNG, body_aabb: Dictionary) -> ShapeLibShape:
+static func wings_standard(rng: SeededRNG, body_aabb: Dictionary, detail: int = 2) -> ShapeLibShape:
 	var shape := ShapeLibShape.new()
-	var n := rng.randi_range(1, 3)
+	var n := 1 if detail <= 0 else rng.randi_range(1, 3)
 	var upper: Vector3 = body_aabb["upper"]
 	for _i in n:
 		var wing1 := ShapeLibBasic.box(0)
@@ -65,7 +70,7 @@ static func wings_standard(rng: SeededRNG, body_aabb: Dictionary) -> ShapeLibSha
 		pi1 = wing1.get_poly_with_normal(Vector3(1, 0, 0))
 		if pi1 >= 0:
 			wing1.extrude_poly(pi1, 0.2, Vector3(1, 0.1, 1))
-		if rng.randf() < 0.5:
+		if detail >= 2 and rng.randf() < 0.5:
 			var winglet := wing1.clone().scale_xyz(0.5, 0.5, 0.5)
 			var wabb: Dictionary = wing1.get_aabb()
 			winglet.rotate_ypr(0.0, 0.0, rng.randf_range(0.0, PI))
@@ -77,8 +82,9 @@ static func wings_standard(rng: SeededRNG, body_aabb: Dictionary) -> ShapeLibSha
 		var yaw := rng.randf_range(0.0, PI * 0.5)
 		wing1.rotate_ypr(yaw, 0.0, roll)
 		wing1.translate_xyz(x_pos, 0.0, 0.0)
-		wing1.tessellate(rng.randi_range(0, 2))
-		if wing1.polys.size() > 0:
+		if detail >= 1:
+			wing1.tessellate(rng.randi_range(0, 1 if detail == 1 else 2))
+		if detail >= 1 and wing1.polys.size() > 0:
 			wing1.extrude_poly(rng.randi_range(0, wing1.polys.size() - 1), rng.randf_range(0.2, 1.0))
 		var wing2 := wing1.clone()
 		wing2.mirror_axes(true, false, false)
@@ -87,14 +93,14 @@ static func wings_standard(rng: SeededRNG, body_aabb: Dictionary) -> ShapeLibSha
 	return shape
 
 
-static func wings_tie(rng: SeededRNG) -> ShapeLibShape:
+static func wings_tie(rng: SeededRNG, detail: int = 2) -> ShapeLibShape:
 	var shape := ShapeLibShape.new()
 	var type: int = int(rng.choose([2, 3, 4, 5]))
 	var wing: ShapeLibShape
 	if type == 2:
 		wing = ShapeLibBasic.prism(2, int(rng.choose([4, 5, 6, 8])))
 	elif type == 3:
-		wing = ShapeLibBasic.prism(2, 30)
+		wing = ShapeLibBasic.prism(2, 12 if detail <= 0 else 30)
 	else:
 		wing = ShapeLibBasic.prism(2, 6)
 	var r := rng.randf_range(0.5, 3.0)
@@ -116,8 +122,8 @@ static func wings_tie(rng: SeededRNG) -> ShapeLibShape:
 	return shape
 
 
-static func wing_mounts(rng: SeededRNG, body_aabb: Dictionary, res: int) -> ShapeLibShape:
-	var mount := ShapeLibBasic.prism(2, maxi(res, 3))
+static func wing_mounts(rng: SeededRNG, body_aabb: Dictionary, res: int, detail: int = 2) -> ShapeLibShape:
+	var mount := ShapeLibBasic.prism(2, maxi(res if detail >= 1 else mini(res, 6), 3))
 	mount.rotate_ypr(0.0, PI * 0.5, 0.0) # LT rotate(0, pi/2, 0)
 	var r := clampf(rng.randf() * 0.2 + 0.5, 0.2, 1.0)
 	var lower: Vector3 = body_aabb["lower"]
@@ -125,8 +131,8 @@ static func wing_mounts(rng: SeededRNG, body_aabb: Dictionary, res: int) -> Shap
 	var l := rng.randf_range(0.2, maxf(0.25, absf(upper.z - lower.z)))
 	mount.scale_xyz(r, r, l)
 	mount.translate_xyz(lower.x, 0.0, 0.0)
-	# Default surface = bevel
-	mount = mount.bevel(rng.randf_range(0.1, 1.0))
+	if detail >= 1:
+		mount = mount.bevel(rng.randf_range(0.1, 1.0))
 	var mount2 := mount.clone()
 	mount2.mirror_axes(true, false, false)
 	mount.add_shape(mount2)
