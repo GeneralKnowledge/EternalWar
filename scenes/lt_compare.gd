@@ -53,6 +53,7 @@ func _ready() -> void:
 	hud.add_child(label)
 
 	var auto := false
+	var scenario_locked := false
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--capture" or arg.begins_with("--capture="):
 			auto = true
@@ -63,6 +64,7 @@ func _ready() -> void:
 			for i in SCENARIOS.size():
 				if SCENARIOS[i]["id"] == id:
 					scenario_i = i
+					scenario_locked = true
 		elif arg == "--nebula-sheet":
 			auto = true
 			_nebula_sheet = true
@@ -82,6 +84,11 @@ func _ready() -> void:
 			var first: Dictionary = _capture_queue.pop_front()
 			_apply_capture_item(first)
 			_capturing = true
+		elif scenario_locked:
+			# Single-scenario capture (faster QUALITY sky bake checks).
+			_capture_queue = []
+			_capturing = true
+			_apply_scenario()
 		else:
 			_capture_queue = range(SCENARIOS.size())
 			scenario_i = int(_capture_queue.pop_front())
@@ -191,11 +198,14 @@ func _process(_dt: float) -> void:
 	_frames += 1
 	if not _capturing:
 		return
-	if _frames == 10:
+	# Give REALTIME radiance a few dozen frames to settle on llvmpipe.
+	var hide_at := 24
+	var shot_at := 48
+	if _frames == hide_at:
 		_hide_hud_for_capture = true
 		if label:
 			label.visible = false
-	elif _frames == 14:
+	elif _frames == shot_at:
 		_write_capture()
 		if not _capture_queue.is_empty():
 			var nxt = _capture_queue.pop_front()
@@ -238,7 +248,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
-				var idx := event.keycode - KEY_1
+				var idx: int = int(event.keycode) - KEY_1
 				if idx >= 0 and idx < SCENARIOS.size():
 					scenario_i = idx
 					_capturing = false
@@ -271,8 +281,9 @@ func _refresh_label() -> void:
 	var sky: Dictionary = sim.world.get("sky_composition", {})
 	label.text = "\n".join(PackedStringArray([
 		"LT COMPARE  |  scenario %s  seed %s" % [str(sc["id"]), str(sc["seed"])],
-		"mood=%s masses=%s  fov=65  backend=%s" % [
+		"mood=%s masses=%s  fov=65  backend=%s  sky=%s (%.0fms)" % [
 			str(sky.get("mood", "?")), str(sky.get("masses", "?")), NativeBridge.backend_name(),
+			str(sky.get("nebula_bake", "?")), float(sky.get("nebula_bake_ms", 0.0)),
 		],
 		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids 7 planet   C capture  A all   Esc main",
 	]))

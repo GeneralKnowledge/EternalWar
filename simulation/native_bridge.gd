@@ -268,3 +268,64 @@ static func bench_travel_ms(n: int, iters: int) -> float:
 	for _k in iters:
 		_integrate_travel_core(positions, headings, velocities, dests, speeds, arrive, 0.05)
 	return float(Time.get_ticks_usec() - t0) / 1000.0
+
+
+## Bake LT nebula IFS to equirect panorama (RGBAF floats).
+## `params` keys: width, height, samples, iterations, seed, roughness,
+## primary/secondary/bg/star_dir (Vector3), lut_r/g/b (Vector3), lut_rg_mid/lut_b_edge (Vector2).
+## Returns {ok, width, height, rgba, ms, backend} or {ok:false}.
+static func bake_nebula_panorama(params: Dictionary) -> Dictionary:
+	_ensure()
+	var width := int(params.get("width", 512))
+	var height := int(params.get("height", 256))
+	var samples := int(params.get("samples", 64))
+	var iterations := int(params.get("iterations", 22))
+	var seed := float(params.get("seed", 42.0))
+	var roughness := float(params.get("roughness", 0.72))
+	var primary: Vector3 = params.get("primary", Vector3(0.4, 0.3, 0.7))
+	var secondary: Vector3 = params.get("secondary", Vector3(0.3, 0.35, 0.55))
+	var bg: Vector3 = params.get("bg", Vector3(0.02, 0.025, 0.05))
+	var star_dir: Vector3 = params.get("star_dir", Vector3(0.2, 0.55, 0.15))
+	var lut_r: Vector3 = params.get("lut_r", Vector3(0.2, 0.55, 0.9))
+	var lut_g: Vector3 = params.get("lut_g", Vector3(0.25, 0.5, 0.75))
+	var lut_b: Vector3 = params.get("lut_b", Vector3(0.35, 0.55, 0.85))
+	var lut_rg_mid: Vector2 = params.get("lut_rg_mid", Vector2(0.45, 0.4))
+	var lut_b_edge: Vector2 = params.get("lut_b_edge", Vector2(0.3, 0.7))
+	var packed := PackedFloat32Array([
+		float(width), float(height), float(samples), float(iterations), seed, roughness,
+		primary.x, primary.y, primary.z,
+		secondary.x, secondary.y, secondary.z,
+		bg.x, bg.y, bg.z,
+		star_dir.x, star_dir.y, star_dir.z,
+		lut_r.x, lut_r.y, lut_r.z,
+		lut_g.x, lut_g.y, lut_g.z,
+		lut_b.x, lut_b.y, lut_b.z,
+		lut_rg_mid.x, lut_rg_mid.y,
+		lut_b_edge.x, lut_b_edge.y,
+	])
+	if available() and _kernels.has_method("bake_nebula_panorama"):
+		var result: Dictionary = _kernels.call("bake_nebula_panorama", packed)
+		if bool(result.get("ok", false)):
+			return result
+	# No GDScript full-IFS bake (too slow). Caller falls back to live sky shader.
+	return {"ok": false, "backend": "none", "error": "nebula bake requires native kernels"}
+
+
+## Convert bake rgba floats → ImageTexture (FORMAT_RGBAF + mips).
+static func nebula_panorama_texture(bake: Dictionary) -> ImageTexture:
+	if not bool(bake.get("ok", false)):
+		return null
+	var w := int(bake["width"])
+	var h := int(bake["height"])
+	var rgba: PackedFloat32Array = bake["rgba"]
+	if rgba.size() != w * h * 4:
+		return null
+	var bytes := PackedByteArray()
+	bytes.resize(rgba.size() * 4)
+	for i in rgba.size():
+		bytes.encode_float(i * 4, float(rgba[i]))
+	var img := Image.create_from_data(w, h, false, Image.FORMAT_RGBAF, bytes)
+	if img == null:
+		return null
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)

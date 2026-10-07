@@ -42,6 +42,10 @@ Moves a batch of ships toward destinations (same formula as `ShipAI._travel`). R
 
 Builds `Basis.looking_at` + scale transforms and writes them to a `MultiMesh`. Used by `SystemPresenter.sync_ships` for far-field instances.
 
+### `bake_nebula_panorama`
+
+Bakes Limit Theory–style direction-space IFS (`gen/nebula.glsl` `generate(dir)`) into an equirectangular RGBAF panorama (parallel via rayon). `SystemPresenter` uploads it as `PanoramaSkyMaterial` — LT Nebula1 TexCube path for Godot. Live `deep_space_sky.gdshader` remains the fallback when the `.so` is missing.
+
 ## Next candidates (when profiled)
 
 - Bulk asteroid / starfield instance transforms

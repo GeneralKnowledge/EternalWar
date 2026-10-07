@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 godot = { version = "0.2.4", features = ["api-4-3"] }
+rayon = "1.10"
 
 [profile.release]
 lto = true

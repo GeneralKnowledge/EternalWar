@@ -42,6 +42,10 @@ func setup(p_sim: StarSystemSim, camera: Camera3D = null) -> void:
 		"primary_far": float(pm.get("depth_far", 0.0)),
 	}
 	_build_environment()
+	# Bake metadata is filled during _build_environment.
+	var sky_meta: Dictionary = sim.world["sky_composition"]
+	sky_meta["nebula_bake"] = str(sky_comp.get("nebula_bake", "?"))
+	sky_meta["nebula_bake_ms"] = float(sky_comp.get("nebula_bake_ms", 0.0))
 	_build_star()
 	_build_planets()
 	_build_yields()
@@ -119,31 +123,34 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	# Visible sky runs generate() every pixel (see deep_space_sky.gdshader).
-	# REALTIME + 256 is fine for IBL; avoid QUALITY 512 bake on Compatibility
-	# (minutes per system seed with heavy IFS).
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
-	sky.radiance_size = Sky.RADIANCE_SIZE_256
-	var sky_mat := ShaderMaterial.new()
-	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
-	_apply_sky_uniforms(sky_mat, palette)
-	sky.sky_material = sky_mat
+	# Prefer Rust IFS panorama bake (LT Nebula1 TexCube path). Live shader is fallback.
+	var baked := _bake_nebula_sky_texture(palette)
+	if baked != null:
+		var pano := PanoramaSkyMaterial.new()
+		pano.panorama = baked
+		pano.energy_multiplier = 1.35
+		sky.sky_material = pano
+		# Baked map is already continuous — REALTIME radiance updates quickly.
+		sky.process_mode = Sky.PROCESS_MODE_REALTIME
+		sky.radiance_size = Sky.RADIANCE_SIZE_256
+		sky_comp["nebula_bake"] = "rust"
+	else:
+		sky.process_mode = Sky.PROCESS_MODE_REALTIME
+		sky.radiance_size = Sky.RADIANCE_SIZE_256
+		var sky_mat := ShaderMaterial.new()
+		sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
+		_apply_sky_uniforms(sky_mat, palette)
+		sky.sky_material = sky_mat
+		sky_comp["nebula_bake"] = "live_shader"
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = ambient_c
-	e.ambient_light_energy = 0.16
+	e.ambient_light_energy = 0.14
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 0.92
-	# Bloom for star peaks; keep blacks (avoid hex-blob wash on Compatibility).
-	e.glow_enabled = true
-	e.glow_intensity = 0.42
-	e.glow_bloom = 0.08
-	e.glow_hdr_threshold = 1.15
-	e.glow_hdr_scale = 1.2
-	e.set_glow_level(2, 0.55)
-	e.set_glow_level(3, 0.85)
-	e.set_glow_level(4, 0.6)
-	e.set_glow_level(5, 0.35)
+	e.tonemap_exposure = 0.95
+	# Compatibility glow uses hex bokeh that reads as "sphere tiles" on the sky.
+	# Keep glow off for the IFS sky authority; star mesh + thrusters carry peaks.
+	e.glow_enabled = false
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)
@@ -212,6 +219,43 @@ func _apply_sky_uniforms(sky_mat: ShaderMaterial, palette: Dictionary) -> void:
 		else:
 			sky_mat.set_shader_parameter("void%d_dir" % i, Vector3(0, 1, 0))
 			sky_mat.set_shader_parameter("void%d_radius" % i, 0.2)
+
+
+## Bake nebula IFS via NativeBridge (Rust). Returns ImageTexture or null.
+func _bake_nebula_sky_texture(palette: Dictionary) -> ImageTexture:
+	var bg: Color = palette.get("bg", Color(0.03, 0.035, 0.08))
+	var primary: Color = palette.get("primary", Color(0.4, 0.3, 0.7))
+	var secondary: Color = palette.get("secondary", Color(0.3, 0.35, 0.55))
+	var lut := _nebula_color_luts(sim.seed_value, primary, secondary)
+	var star: Dictionary = sim.world.get("star", {})
+	var star_pos: Vector3 = star.get("position", Vector3(0.2, 0.55, 0.15))
+	var star_dir := star_pos.normalized() if star_pos.length() > 0.01 else Vector3(0.2, 0.55, 0.15)
+	# 512×256 / 64 samples is a few hundred ms in Rust+rayon — once per system.
+	var bake: Dictionary = NativeBridge.bake_nebula_panorama({
+		"width": 512,
+		"height": 256,
+		"samples": 64,
+		"iterations": 22,
+		"seed": float(sim.seed_value),
+		"roughness": float(sky_comp.get("roughness", 0.72)),
+		"primary": Vector3(primary.r, primary.g, primary.b),
+		"secondary": Vector3(secondary.r, secondary.g, secondary.b),
+		"bg": Vector3(bg.r, bg.g, bg.b),
+		"star_dir": star_dir,
+		"lut_r": lut["lut_r"],
+		"lut_g": lut["lut_g"],
+		"lut_b": lut["lut_b"],
+		"lut_rg_mid": lut["lut_rg_mid"],
+		"lut_b_edge": lut["lut_b_edge"],
+	})
+	if not bool(bake.get("ok", false)):
+		return null
+	sky_comp["nebula_bake_ms"] = float(bake.get("ms", 0.0))
+	print("Nebula IFS bake %dx%d in %.1fms (%s)" % [
+		int(bake.get("width", 0)), int(bake.get("height", 0)),
+		float(bake.get("ms", 0.0)), str(bake.get("backend", "?")),
+	])
+	return NativeBridge.nebula_panorama_texture(bake)
 
 
 ## Approx LT Gen.ColorLUT — five knots per channel, seeded, biased to mood palette.
