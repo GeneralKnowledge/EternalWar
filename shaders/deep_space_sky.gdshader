@@ -184,20 +184,17 @@ vec3 generate(vec3 dir_in, int sample_count) {
 		t = exp(-t * t);
 		vec3 wave = lut_wave(t);
 
-		// LT constants: k=6, q=1.2, cavity at t≈0.90, emit 0.50*cEmit
+		// LT constants: k=6, q=1.2, cavity at t≈0.90, emit 0.50*cEmit.
+		// Do NOT clamp vs — negative vs is intentional (boost / filament).
 		const float k = 6.0;
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
 		vs -= 1.25 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
 		vs += 0.50 * c_emit * exp(-pow(10.0 * abs(t - 0.90), 0.50));
-		// Slight secondary filament colour (mood), still inside absorption — not a lobe.
-		vs += 0.08 * secondary_color * pow(clamp(t, 0.0, 1.0), 2.0);
-		c *= exp(-k * w * max(vs, vec3(0.0)));
+		c *= exp(-k * w * vs);
 	}
 
-	// Floor so Compatibility doesn't crush to pure black in deep cavities.
-	c = max(c, bg_color * 0.15);
-	return c;
+	return max(c, vec3(0.0));
 }
 
 void sky() {
