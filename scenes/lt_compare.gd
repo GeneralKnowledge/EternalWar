@@ -1,6 +1,7 @@
 ## Deterministic Limit Theory comparison harness.
 ## Scenarios: EMPTY / NEBULA / STAR / SHIP / STATION / ASTEROIDS
 ## Keys 1-6 select. C captures. Headless: -- --capture [--capture=/path]
+## Nebula mood sheet: -- --nebula-sheet [--capture=/path]
 extends Node3D
 
 const SCENARIOS := [
@@ -29,6 +30,9 @@ var _capture_queue: Array = []
 var _capture_path: String = ""
 var _capturing: bool = false
 var _hide_hud_for_capture: bool = false
+var _nebula_sheet: bool = false
+var _mood_override: String = ""
+var _capture_tag: String = ""
 
 
 func _ready() -> void:
@@ -58,6 +62,11 @@ func _ready() -> void:
 			for i in SCENARIOS.size():
 				if SCENARIOS[i]["id"] == id:
 					scenario_i = i
+		elif arg == "--nebula-sheet":
+			auto = true
+			_nebula_sheet = true
+		elif arg.begins_with("--mood="):
+			_mood_override = arg.substr(7)
 	if OS.get_environment("LT_CAPTURE") != "":
 		auto = true
 		var env_dir := OS.get_environment("LT_CAPTURE_DIR")
@@ -65,9 +74,30 @@ func _ready() -> void:
 			capture_dir = env_dir
 
 	if auto:
-		_capture_queue = range(SCENARIOS.size())
-		scenario_i = int(_capture_queue.pop_front())
-		_capturing = true
+		if _nebula_sheet:
+			_capture_queue = []
+			for mood in SkyComposition.MOODS:
+				_capture_queue.append({"scenario": "nebula", "mood": mood, "tag": "nebula_%s" % mood})
+			var first: Dictionary = _capture_queue.pop_front()
+			_apply_capture_item(first)
+			_capturing = true
+		else:
+			_capture_queue = range(SCENARIOS.size())
+			scenario_i = int(_capture_queue.pop_front())
+			_capturing = true
+			_apply_scenario()
+	else:
+		_apply_scenario()
+
+
+func _apply_capture_item(item: Dictionary) -> void:
+	_mood_override = str(item.get("mood", ""))
+	_capture_tag = str(item.get("tag", ""))
+	var sid := str(item.get("scenario", "nebula"))
+	for i in SCENARIOS.size():
+		if SCENARIOS[i]["id"] == sid:
+			scenario_i = i
+			break
 	_apply_scenario()
 
 
@@ -78,6 +108,22 @@ func _apply_scenario() -> void:
 		presenter = null
 	sim = StarSystemSim.new()
 	sim.generate(int(sc["seed"]), ship_count)
+	if _mood_override != "":
+		sim.world["mood_override"] = _mood_override
+		# Nudge system hint toward the forced mood so volumes/sky agree.
+		match _mood_override:
+			"amber_gold":
+				sim.world["nebula_color"] = Color.from_hsv(0.10, 0.62, 0.42)
+			"cyan_teal":
+				sim.world["nebula_color"] = Color.from_hsv(0.55, 0.55, 0.40)
+			"magenta_rose":
+				sim.world["nebula_color"] = Color.from_hsv(0.90, 0.62, 0.44)
+			"crimson":
+				sim.world["nebula_color"] = Color.from_hsv(0.02, 0.65, 0.40)
+			"cold_white":
+				sim.world["nebula_color"] = Color.from_hsv(0.60, 0.18, 0.42)
+			_:
+				sim.world["nebula_color"] = Color.from_hsv(0.72, 0.52, 0.40)
 	presenter = SystemPresenter.new()
 	add_child(presenter)
 	presenter.setup(sim, camera)
@@ -150,10 +196,19 @@ func _process(_dt: float) -> void:
 	elif _frames == 8:
 		_write_capture()
 		if not _capture_queue.is_empty():
-			scenario_i = int(_capture_queue.pop_front())
-			_apply_scenario()
+			var nxt = _capture_queue.pop_front()
+			if typeof(nxt) == TYPE_DICTIONARY:
+				_apply_capture_item(nxt)
+			else:
+				_mood_override = ""
+				_capture_tag = ""
+				scenario_i = int(nxt)
+				_apply_scenario()
 		else:
-			print("LT_COMPARE_CAPTURE_DONE dir=", _capture_path)
+			var done_msg := "LT_COMPARE_CAPTURE_DONE dir=%s" % _capture_path
+			if _nebula_sheet:
+				done_msg = "LT_NEBULA_SHEET_DONE dir=%s" % _capture_path
+			print(done_msg)
 			_capturing = false
 			if label:
 				label.visible = true
@@ -170,10 +225,11 @@ func _write_capture() -> void:
 	else:
 		DirAccess.make_dir_recursive_absolute(dir)
 		_capture_path = dir
-	var path := "%s/ew_%s.png" % [_capture_path, str(sc["id"])]
+	var stem := _capture_tag if _capture_tag != "" else str(sc["id"])
+	var path := "%s/ew_%s.png" % [_capture_path, stem]
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(path)
-	print("Captured ", path)
+	print("Captured ", path, " mood=", str(presenter.sky_comp.get("mood", "?")) if presenter else "?")
 
 
 func _unhandled_input(event: InputEvent) -> void:

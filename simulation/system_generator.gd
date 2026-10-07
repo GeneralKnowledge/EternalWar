@@ -47,18 +47,22 @@ func generate(ship_count: int = 400) -> Dictionary:
 
 	var nebula_rng := SeedHash.make_rng(seed_value, "nebula")
 	# Bias toward space-readable hues (cyan / blue / violet / magenta / rose) — avoid muddy olives.
+	# LT stills span amber/cockpit warmth, magenta ship gas, and cool planet blues —
+	# not cyan-only. Keep cool masses common but reserve warm families.
 	var hue_pick := nebula_rng.randf()
 	var hue: float
-	if hue_pick < 0.28:
-		hue = nebula_rng.randf_range(0.52, 0.62) # cyan–blue
-	elif hue_pick < 0.58:
+	if hue_pick < 0.18:
+		hue = nebula_rng.randf_range(0.06, 0.14) # amber–gold
+	elif hue_pick < 0.40:
+		hue = nebula_rng.randf_range(0.52, 0.62) # cyan–teal
+	elif hue_pick < 0.62:
 		hue = nebula_rng.randf_range(0.62, 0.78) # blue–violet
 	elif hue_pick < 0.82:
 		hue = nebula_rng.randf_range(0.78, 0.92) # violet–magenta
 	else:
 		hue = nebula_rng.randf_range(0.92, 1.0) # rose
 		if nebula_rng.randf() < 0.45:
-			hue = nebula_rng.randf_range(0.0, 0.06)
+			hue = nebula_rng.randf_range(0.0, 0.06) # crimson
 	var nebula_color := Color.from_hsv(hue, nebula_rng.randf_range(0.45, 0.78), nebula_rng.randf_range(0.28, 0.5))
 
 	return {

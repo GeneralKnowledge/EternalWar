@@ -7,7 +7,12 @@ const MOODS := ["indigo_violet", "amber_gold", "cyan_teal", "magenta_rose", "cri
 
 
 ## Build a full sky composition from the system seed (+ optional nebula hue hint).
-static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55)) -> Dictionary:
+## Pass mood_override (e.g. "amber_gold") to force a palette family for galleries/sheets.
+static func build(
+	system_seed: int,
+	nebula_hint: Color = Color(0.3, 0.25, 0.55),
+	mood_override: String = ""
+) -> Dictionary:
 	var rng := SeedHash.make_rng(system_seed, "sky_composition")
 	var mood_i := rng.randi_range(0, MOODS.size() - 1)
 	if nebula_hint.s > 0.35:
@@ -21,6 +26,8 @@ static func build(system_seed: int, nebula_hint: Color = Color(0.3, 0.25, 0.55))
 		elif h > 0.08 and h < 0.2:
 			mood_i = 1
 	var mood: String = MOODS[mood_i]
+	if mood_override != "" and mood_override in MOODS:
+		mood = mood_override
 	var palette := _palette_for(mood, rng, nebula_hint)
 
 	var galaxy_normal := Vector3(
@@ -140,11 +147,12 @@ static func _palette_for(mood: String, rng: SeededRNG, hint: Color) -> Dictionar
 	var accent: Color
 	match mood:
 		"amber_gold":
-			primary = Color.from_hsv(0.1, 0.62, 0.48)
-			secondary = Color.from_hsv(0.08, 0.48, 0.28)
-			band = Color.from_hsv(0.12, 0.28, 0.55)
+			# LT cockpit warmth — ochre / ember, not desaturated sand
+			primary = Color.from_hsv(0.09, 0.72, 0.55)
+			secondary = Color.from_hsv(0.06, 0.55, 0.32)
+			band = Color.from_hsv(0.11, 0.35, 0.58)
 			bg = Color(0.018, 0.014, 0.022)
-			accent = Color.from_hsv(0.08, 0.35, 0.85)
+			accent = Color.from_hsv(0.08, 0.42, 0.88)
 		"cyan_teal":
 			primary = Color.from_hsv(0.52, 0.55, 0.42)
 			secondary = Color.from_hsv(0.58, 0.38, 0.28)
@@ -152,17 +160,18 @@ static func _palette_for(mood: String, rng: SeededRNG, hint: Color) -> Dictionar
 			bg = Color(0.012, 0.02, 0.032)
 			accent = Color.from_hsv(0.5, 0.3, 0.8)
 		"magenta_rose":
-			primary = Color.from_hsv(0.9, 0.62, 0.48)
-			secondary = Color.from_hsv(0.85, 0.42, 0.26)
-			band = Color.from_hsv(0.92, 0.28, 0.55)
+			# LT ship-gas magenta / rose
+			primary = Color.from_hsv(0.91, 0.72, 0.55)
+			secondary = Color.from_hsv(0.86, 0.48, 0.30)
+			band = Color.from_hsv(0.93, 0.32, 0.58)
 			bg = Color(0.022, 0.012, 0.024)
-			accent = Color.from_hsv(0.95, 0.35, 0.85)
+			accent = Color.from_hsv(0.95, 0.40, 0.88)
 		"crimson":
-			primary = Color.from_hsv(0.0, 0.65, 0.42)
-			secondary = Color.from_hsv(0.97, 0.48, 0.24)
-			band = Color.from_hsv(0.02, 0.32, 0.48)
+			primary = Color.from_hsv(0.0, 0.72, 0.48)
+			secondary = Color.from_hsv(0.97, 0.52, 0.28)
+			band = Color.from_hsv(0.02, 0.36, 0.50)
 			bg = Color(0.022, 0.01, 0.016)
-			accent = Color.from_hsv(0.05, 0.4, 0.8)
+			accent = Color.from_hsv(0.05, 0.45, 0.82)
 		"cold_white":
 			primary = Color.from_hsv(0.6, 0.2, 0.45)
 			secondary = Color.from_hsv(0.65, 0.15, 0.28)
@@ -175,12 +184,19 @@ static func _palette_for(mood: String, rng: SeededRNG, hint: Color) -> Dictionar
 			band = Color.from_hsv(0.68, 0.22, 0.5)
 			bg = Color(0.012, 0.014, 0.032)
 			accent = Color.from_hsv(0.58, 0.28, 0.85)
-	primary = primary.lerp(hint, 0.22)
-	secondary = secondary.lerp(hint, 0.12)
+	# Keep mood identity — only a light hue nudge from the system hint.
+	# Strong lerp toward cool hints was washing amber/magenta into blue-violet.
+	var hint_w := 0.08
+	if mood in ["amber_gold", "magenta_rose", "crimson"]:
+		hint_w = 0.04
+	elif mood in ["cyan_teal", "indigo_violet", "cold_white"]:
+		hint_w = 0.10
+	primary = primary.lerp(hint, hint_w)
+	secondary = secondary.lerp(hint, hint_w * 0.5)
 	primary = Color.from_hsv(
-		fmod(primary.h + rng.randf_range(-0.03, 0.03) + 1.0, 1.0),
-		clampf(primary.s + rng.randf_range(-0.05, 0.05), 0.25, 0.85),
-		clampf(primary.v + rng.randf_range(-0.04, 0.04), 0.25, 0.65)
+		fmod(primary.h + rng.randf_range(-0.025, 0.025) + 1.0, 1.0),
+		clampf(primary.s + rng.randf_range(-0.04, 0.06), 0.28, 0.88),
+		clampf(primary.v + rng.randf_range(-0.03, 0.05), 0.28, 0.68)
 	)
 	return {
 		"bg": bg,

@@ -29,7 +29,8 @@ func setup(p_sim: StarSystemSim, camera: Camera3D = null) -> void:
 	MeshCache.clear()
 	_clear_visuals()
 	var nebula_hint: Color = sim.world.get("nebula_color", Color(0.3, 0.25, 0.55))
-	sky_comp = SkyComposition.build(sim.seed_value, nebula_hint)
+	var mood_override := str(sim.world.get("mood_override", ""))
+	sky_comp = SkyComposition.build(sim.seed_value, nebula_hint, mood_override)
 	var pm := SkyComposition.primary_mass(sky_comp)
 	sim.world["sky_composition"] = {
 		"mood": sky_comp.get("mood", ""),
