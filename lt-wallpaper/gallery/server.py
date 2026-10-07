@@ -25,13 +25,34 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / "data"
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader (no dependency). Does not override existing env."""
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        key = key.strip()
+        val = val.strip().strip("'").strip('"')
+        if key and key not in os.environ:
+            os.environ[key] = val
+
+
+_load_dotenv(ROOT / ".env")
+
+DATA = Path(os.environ.get("LT_GALLERY_DATA", str(ROOT / "data"))).resolve()
 IMAGES = DATA / "images"
 MANIFEST_PATH = DATA / "manifest.json"
 STATIC = ROOT / "static"
 
 RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
 BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
+DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
+DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8787"))
 
 CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
@@ -325,6 +346,25 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
+        if path == "/api/health":
+            try:
+                ltheory = find_ltheory_root()
+                ok = (ltheory / "tools" / "wallpaper.sh").is_file()
+            except FileNotFoundError:
+                ltheory = None
+                ok = False
+            code = HTTPStatus.OK if ok else HTTPStatus.SERVICE_UNAVAILABLE
+            self._json(
+                code,
+                {
+                    "ok": ok,
+                    "busy": _busy,
+                    "profile": resolve_profile(),
+                    "ltheory": str(ltheory) if ltheory else None,
+                },
+            )
+            return
+
         if path == "/api/status":
             self._json(HTTPStatus.OK, rate_status(client_ip(self)))
             return
@@ -454,8 +494,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LT Wallpaper Gallery server")
-    parser.add_argument("--host", default="0.0.0.0")
-    parser.add_argument("--port", type=int, default=8787)
+    parser.add_argument("--host", default=DEFAULT_HOST)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = parser.parse_args()
 
     DATA.mkdir(parents=True, exist_ok=True)

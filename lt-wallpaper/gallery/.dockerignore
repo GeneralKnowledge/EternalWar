@@ -1,0 +1,7 @@
+data/images/
+data/manifest.json
+data/manifest.tmp
+.env
+__pycache__/
+*.pyc
+.git/

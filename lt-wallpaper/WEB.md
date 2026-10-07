@@ -12,7 +12,9 @@ Ship a thin HTTP UI that shells out to the **already-working** Wallpaper App:
 
 ```bash
 cd lt-wallpaper/gallery
-python3 server.py --port 8787
+./scripts/run.sh
+# production: see gallery/DEPLOY.md (systemd install or Docker)
+sudo ./scripts/install.sh
 ```
 
 That reuses the real IFS / ShapeLib / tonemap path. No second renderer.

@@ -39,8 +39,14 @@ See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
 
 ```bash
 cd lt-wallpaper/gallery
-python3 server.py --port 8787
+cp .env.example .env   # set LTHEORY_ROOT
+./scripts/run.sh
 # open http://localhost:8787 — categories, 1 bake/min, gallery
+```
+
+**Deploy to a VPS / Docker:** [`gallery/DEPLOY.md`](gallery/DEPLOY.md)  
+```bash
+cd lt-wallpaper/gallery && sudo ./scripts/install.sh
 ```
 
 Web notes: [`WEB.md`](WEB.md).

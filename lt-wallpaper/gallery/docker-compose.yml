@@ -1,0 +1,27 @@
+# Build context is the parent lt-wallpaper/ directory.
+#   cd lt-wallpaper/gallery && docker compose up -d --build
+#
+# Build needs ≥4 GiB RAM. Runtime can be a smaller VPS with swap + PROFILE=small.
+
+services:
+  gallery:
+    build:
+      context: ..
+      dockerfile: gallery/Dockerfile
+    image: lt-wallpaper-gallery:local
+    ports:
+      - "${LT_GALLERY_PORT:-8787}:8787"
+    environment:
+      LT_GALLERY_PROFILE: ${LT_GALLERY_PROFILE:-small}
+      LT_GALLERY_RATE_SEC: ${LT_GALLERY_RATE_SEC:-60}
+      LT_GALLERY_BAKE_TIMEOUT: ${LT_GALLERY_BAKE_TIMEOUT:-600}
+      LT_GALLERY_DATA: /var/lib/lt-wallpaper/gallery
+      LTHEORY_ROOT: /opt/lt-wallpaper/ltheory
+    volumes:
+      - gallery-data:/var/lib/lt-wallpaper/gallery
+    restart: unless-stopped
+    # Soft memory hint for compose; enforce with Docker --memory on prod if needed
+    mem_limit: 1g
+
+volumes:
+  gallery-data:
