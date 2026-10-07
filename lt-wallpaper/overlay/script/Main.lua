@@ -1,0 +1,60 @@
+package.path = package.path .. ';./libphx/script/?.lua'
+package.path = package.path .. ';./script/?.lua'
+package.path = package.path .. ';./script/?.ext.lua'
+package.path = package.path .. ';./script/?.ffi.lua'
+
+-- Linux: luafilesystem (lfs) is not bundled with system LuaJIT the way Windows
+-- builds often preload it. Prefer ./bin/lfs.so, then distro Lua 5.1 paths.
+package.cpath = table.concat({
+  './bin/?.so',
+  './libphx/ext/lib/linux64/?.so',
+  '/usr/lib/x86_64-linux-gnu/lua/5.1/?.so',
+  '/usr/local/lib/lua/5.1/?.so',
+  package.cpath,
+}, ';')
+do
+  local ok, mod = pcall(require, 'lfs')
+  if ok then
+    lfs = mod
+  else
+    error('Failed to load luafilesystem (lfs). On Linux: apt install lua-filesystem '
+      .. 'or place lfs.so in ./bin/\n' .. tostring(mod))
+  end
+end
+
+require('env.env')
+
+Env.Call(function ()
+  require('phx.phx')
+  local app = __app__ or Config.app or 'ltheory'
+  GlobalRestrict.On()
+
+  dofile('./script/Config.App.lua')
+  if io.exists ('./script/Config.Local.lua') then dofile('./script/Config.Local.lua') end
+
+  Namespace.LoadInline('Util')
+  Namespace.Load      ('UI')
+  Namespace.Load      ('WIP')
+  Namespace.Load      ('Gen')
+  Namespace.LoadInline('Game')
+
+  jit.opt.start(
+    format('maxtrace=%d',   Config.jit.tune.maxTrace),
+    format('maxrecord=%d',  Config.jit.tune.maxRecord),
+    format('maxirconst=%d', Config.jit.tune.maxConst),
+    format('maxside=%d',    Config.jit.tune.maxSide),
+    format('maxsnap=%d',    Config.jit.tune.maxSnap),
+    format('hotloop=%d',    Config.jit.tune.hotLoop),
+    format('hotexit=%d',    Config.jit.tune.hotExit),
+    format('tryside=%d',    Config.jit.tune.trySide),
+    format('instunroll=%d', Config.jit.tune.instUnroll),
+    format('loopunroll=%d', Config.jit.tune.loopUnroll),
+    format('callunroll=%d', Config.jit.tune.callUnroll),
+    format('recunroll=%d',  Config.jit.tune.recUnroll),
+    format('sizemcode=%d',  Config.jit.tune.sizeMCode),
+    format('maxmcode=%d',   Config.jit.tune.maxMCode)
+  )
+
+  require('App.' .. app):run()
+  GlobalRestrict.Off()
+end)

@@ -1,10 +1,26 @@
-# Limit Theory Prototype
+# EternalWar / Limit Theory experiments
+
+## Active focus: LT Wallpaper Generator (Josh’s code)
+
+Screenshot-matching Limit Theory inside Godot was a dead end. The look lives in Josh Parnell’s original tree.
+
+→ **[`lt-wallpaper/`](lt-wallpaper/)** — Linux overlay on [`JoshParnell/ltheory`](https://github.com/JoshParnell/ltheory): seeded IFS nebula + ShapeLib ships → PNG.
+
+```bash
+./lt-wallpaper/setup.sh
+cd lt-wallpaper/ltheory
+./tools/wallpaper.sh seed=42 preset=ship out=wallpaper/out.png
+```
+
+---
+
+## Legacy: Godot prototype (parked)
 
 A Godot 4.3 procedural space simulation inspired by the cancelled indie game **Limit Theory** by Josh Parnell.
 
 This is **not** a clone. It studies publicly released Limit Theory / Limit Theory Redux source for architectural ideas (economy job boards, payout-driven AI, seeded generation, simulation/presentation split), then reimplements those ideas cleanly in modern Godot.
 
-**Current focus:** procedural visuals — come close to how brilliant Limit Theory *looked*. Systems work (economy, AI) is foundation and frozen until the look clears the screenshot bar.
+**Status:** visual ladder parked. Prefer `lt-wallpaper/` for the LT look.
 
 See [`docs/limit-theory-research.md`](docs/limit-theory-research.md) and [`docs/visual-generation-devnote.md`](docs/visual-generation-devnote.md).
 
