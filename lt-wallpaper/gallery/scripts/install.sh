@@ -68,9 +68,14 @@ echo "==> Building ltheory (this can take a while / thrash on 1 GiB)"
 sudo -u "$SERVICE_USER" env LTHEORY_DIR="$INSTALL_ROOT/ltheory" \
   bash "$INSTALL_ROOT/setup.sh"
 
-# Ensure overlay solo preset is present after build
+# Ensure wallpaper overlay tools/app are present after build
 cp -a "$INSTALL_ROOT/overlay/script/App/Wallpaper.lua" \
   "$INSTALL_ROOT/ltheory/script/App/Wallpaper.lua"
+cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
+  "$INSTALL_ROOT/overlay/tools/score_pick.py" \
+  "$INSTALL_ROOT/ltheory/tools/"
+chmod +x "$INSTALL_ROOT/ltheory/tools/wallpaper.sh" \
+  "$INSTALL_ROOT/ltheory/tools/score_pick.py"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/ltheory"
 
 echo "==> Installing systemd unit"

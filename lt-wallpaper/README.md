@@ -33,9 +33,13 @@ cd lt-wallpaper/ltheory
 # batch — one engine launch, cycle plates, then quit
 ./tools/wallpaper.sh count=8 preset=fleet outdir=wallpaper/batch
 ./tools/wallpaper.sh count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
+
+# best-of — N candidates, keep the winner
+./tools/wallpaper.sh best=6 preset=capital out=wallpaper/best.png
+./tools/wallpaper.sh best=6 preset=armada out=wallpaper/armada.png
 ```
 
-Presets: `sky` · `ship` · `solo` · `fleet` · `skirmish` · `station` · `system` · `asteroids` · `planet`
+Presets: `sky` · `ship` · `solo` · `fleet` · `skirmish` · `capital` · `armada` · `station` · `system` · `asteroids` · `planet`
 
 See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
 

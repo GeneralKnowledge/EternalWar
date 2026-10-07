@@ -12,6 +12,10 @@
     bin/lt64r Wallpaper count=8 preset=fleet outdir=wallpaper/batch
     bin/lt64r Wallpaper count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
 
+    # Capitals + auto-pick (via tools/wallpaper.sh best=N):
+    ./tools/wallpaper.sh best=6 preset=capital out=wallpaper/best.png
+    ./tools/wallpaper.sh best=6 preset=armada out=wallpaper/armada.png
+
   Flags (key=value):
     seed=<uint64>       System seed (default: time-based); batch advances from it
     width=<int>         Window / export width (default 1920)
@@ -19,12 +23,15 @@
     out=<path>          PNG path (count=1) or stem template (count>1 → stem_001.png)
     outdir=<path>       Directory for batch PNGs (preferred when count>1)
     preset=<name>       sky | nebula | ship | solo | asteroids | planet |
-                        station | fleet | skirmish | system
+                        station | fleet | skirmish | system | capital | armada
     presets=<a,b,...>   Cycle these presets across the batch (overrides preset)
     count=<int>         Captures before quit; process stays loaded (default 1)
     frames=<int>        Settle frames before capture (default depends on preset)
     interactive=1       Keep window; F12 capture, R regen, Esc quit
     nebulaRes=<int>     Override Config.gen.nebulaRes
+
+  Wrapper-only (tools/wallpaper.sh):
+    best=<int>          Bake N candidates in one launch; keep the highest-scoring PNG
 ]]
 
 local Entities = requireAll('Game.Entities')
@@ -45,6 +52,8 @@ local PRESETS = {
   fleet = true,    -- lead ship + escorts
   skirmish = true, -- two sides mid-fight
   system = true,   -- station + rocks + ships (vista)
+  capital = true,  -- Gen.ShipCapital sausage
+  armada = true,   -- capital + fighter screen
 }
 
 local DEFAULT_FRAMES = {
@@ -59,7 +68,12 @@ local DEFAULT_FRAMES = {
   -- Turret volleys need a few frames for pulses to be in-flight; no Attack AI.
   skirmish = 10,
   system = 10,
+  capital = 5,
+  armada = 5,
 }
+
+local CAPITAL_SCALE = 48
+local FIGHTER_SCALE = 4
 
 local function isSkyPreset (name)
   return name == 'sky' or name == 'nebula'
@@ -182,14 +196,30 @@ local function refreshShipType (system)
   system.shipType = nil
 end
 
+--- Bind fighter or capital generator before spawnShip().
+local function bindShipType (system, kind, scale)
+  local gen = Gen.Ship.ShipFighter
+  local scl = scale or FIGHTER_SCALE
+  if kind == 'capital' then
+    gen = Gen.Ship.ShipCapital
+    scl = scale or CAPITAL_SCALE
+  end
+  system.shipType = ShipType(system.rng:get31(), gen, scl)
+end
+
 local function faceToward (entity, forward)
   entity:setRot(Quat.FromLookUp(forward:normalize(), Vec3f(0, 1, 0)))
 end
 
 --- Spawn a ship. reuseType=true keeps the current ShapeLib hull (fleet cohesion).
-local function spawnOwnedShip (system, owner, pos, reuseType)
+--- kind: nil/'fighter'/'capital' — ignored when reuseType is true.
+local function spawnOwnedShip (system, owner, pos, reuseType, kind, scale)
   if not reuseType then
-    refreshShipType(system)
+    if kind == 'capital' or kind == 'fighter' then
+      bindShipType(system, kind, scale)
+    else
+      refreshShipType(system)
+    end
   end
   local ship = system:spawnShip()
   if pos then ship:setPos(pos) end
@@ -197,6 +227,14 @@ local function spawnOwnedShip (system, owner, pos, reuseType)
   ship:setSleepThreshold(0, 0)
   if owner then ship:setOwner(owner) end
   return ship
+end
+
+local function camRadiusFor (entity, mult, fallback)
+  local ok, rad = pcall(function () return entity:getRadius() end)
+  if ok and rad and rad > 1 then
+    return math.max(fallback * 0.5, rad * (mult or 3.2))
+  end
+  return fallback
 end
 
 --- Plate camera: optional world center, or follow entity (camFollow).
@@ -255,8 +293,13 @@ function Wallpaper:generate ()
   self.system = Entities.System(seed)
   local rng = self.system.rng
 
-  -- Controlling body (required by GameView). Parked far away for sky plates.
-  local ship = spawnOwnedShip(self.system, self.player, Config.gen.origin)
+  -- Controlling body (required by GameView). Capitals use Gen.ShipCapital.
+  local startKind = 'fighter'
+  if preset == 'capital' or preset == 'armada' then
+    startKind = 'capital'
+  end
+  local ship = spawnOwnedShip(
+    self.system, self.player, Config.gen.origin, false, startKind)
   self.player:setControlling(ship)
 
   self.focus = ship
@@ -390,6 +433,45 @@ function Wallpaper:generate ()
     ship:setPos(station:getPos() + Vec3f(160, 40, -120))
     self.focus = station
     self.hideHud = true
+
+  elseif preset == 'capital' then
+    local origin = Config.gen.origin
+    local forward = Vec3f(0, 0, 1)
+    ship:setPos(origin)
+    faceToward(ship, forward)
+    self.focus = ship
+    self.hideHud = true
+    self.camFollow = ship
+    setPlateCamera(self, nil, camRadiusFor(ship, 3.4, 160), -1.05, 0.22)
+
+  elseif preset == 'armada' then
+    -- Capital lead + fighter screen. Fighters use a larger scale so they
+    -- still read when the camera is pulled back for the capital.
+    local origin = Config.gen.origin
+    local forward = Vec3f(0, 0, 1)
+    ship:setPos(origin)
+    faceToward(ship, forward)
+    local rad = camRadiusFor(ship, 1.0, 50)
+    local ring = math.max(40, rad * 1.08)
+    bindShipType(self.system, 'fighter', 14)
+    local slots = {
+      Vec3f(-ring * 0.55,  rad * 0.08, -ring * 0.15),
+      Vec3f( ring * 0.55, -rad * 0.05, -ring * 0.15),
+      Vec3f(-ring * 0.9,   rad * 0.12, -ring * 0.45),
+      Vec3f( ring * 0.9,   rad * 0.02, -ring * 0.45),
+      Vec3f(-ring * 1.15,  rad * 0.05, -ring * 0.8),
+      Vec3f( ring * 1.15, -rad * 0.08, -ring * 0.8),
+      Vec3f( 0,            rad * 0.18, -ring * 0.3),
+    }
+    for i = 1, #slots do
+      local escort = spawnOwnedShip(
+        self.system, self.player, origin + slots[i], true)
+      faceToward(escort, forward)
+    end
+    self.focus = ship
+    self.hideHud = true
+    self.camFollow = ship
+    setPlateCamera(self, nil, camRadiusFor(ship, 2.9, 150), -0.95, 0.2)
   end
 end
 
@@ -441,6 +523,10 @@ function Wallpaper:applyCamera ()
       cam:setRadius(700)
       cam:setPitch(0.28)
       cam:setYaw(-1.25)
+    elseif preset == 'capital' or preset == 'armada' then
+      cam:setRadius(self.camRadius or camRadiusFor(self.focus, 3.4, 160))
+      cam:setPitch(self.camPitch or 0.22)
+      cam:setYaw(self.camYaw or -1.05)
     else -- ship / solo
       cam:setRadius(preset == 'solo' and 22 or 28)
       cam:setPitch(0.28)

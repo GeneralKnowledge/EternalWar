@@ -38,7 +38,7 @@ if [[ -d "$LIB64" ]]; then
 fi
 
 cd "$DEST"
-chmod +x tools/wallpaper.sh configure.py
+chmod +x tools/wallpaper.sh tools/score_pick.py configure.py
 echo "Configuring…"
 python3 configure.py
 echo "Building…"
@@ -46,3 +46,5 @@ python3 configure.py build
 echo
 echo "Done. Generate with:"
 echo "  cd $DEST && ./tools/wallpaper.sh seed=42 preset=ship out=wallpaper/out.png"
+echo "  cd $DEST && ./tools/wallpaper.sh best=6 preset=capital out=wallpaper/best.png"
+echo "  cd $DEST && ./tools/wallpaper.sh best=6 preset=armada out=wallpaper/armada.png"

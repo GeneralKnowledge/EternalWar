@@ -9,11 +9,13 @@ one bake per IP per minute. Serves a selectable-category gallery.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import random
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -52,6 +54,7 @@ STATIC = ROOT / "static"
 RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
 BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
 MAX_BATCH_COUNT = int(os.environ.get("LT_GALLERY_MAX_BATCH", "8"))
+MAX_BEST_COUNT = int(os.environ.get("LT_GALLERY_MAX_BEST", "8"))
 DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8080"))
 
@@ -80,6 +83,16 @@ CATEGORIES: dict[str, dict[str, str]] = {
         "preset": "skirmish",
         "label": "Skirmish",
         "blurb": "Two wings facing off — turrets firing",
+    },
+    "capital": {
+        "preset": "capital",
+        "label": "Capital",
+        "blurb": "ShapeLib capital — the ship that could have been",
+    },
+    "armada": {
+        "preset": "armada",
+        "label": "Armada",
+        "blurb": "Capital lead with a fighter screen",
     },
     "station": {
         "preset": "station",
@@ -272,6 +285,23 @@ def _ingest_png(
     }
 
 
+def _load_score_pick(ltheory: Path) -> Any:
+    """Load tools/score_pick.py from the built ltheory tree (or overlay fallback)."""
+    candidates = [
+        ltheory / "tools" / "score_pick.py",
+        ROOT.parent / "overlay" / "tools" / "score_pick.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("lt_score_pick", path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules["lt_score_pick"] = mod
+                spec.loader.exec_module(mod)
+                return mod
+    raise RuntimeError("score_pick.py not found")
+
+
 def run_bake(
     *,
     category: str,
@@ -280,12 +310,21 @@ def run_bake(
     height: int,
     nebula_res: int,
     count: int = 1,
+    best: int = 1,
 ) -> dict[str, Any] | list[dict[str, Any]]:
-    """Run one Wallpaper process. count>1 keeps the engine loaded across plates."""
+    """Run one Wallpaper process.
+
+    count>1 keeps all plates. best>1 bakes that many candidates and keeps the
+    highest-scoring plate only (still one engine launch).
+    """
     global _busy, _last_error
     cat = CATEGORIES[category]
     preset = cat["preset"]
     count = max(1, min(int(count), MAX_BATCH_COUNT))
+    best = max(1, min(int(best), MAX_BEST_COUNT))
+    keep_best_only = best > 1
+    if keep_best_only:
+        count = best  # candidates in one warm process
     ltheory = find_ltheory_root()
     script = ltheory / "tools" / "wallpaper.sh"
     IMAGES.mkdir(parents=True, exist_ok=True)
@@ -306,7 +345,6 @@ def run_bake(
         batch_dir = IMAGES / f"_batch_{uuid.uuid4().hex[:10]}"
         batch_dir.mkdir(parents=True, exist_ok=True)
         args.append(f"outdir={batch_dir}")
-        # Batch settle can take longer; scale timeout lightly.
         timeout = BAKE_TIMEOUT_SEC + max(0, count - 1) * 45
     else:
         out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
@@ -370,8 +408,40 @@ def run_bake(
         return item
 
     assert batch_dir is not None
+    pngs = sorted(batch_dir.glob("lt_*.png"))
+
+    if keep_best_only:
+        score_mod = _load_score_pick(ltheory)
+        winner, stats = score_mod.pick_best(pngs)
+        parts = winner.stem.split("_", 3)
+        plate_preset = parts[2] if len(parts) >= 3 else preset
+        plate_seed = parts[3] if len(parts) >= 4 else seed
+        item = _ingest_png(
+            winner,
+            category=category,
+            preset=plate_preset,
+            seed=str(plate_seed),
+            width=width,
+            height=height,
+            nebula_res=nebula_res,
+            label=(
+                f"{cat['label']} · best of {len(pngs)} · "
+                f"score {stats['score']:.0f} · {str(plate_seed)[:12]}"
+            ),
+        )
+        item["bestOf"] = len(pngs)
+        item["score"] = round(float(stats["score"]), 2)
+        for png in pngs:
+            png.unlink(missing_ok=True)
+        batch_dir.rmdir()
+        with _lock:
+            manifest = load_manifest()
+            manifest.setdefault("items", []).insert(0, item)
+            save_manifest(manifest)
+        return item
+
     items: list[dict[str, Any]] = []
-    for png in sorted(batch_dir.glob("lt_*.png")):
+    for png in pngs:
         # Filename: lt_001_preset_seed.png — seed may contain digits only.
         parts = png.stem.split("_", 3)
         plate_preset = parts[2] if len(parts) >= 3 else preset
@@ -393,7 +463,6 @@ def run_bake(
             label=f"{label_cat['label']} · {str(plate_seed)[:16]}",
         )
         items.append(item)
-    # Clean staging dir
     for png in batch_dir.glob("*.png"):
         png.unlink(missing_ok=True)
     batch_dir.rmdir()
@@ -457,6 +526,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
                     "maxBatchCount": MAX_BATCH_COUNT,
+                    "maxBestCount": MAX_BEST_COUNT,
                     "ltheory": str(find_ltheory_root()),
                 },
             )
@@ -601,6 +671,18 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
+        try:
+            best = int(body.get("best") or 1)
+        except (TypeError, ValueError):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad best"})
+            return
+        if best < 1 or best > MAX_BEST_COUNT:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"best must be 1..{MAX_BEST_COUNT}"},
+            )
+            return
+
         _rate[ip] = time.monotonic()
         try:
             result = run_bake(
@@ -610,6 +692,7 @@ class Handler(SimpleHTTPRequestHandler):
                 height=height,
                 nebula_res=nebula_res,
                 count=count,
+                best=best,
             )
         except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
             self._json(

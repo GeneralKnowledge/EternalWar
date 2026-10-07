@@ -36,6 +36,10 @@ Binary: `bin/lt64r` (Release) or `bin/lt64` (RelWithDebInfo).
 ./tools/wallpaper.sh count=8 preset=fleet outdir=wallpaper/batch
 ./tools/wallpaper.sh count=6 presets=fleet,skirmish,station,system outdir=wallpaper/dreams
 
+# Best-of — N candidates, keep the highest-scoring plate
+./tools/wallpaper.sh best=6 preset=capital out=wallpaper/best_capital.png
+./tools/wallpaper.sh best=6 preset=armada out=wallpaper/best_armada.png
+
 # Or directly:
 LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
   seed=42 preset=nebula width=2560 height=1440 out=wallpaper/nebula.png
@@ -49,9 +53,10 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `width=` / `height=` | Resolution (default 1920×1080) |
 | `out=` | PNG path (`count=1`) or stem template (`count>1` → `stem_001.png`) |
 | `outdir=` | Directory for batch PNGs (preferred when `count>1`) |
-| `preset=` | `sky` · `nebula` · `ship` · `solo` · `fleet` · `skirmish` · `station` · `system` · `asteroids` · `planet` |
+| `preset=` | `sky` · `nebula` · `ship` · `solo` · `fleet` · `skirmish` · `capital` · `armada` · `station` · `system` · `asteroids` · `planet` |
 | `presets=` | Comma list to cycle across the batch (e.g. `fleet,skirmish,station`) |
 | `count=` | Captures before quit; process stays loaded (default 1) |
+| `best=` | *(wrapper)* Bake N candidates in one launch; keep the highest-scoring PNG |
 | `frames=` | Settle frames before capture (default depends on preset) |
 | `interactive=1` | Keep window; **F12** capture, **R** regen, **Esc** quit |
 | `nebulaRes=` | Override nebula bake resolution |

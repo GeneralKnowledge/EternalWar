@@ -7,6 +7,7 @@ const els = {
   size: document.getElementById("size"),
   quality: document.getElementById("quality"),
   count: document.getElementById("count"),
+  best: document.getElementById("best"),
   generate: document.getElementById("generate"),
   rand: document.getElementById("rand"),
   status: document.getElementById("status"),
@@ -195,13 +196,21 @@ els.form.addEventListener("submit", async (e) => {
   e.preventDefault();
   els.generate.disabled = true;
   const maxBatch = state.meta?.maxBatchCount || 8;
+  const maxBest = state.meta?.maxBestCount || 8;
   let count = parseInt(els.count?.value || "1", 10);
+  let best = parseInt(els.best?.value || "1", 10);
   if (!Number.isFinite(count) || count < 1) count = 1;
+  if (!Number.isFinite(best) || best < 1) best = 1;
   if (count > maxBatch) count = maxBatch;
+  if (best > maxBest) best = maxBest;
+  // Best-of wins over multi-keep when both are set.
+  if (best > 1) count = 1;
   setStatus(
-    count > 1
-      ? `Baking ${count} plates in one engine launch…`
-      : "Baking with native ltheory… this can take a bit.",
+    best > 1
+      ? `Baking ${best} candidates — keeping the best…`
+      : count > 1
+        ? `Baking ${count} plates in one engine launch…`
+        : "Baking with native ltheory… this can take a bit.",
   );
   try {
     const data = await api("/api/generate", {
@@ -213,12 +222,19 @@ els.form.addEventListener("submit", async (e) => {
         size: els.size.value,
         quality: els.quality.value,
         count,
+        best,
       }),
     });
     if (data.items && data.items.length > 1) {
       setStatus(`Saved ${data.items.length} plates (${data.items[0].width}×${data.items[0].height}).`);
     } else if (data.item) {
-      setStatus(`Saved ${data.item.label} (${data.item.width}×${data.item.height}).`);
+      const scoreBit =
+        data.item.bestOf > 1
+          ? ` · best of ${data.item.bestOf} (score ${data.item.score})`
+          : "";
+      setStatus(
+        `Saved ${data.item.label} (${data.item.width}×${data.item.height})${scoreBit}.`,
+      );
       if (!els.seed.value.trim()) els.seed.value = data.item.seed;
     }
     renderRate(data);
@@ -235,6 +251,9 @@ async function boot() {
   state.meta = await api("/api/meta");
   if (els.count && state.meta.maxBatchCount) {
     els.count.max = String(state.meta.maxBatchCount);
+  }
+  if (els.best && state.meta.maxBestCount) {
+    els.best.max = String(state.meta.maxBestCount);
   }
   renderCategories();
   fillSelects();
