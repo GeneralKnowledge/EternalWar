@@ -16,7 +16,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s:lod%d:v3" % [seed, ship_class, style, lod]
+	var key := "ship:%d:%d:%s:lod%d:v4shapelib" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -30,6 +30,12 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var nose: float = float(desc["nose_taper"])
 	var hull: Dictionary = desc.get("hull", {})
 	var exhaust: Color = desc.get("exhaust", Color(0.4, 0.7, 1.0))
+
+	# LT ShapeLib path for fighters (ShipFighter.Standard) — not loft guessing.
+	if ship_class == SimEntities.ShipClass.PATROL and lod <= VisualLOD.LOD_SIMPLE:
+		var shape := ShapeLibShipFighter.standard(seed)
+		var mesh := _shapelib_to_dims(shape, length, width, height, color, accent, exhaust, desc, lod)
+		return MeshCache.store(key, mesh) as ArrayMesh
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -259,6 +265,51 @@ static func _emit_module(
 			GeometryKernel.loft_hull(st, mount_stations, accent.darkened(0.12), 0.14, 1, true, true)
 		_:
 			ShapePrims.box(st, pos, size, accent)
+
+
+## Scale LT ShapeLib fighter into design AABB; append engines from semantic desc.
+static func _shapelib_to_dims(
+	shape: ShapeLibShape,
+	length: float,
+	width: float,
+	height: float,
+	color: Color,
+	accent: Color,
+	exhaust: Color,
+	desc: Dictionary,
+	lod: int
+) -> ArrayMesh:
+	var aabb: Dictionary = shape.get_aabb()
+	var lo: Vector3 = aabb["lower"]
+	var hi: Vector3 = aabb["upper"]
+	var size := hi - lo
+	var sx := width / maxf(size.x, 1e-4)
+	var sy := height / maxf(size.y, 1e-4)
+	var sz := length / maxf(size.z, 1e-4)
+	shape.center_at(0.0, 0.0, 0.0)
+	shape.scale_xyz(sx, sy, sz)
+	var mesh := shape.finalize_mesh(color)
+	# Append engine ports (LT hull has no thruster glow — we keep EW emissive blocks)
+	if lod <= VisualLOD.LOD_LOW:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		for e in desc.get("engines", []):
+			var ep: Vector3 = e["pos"]
+			var ex: Color = e.get("exhaust", exhaust)
+			GeometryKernel.engine_block(
+				st, ep, float(e["radius"]), float(e["length"]), accent.darkened(0.15), ex, 0.12, 6
+			)
+		st.generate_normals()
+		var eng: ArrayMesh = st.commit()
+		if eng.get_surface_count() > 0 and mesh.get_surface_count() > 0:
+			# Merge surfaces into one ArrayMesh
+			var merged := ArrayMesh.new()
+			for s in mesh.get_surface_count():
+				merged.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, mesh.surface_get_arrays(s))
+			for s in eng.get_surface_count():
+				merged.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, eng.surface_get_arrays(s))
+			return merged
+	return mesh
 
 
 static func _count_type(modules: Array, type_name: String) -> int:
