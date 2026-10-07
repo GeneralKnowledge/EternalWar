@@ -1,8 +1,13 @@
 # LT Sky — web wallpaper prototype
 
-Browser toy that runs Josh Parnell’s **direction-space IFS nebula** (`gen/nebula.glsl` `magic()` + absorption march) in **WebGL2**, plus a procedural starfield.
+Browser toy that runs Josh Parnell’s **direction-space IFS nebula** (`gen/nebula.glsl` `magic()` + absorption march) in **WebGL2**, with:
 
-Not a port of the full game. Not pixel-identical to native `preset=sky` (different RNG / LUT construction), but the same visual grammar.
+- Midpoint-displacement **ColorLUT** 1D textures (`Gen.ColorLUT`)
+- Native march scale (`kScale=0.040`, up to 128 samples)
+- LT **tonemap** (gamma → vignette → expmap → bezier grading)
+- Clustered **starfield** point sprites (`Gen.Starfield` + `starbg` falloff)
+
+Not a port of the full game. Not pixel-identical to native `preset=sky` (RNG streams differ), but the same visual grammar.
 
 ## Run
 

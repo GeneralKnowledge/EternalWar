@@ -37,8 +37,9 @@ html, body {
   pointer-events: none;
   position: absolute;
   inset: 0;
+  /* Light UI legibility only — scene vignette lives in the tonemap shader */
   background:
-    radial-gradient(ellipse 80% 70% at 50% 45%, transparent 40%, rgba(0,0,0,0.35) 100%);
+    radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(0,0,0,0.18) 100%);
 }
 
 .brand {
