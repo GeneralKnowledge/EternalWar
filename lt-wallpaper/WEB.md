@@ -31,4 +31,16 @@ That reuses the *look* without dragging physics, economy, or LuaJIT into Chrome.
 3. Match seeds against native `preset=sky` exports.
 4. Only then consider WASM for ShapeLib / heavier bakes.
 
+## Prototype (done)
+
+Static WebGL2 toy in [`web/`](web/):
+
+```bash
+cd lt-wallpaper/web
+python3 -m http.server 8765
+# open http://localhost:8765
+```
+
+Seed scrubber · quality · orbit look · PNG export. Same IFS grammar as `gen/nebula.glsl`; not pixel-identical to native yet.
+
 Unlicense on Josh’s original materials helps for a public web toy.

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LT Sky — web wallpaper prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <div class="stage">
+    <canvas id="gl"></canvas>
+    <div class="vignette" aria-hidden="true"></div>
+  </div>
+
+  <header class="brand">
+    <h1>LT Sky</h1>
+    <p>Web prototype — Josh’s IFS nebula in the browser</p>
+  </header>
+
+  <aside class="panel" id="panel">
+    <label class="field">
+      <span>Seed</span>
+      <div class="row">
+        <input id="seed" type="text" value="14589938814258111262" spellcheck="false" />
+        <button type="button" id="rand" title="Random seed">↻</button>
+      </div>
+    </label>
+
+    <label class="field">
+      <span>Quality</span>
+      <select id="quality">
+        <option value="draft">Draft — fast</option>
+        <option value="good" selected>Good</option>
+        <option value="high">High — slower</option>
+      </select>
+    </label>
+
+    <label class="field">
+      <span>Export size</span>
+      <select id="exportSize">
+        <option value="1280x720">1280 × 720</option>
+        <option value="1920x1080" selected>1920 × 1080</option>
+        <option value="2560x1440">2560 × 1440</option>
+        <option value="3840x2160">3840 × 2160</option>
+      </select>
+    </label>
+
+    <div class="actions">
+      <button type="button" id="render" class="primary">Render</button>
+      <button type="button" id="download">Download PNG</button>
+    </div>
+
+    <p class="hint">Drag to look around · seed matches native wallpaper intent, not pixel-identical</p>
+    <p class="status" id="status">Ready</p>
+  </aside>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

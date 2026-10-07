@@ -33,7 +33,7 @@ cd lt-wallpaper/ltheory
 
 Presets: `sky` · `nebula` (=sky) · `ship` · `asteroids` · `planet`
 
-See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags. Web notes: [`WEB.md`](WEB.md).
+See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags. Web notes: [`WEB.md`](WEB.md). Browser sky toy: [`web/`](web/).
 
 ## What the overlay changes
 
