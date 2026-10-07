@@ -31,7 +31,7 @@ cd lt-wallpaper/ltheory
 ./tools/wallpaper.sh seed=42 preset=sky width=1920 height=1080 out=wallpaper/out.png
 ```
 
-Presets: `sky` · `nebula` (=sky) · `ship` · `solo` · `asteroids` · `planet`
+Presets: `sky` · `ship` · `solo` · `fleet` · `skirmish` · `station` · `system` · `asteroids` · `planet`
 
 See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
 
