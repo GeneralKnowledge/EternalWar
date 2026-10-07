@@ -16,9 +16,11 @@ static func standard(seed: int, detail: int = 2) -> ShapeLibShape:
 		shape.add_shape(wings_tie(rng, detail))
 	if detail >= 1:
 		shape.add_shape(wing_mounts(rng, body_aabb, int(rng.choose([3, 4, 6, 8, 10, 20])), detail))
-	# Always bevel — LT silhouette edge catch; lighter t at batch.
-	var bevel_t := rng.randf_range(0.08, 0.35) if detail <= 0 else rng.randf_range(0.1, 0.8)
-	shape = shape.bevel(bevel_t)
+	# LT ShipFighter.SurfaceDetail lottery (default Settings path).
+	if detail >= 1:
+		shape = surface_detail(rng, shape)
+	else:
+		shape = shape.bevel(rng.randf_range(0.08, 0.35))
 	var r := shape.get_radius()
 	if r > 1e-4:
 		var s := 3.0 / r
@@ -30,14 +32,39 @@ static func standard_mesh(seed: int, hull_color: Color = Color(0.42, 0.42, 0.45)
 	return standard(seed, detail).finalize_mesh(hull_color)
 
 
+## LT ShipFighter.SurfaceDetail — bevel default; rare stellate/extrude/greeble.
+static func surface_detail(rng: SeededRNG, shape: ShapeLibShape) -> ShapeLibShape:
+	if rng.randf() < 0.05:
+		shape.stellate(rng.randf_range(0.05, 0.3))
+		if rng.randf() < 0.5:
+			shape.extrude_all(0.2)
+		return shape
+	if rng.randf() < 0.05:
+		shape.extrude_all(0.2, Vector3(
+			rng.randf_range(0.05, 0.5),
+			rng.randf_range(0.05, 0.5),
+			rng.randf_range(0.05, 0.5)
+		))
+		return shape
+	if rng.randf() < 0.05:
+		shape.greeble(rng, 1, 0.01, 0.03)
+		return shape
+	return shape.bevel(rng.randf_range(0.1, 1.0))
+
+
 static func hull_standard(rng: SeededRNG, detail: int = 2) -> ShapeLibShape:
 	var length := rng.randf_range(0.5, 3.0)
 	var cxy := Vector2(rng.randf_range(0.1, 0.5), rng.randf_range(0.1, 0.5))
 	var res_choices: Array = [3, 4, 5, 6, 8, 10] if detail <= 0 else [3, 4, 5, 6, 8, 10, 20, 24, 28, 30]
 	var res: int = int(rng.choose(res_choices))
 	var r := 1.0
-	# 85% prism, 15% would be sphere — keep prism as LT default weight for now
-	var shape := ShapeLibBasic.prism(2, res)
+	# LT: ~85% prism, ~15% sphere-ish (high-slice prism stand-in).
+	var shape: ShapeLibShape
+	if detail >= 1 and rng.randf() < 0.15:
+		shape = ShapeLibBasic.prism(2, maxi(res, 16))
+		shape.sphereize(2.0)
+	else:
+		shape = ShapeLibBasic.prism(2, res)
 	# LT: rotate(0, pi/2, 0) = yaw,pitch,roll → pitch 90°
 	shape.rotate_ypr(0.0, PI * 0.5, 0.0)
 	if res % 2 != 0:

@@ -16,7 +16,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s:lod%d:v6shapelib" % [seed, ship_class, style, lod]
+	var key := "ship:%d:%d:%s:lod%d:v7shapelib" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
