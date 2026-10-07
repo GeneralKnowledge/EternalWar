@@ -45,38 +45,62 @@ Modes: silhouette / clay / material / lit / compare / ortho. Keys **1–6**, **V
 eternalwar/fighter/   EW fighter diagnostic captures
 ```
 
+### Cropped LT fighter plates
+
+LT fighter stills are full nebula/combat frames. Crop a studio plate first:
+
+```bash
+python3 tools/visual_compare/crop_ship_ref.py \
+  --src tools/visual_compare/reference/ships/lt_ship_fighter_engines.jpg \
+  --out tools/visual_compare/reference/ships/cropped/lt_fighter_engines_crop.png
+
+python3 tools/visual_compare/crop_ship_ref.py \
+  --src tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg \
+  --out tools/visual_compare/reference/ships/cropped/lt_fighter_rear_crop.png
+```
+
+Prefer these crops for silhouette IoU (composition-invariant).
+
 ## Compare
 
 ```bash
-# Environment
+# Environment (+ flatness / structure metrics in report)
 python3 tools/visual_compare/compare.py \
   --lt tools/visual_compare/reference/lt_nebula_ship.jpg \
   --ew tools/visual_compare/eternalwar/ew_nebula.png \
   --out tools/visual_compare/out/cmp_nebula
 
-# Ships (silhouette IoU first, then mass / luminance / colour)
+python3 tools/visual_compare/compare.py \
+  --lt tools/visual_compare/reference/lt_nebula_planet.jpg \
+  --ew tools/visual_compare/eternalwar/ew_nebula.png \
+  --out tools/visual_compare/out/cmp_nebula_planet
+
+# Ships vs cropped LT fighter (silhouette IoU first)
 python3 tools/visual_compare/ship_compare.py \
-  --lt tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg \
+  --lt tools/visual_compare/reference/ships/cropped/lt_fighter_engines_crop.png \
   --ew tools/visual_compare/eternalwar/fighter/ew_fighter_s42_silhouette_three_quarter_front.png \
-  --out tools/visual_compare/out/ships/cmp_fighter_sil
+  --out tools/visual_compare/out/ships/cmp_fighter_sil_crop
 
 python3 tools/visual_compare/ship_compare.py \
-  --lt tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg \
+  --lt tools/visual_compare/reference/ships/cropped/lt_fighter_engines_crop.png \
   --ew tools/visual_compare/eternalwar/fighter/ew_fighter_s42_clay_three_quarter_front.png \
-  --out tools/visual_compare/out/ships/cmp_fighter_clay
+  --out tools/visual_compare/out/ships/cmp_fighter_clay_crop
 
 python3 tools/visual_compare/ship_compare.py \
-  --lt tools/visual_compare/reference/ships/lt_ship_fighter_rear.jpg \
+  --lt tools/visual_compare/reference/ships/cropped/lt_fighter_engines_crop.png \
   --ew tools/visual_compare/eternalwar/fighter/ew_fighter_s42_lit_three_quarter_front.png \
-  --out tools/visual_compare/out/ships/cmp_fighter_lit
+  --out tools/visual_compare/out/ships/cmp_fighter_lit_crop
 ```
 
-Outputs: `*_sidebyside.png`, `*_silhouette.png` (raw + normalized IoU / edge overlap), `*_luminance.png`, `*_report.json`.
+Outputs: `*_sidebyside.png`, `*_silhouette.png` (raw + normalized IoU / edge overlap), `*_luminance.png` / `*_luma.png`, `*_report.json`.
+
+Nebula reports include `flatness` (`flatness_score`, cavities, mid-edge). Lower `flatness_score` ⇒ less sheet-like.
 
 ## Loop
 
-1. Capture EW fighter gallery
-2. Compare silhouette IoU against LT fighter reference
+1. Capture EW fighter gallery + `lt_compare` nebula scenario
+2. Crop LT fighter refs; compare silhouette IoU
 3. If silhouette poor → fix GeometryKernel / stations (not shaders)
-4. If clay wrong → fix geometry; if lit wrong → materials/lighting
-5. Repeat
+4. If nebula `ew_flatter_than_lt` → fix volume/filament structure (not colour grading first)
+5. If clay wrong → fix geometry; if lit wrong → materials/lighting
+6. Repeat

@@ -1,11 +1,11 @@
 {
   "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_engines.jpg",
   "ew": "tools/visual_compare/eternalwar/fighter/ew_fighter_s42_silhouette_three_quarter_front.png",
-  "score": 13.9191681025362,
+  "score": 13.941474097568344,
   "score_legacy": 0.0,
-  "silhouette_iou": 0.25307578368247635,
-  "edge_overlap": 0.052804477430344325,
-  "silhouette_score": 25.307578368247636,
+  "silhouette_iou": 0.25348134722851534,
+  "edge_overlap": 0.05256113882467454,
+  "silhouette_score": 25.348134722851533,
   "lt_stats": {
     "mean_Y": 0.15111899375915527,
     "dark_frac": 0.3966753472222222,
@@ -26,10 +26,10 @@
     "emissive_frac": 0.021302083333333333
   },
   "ew_stats": {
-    "mean_Y": 0.8681806325912476,
-    "dark_frac": 0.03763020833333333,
-    "mean_sat": 0.02062063291668892,
-    "mask_frac": 0.04016927257180214,
+    "mean_Y": 0.8680704832077026,
+    "dark_frac": 0.037751736111111114,
+    "mean_sat": 0.020619366317987442,
+    "mask_frac": 0.040269095450639725,
     "aspect": 1.74375,
     "bbox": [
       0.2125,
@@ -38,35 +38,35 @@
       0.25
     ],
     "mean_rgb": [
-      0.8672452569007874,
-      0.8672452569007874,
-      0.8859391808509827
+      0.8671351671218872,
+      0.8671351671218872,
+      0.885826826095581
     ],
-    "emissive_frac": 0.9600651041666667
+    "emissive_frac": 0.9599782986111111
   },
   "ranked_mismatches": [
     {
       "name": "Colour balance",
-      "delta": 1.274803923140704,
-      "weighted": 1.1473235308266336,
+      "delta": 1.2746121502236416,
+      "weighted": 1.1471509352012774,
       "category": "colour"
     },
     {
       "name": "Emissive / engine",
-      "delta": 0.9387630208333333,
-      "weighted": 0.9387630208333333,
+      "delta": 0.9386762152777777,
+      "weighted": 0.9386762152777777,
       "category": "engine"
     },
     {
       "name": "Mean luminance",
-      "delta": 0.7170616388320923,
-      "weighted": 0.35853081941604614,
+      "delta": 0.7169514894485474,
+      "weighted": 0.3584757447242737,
       "category": "lighting"
     },
     {
       "name": "Saturation",
-      "delta": 0.4273635856807232,
-      "weighted": 0.34189086854457856,
+      "delta": 0.42736485227942467,
+      "weighted": 0.34189188182353974,
       "category": "colour"
     },
     {
@@ -89,8 +89,8 @@
     },
     {
       "name": "Silhouette coverage",
-      "delta": 0.30200954899191856,
-      "weighted": 0.07550238724797964,
+      "delta": 0.301909726113081,
+      "weighted": 0.07547743152827024,
       "category": "silhouette"
     }
   ]

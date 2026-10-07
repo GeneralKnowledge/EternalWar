@@ -1,0 +1,97 @@
+{
+  "lt": "tools/visual_compare/reference/ships/lt_ship_fighter_engines.jpg",
+  "ew": "tools/visual_compare/eternalwar/fighter/ew_fighter_s42_material_three_quarter_front.png",
+  "score": 31.692599924256236,
+  "score_legacy": 49.2293513250143,
+  "silhouette_iou": 0.17344348778181456,
+  "edge_overlap": 0.14247475361966175,
+  "silhouette_score": 17.344348778181455,
+  "lt_stats": {
+    "mean_Y": 0.15111899375915527,
+    "dark_frac": 0.3966753472222222,
+    "mean_sat": 0.4479842185974121,
+    "mask_frac": 0.3421788215637207,
+    "aspect": 1.0,
+    "bbox": [
+      0.0,
+      0.0,
+      1.0,
+      1.0
+    ],
+    "mean_rgb": [
+      0.17321977019309998,
+      0.15029412508010864,
+      0.09256994724273682
+    ],
+    "emissive_frac": 0.021302083333333333
+  },
+  "ew_stats": {
+    "mean_Y": 0.0419166125357151,
+    "dark_frac": 0.9993967013888889,
+    "mean_sat": 0.3480950891971588,
+    "mask_frac": 0.024344617500901222,
+    "aspect": 1.6934840425531914,
+    "bbox": [
+      0.209375,
+      0.3888888888888889,
+      0.4421875,
+      0.2611111111111111
+    ],
+    "mean_rgb": [
+      0.03777298703789711,
+      0.04152931645512581,
+      0.05682815983891487
+    ],
+    "emissive_frac": 0.0
+  },
+  "ranked_mismatches": [
+    {
+      "name": "Aspect ratio",
+      "delta": 0.24271941489361698,
+      "weighted": 0.29126329787234034,
+      "category": "proportion"
+    },
+    {
+      "name": "Colour balance",
+      "delta": 0.17735019038371988,
+      "weighted": 0.1596151713453479,
+      "category": "colour"
+    },
+    {
+      "name": "BBox height",
+      "delta": 0.7388888888888889,
+      "weighted": 0.11083333333333334,
+      "category": "proportion"
+    },
+    {
+      "name": "BBox width",
+      "delta": 0.5578125,
+      "weighted": 0.083671875,
+      "category": "proportion"
+    },
+    {
+      "name": "Saturation",
+      "delta": 0.0998891294002533,
+      "weighted": 0.07991130352020265,
+      "category": "colour"
+    },
+    {
+      "name": "Silhouette coverage",
+      "delta": 0.3178342040628195,
+      "weighted": 0.07945855101570487,
+      "category": "silhouette"
+    },
+    {
+      "name": "Mean luminance",
+      "delta": 0.10920238122344017,
+      "weighted": 0.054601190611720085,
+      "category": "lighting"
+    },
+    {
+      "name": "Emissive / engine",
+      "delta": 0.021302083333333333,
+      "weighted": 0.021302083333333333,
+      "category": "engine"
+    }
+  ]
+}
