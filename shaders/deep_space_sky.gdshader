@@ -41,14 +41,14 @@ uniform float void1_radius = 0.45;
 
 const float kScale = 0.040;
 // LT bake uses 128×30. Live/Compatibility budget: enough structure, no mediump death.
-const int kSamplesBg = 36;
-const int kSamplesCube = 24;
-const int kIterations = 16;
-const float kBrightConstant = 0.090;
-const float kBrightCell = 0.140;
-// Softer than LT k=6 so mediump radiance keeps energy; emission carries filaments.
-const float kAbsorb = 3.8;
-const float kEmitGain = 2.4;
+const int kSamplesBg = 40;
+const int kSamplesCube = 28;
+const int kIterations = 20;
+const float kBrightConstant = 0.070;
+const float kBrightCell = 0.110;
+// Softer than LT k=6 for mediump; contrast comes from narrow cavity emission.
+const float kAbsorb = 4.8;
+const float kEmitGain = 1.35;
 
 float hash11(float x) {
 	return fract(sin(x * 127.1 + seed * 0.13) * 43758.5453);
@@ -192,38 +192,37 @@ vec3 generate(vec3 dir_in, int sample_count) {
 			break;
 		}
 		vec3 p = march * float(i) * w;
-		float t = magic(p);
-		t = exp(-t * t);
+		float m = magic(p);
+		float t = exp(-m * m);
 		vec3 wave = lut_wave(t);
 
 		// LT constants: q=1.2, cavity at t≈0.90, emit 0.50*cEmit.
+		// Narrow the live peaks — magic() often lands near t≈0.9, and wide
+		// LT kernels then wash the whole dome cyan (sphere look again).
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
-		float cavity = exp(-pow(8.0 * abs(t - 0.90), 0.75));
-		float filament = exp(-pow(10.0 * abs(t - 0.90), 0.50));
+		float cavity = exp(-pow(18.0 * abs(t - 0.90), 0.90));
+		float filament = exp(-pow(24.0 * abs(t - 0.88), 0.70));
+		// High-frequency IFS rings (from magic field) gate emission so gas is
+		// filamentary, not a constant dome wash.
+		float rings = clamp(0.5 + 0.5 * sin(48.0 * m) * cos(36.0 * m), 0.0, 1.0);
+		float gate = pow(rings, 1.4) * (0.25 + 0.75 * filament);
 		vs -= 1.25 * cavity;
 		vs += 0.50 * c_emit * filament;
 
 		// Split signed vs: absorb via transmittance, emit via additive deposit.
-		// Equivalent in spirit to LT `c *= exp(-k*w*vs)` when vs crosses zero,
-		// but safe when T would otherwise underflow in mediump.
 		vec3 absorb = max(vs, vec3(0.0));
 		vec3 boost = max(-vs, vec3(0.0));
 		T *= exp(-kAbsorb * w * absorb);
-		T = max(T, vec3(2.0e-3));
-		// Cavity / filament glow — direction-space only (no mass-lobe gates).
-		vec3 filament_emit = (0.70 * c_emit * filament) + (0.35 * secondary_color * cavity);
-		filament_emit += boost * mix(wave, c_emit, 0.35) * 0.85;
-		// Broad IFS residual so live mediump still shows gas between cavities.
-		float body = pow(clamp(t, 0.0, 1.0), 1.6) * (0.35 + 0.65 * cavity);
-		filament_emit += mix(secondary_color, primary_color, t) * body * 0.55;
+		T = max(T, vec3(1.0e-3));
+		vec3 filament_emit = (0.55 * c_emit * filament) + (0.22 * secondary_color * cavity);
+		filament_emit += boost * wave * 0.45;
+		filament_emit *= gate;
 		emit_acc += T * filament_emit * w * kEmitGain;
 	}
 
 	vec3 c = T * bg + emit_acc;
-	// Mild lift so Compatibility radiance doesn't crush near-black cavities to void.
-	c = c * 1.25 + bg_color * 0.20;
-	return max(c, bg_color * 0.35);
+	return max(c, bg_color * 0.18);
 }
 
 void sky() {
