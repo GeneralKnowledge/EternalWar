@@ -18,7 +18,7 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 		band = 3
 	else:
 		band = 6
-	var key := "shapelib_asteroid:%d:b%d" % [seed, band]
+	var key := "shapelib_asteroid:%d:b%d:v2dens" % [seed, band]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -43,33 +43,38 @@ static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35,
 	var out_verts: PackedVector3Array = PackedVector3Array()
 	out_verts.resize(src_verts.size())
 	var search_iters := 8 if band <= 2 else (10 if band <= 5 else 12)
+	var dens: PackedFloat32Array = PackedFloat32Array()
+	dens.resize(src_verts.size())
 	for i in src_verts.size():
 		var p: Vector3 = src_verts[i].normalized()
 		var r := _surface_radius(p, noise_seed, octaves, smoothness, search_iters)
 		out_verts[i] = p * r
+		# Local cell density → cavity darkening (Tex3D band spirit without full bake).
+		dens[i] = _f_cell_noise(p * 2.4, noise_seed + 11.0, mini(octaves, 6), smoothness)
 	if src_idx_v == null:
 		for i in range(0, out_verts.size(), 3):
-			st.set_color(color)
-			st.add_vertex(out_verts[i])
-			st.set_color(color)
-			st.add_vertex(out_verts[i + 1])
-			st.set_color(color)
-			st.add_vertex(out_verts[i + 2])
+			_emit_rock_vert(st, out_verts[i], color, dens[i] if i < dens.size() else 0.5)
+			_emit_rock_vert(st, out_verts[i + 1], color, dens[i + 1] if i + 1 < dens.size() else 0.5)
+			_emit_rock_vert(st, out_verts[i + 2], color, dens[i + 2] if i + 2 < dens.size() else 0.5)
 	else:
 		var src_idx: PackedInt32Array = src_idx_v
 		for i in range(0, src_idx.size(), 3):
 			var i0 := src_idx[i]
 			var i1 := src_idx[i + 1]
 			var i2 := src_idx[i + 2]
-			st.set_color(color)
-			st.add_vertex(out_verts[i0])
-			st.set_color(color)
-			st.add_vertex(out_verts[i1])
-			st.set_color(color)
-			st.add_vertex(out_verts[i2])
+			_emit_rock_vert(st, out_verts[i0], color, dens[i0])
+			_emit_rock_vert(st, out_verts[i1], color, dens[i1])
+			_emit_rock_vert(st, out_verts[i2], color, dens[i2])
 	st.generate_normals()
 	var mesh: ArrayMesh = st.commit()
 	return MeshCache.store(key, mesh) as ArrayMesh
+
+
+static func _emit_rock_vert(st: SurfaceTool, p: Vector3, color: Color, density: float) -> void:
+	var ao := lerpf(1.0, 0.62, clampf(density, 0.0, 1.0))
+	var ridge := lerpf(0.9, 1.08, 1.0 - clampf(density, 0.0, 1.0))
+	st.set_color(Color(color.r * ao * ridge, color.g * ao * ridge, color.b * ao * ridge, color.a))
+	st.add_vertex(p)
 
 
 static func _surface_radius(dir: Vector3, seed: float, octaves: int, smoothness: float, iters: int = 10) -> float:

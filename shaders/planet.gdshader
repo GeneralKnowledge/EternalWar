@@ -20,6 +20,9 @@ uniform float ice_world : hint_range(0.0, 1.0) = 0.0;
 uniform float freq = 4.0;
 uniform float power = 1.35;
 uniform vec4 coef = vec4(1.0, 1.0, 1.0, 1.0);
+// Equirect bake of genHeight/genColor/genClouds (LT TexCube stand-in).
+uniform sampler2D planet_map : source_color, filter_linear_mipmap, repeat_enable;
+uniform float use_bake : hint_range(0.0, 1.0) = 0.0;
 
 varying vec3 v_obj;
 
@@ -134,12 +137,29 @@ float gen_clouds(vec3 p) {
 	return 0.5 + 0.5 * sin(8.0 * cell_n(q * 1.4, seed_offset + 6.0));
 }
 
+vec2 dir_to_equirect(vec3 d) {
+	d = normalize(d);
+	float u = 0.5 + atan(d.z, d.x) / (2.0 * PI);
+	float v = acos(clamp(d.y, -1.0, 1.0)) / PI;
+	return vec2(u, v);
+}
+
 void fragment() {
 	vec3 nrm = normalize(v_obj);
 	float lat = abs(nrm.y);
-	float h = gen_height(nrm);
-	float cfield = gen_color(nrm);
-	float clouds_f = gen_clouds(nrm);
+	float h;
+	float cfield;
+	float clouds_f;
+	if (use_bake > 0.5) {
+		vec3 samp = texture(planet_map, dir_to_equirect(nrm)).rgb;
+		h = samp.r;
+		cfield = samp.g;
+		clouds_f = samp.b;
+	} else {
+		h = gen_height(nrm);
+		cfield = gen_color(nrm);
+		clouds_f = gen_clouds(nrm);
+	}
 
 	// Gas giant: colour field only (no invented latitude sine stripes)
 	vec3 gas = mix(color_a.rgb, color_b.rgb, smoothstep(0.15, 0.85, cfield));

@@ -16,7 +16,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s:lod%d:v7shapelib" % [seed, ship_class, style, lod]
+	var key := "ship:%d:%d:%s:lod%d:v8shapelib" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -31,9 +31,9 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	# All LODs: ShapeLib silhouette (fighter or sausage) + uniform role framing.
 	var shape: ShapeLibShape
 	if _uses_fighter_shapelib(ship_class):
-		shape = ShapeLibShipFighter.standard(seed, detail)
+		shape = ShapeLibShipFighter.standard(seed, detail, style)
 	else:
-		shape = ShapeLibShipCapital.sausage(seed, detail)
+		shape = ShapeLibShipCapital.sausage(seed, detail, style)
 
 	var mesh := _shapelib_to_role(shape, length, color, accent, exhaust, desc, lod)
 	return MeshCache.store(key, mesh) as ArrayMesh

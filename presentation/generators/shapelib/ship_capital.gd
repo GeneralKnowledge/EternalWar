@@ -6,7 +6,7 @@ class_name ShapeLibShipCapital
 extends RefCounted
 
 
-static func sausage(seed: int, detail: int = 2) -> ShapeLibShape:
+static func sausage(seed: int, detail: int = 2, style: String = "industrial") -> ShapeLibShape:
 	var rng := SeededRNG.new(seed)
 	var shape := ShapeLibShape.new()
 	var segments := 1 if detail <= 0 else rng.randi_range(1, 3)
@@ -43,6 +43,9 @@ static func sausage(seed: int, detail: int = 2) -> ShapeLibShape:
 		if not shape.add_at_intersection(Vector3(0.0, hi3.y + 3.0, 0.0), Vector3(0.0, -1.0, 0.0), plate):
 			plate.center_at(0.0, hi3.y * 0.55, 0.0)
 			shape.add_shape(plate)
+	if detail >= 2:
+		var st := ShapeLibStyle.from_style(style, seed)
+		shape = st.apply_warp(shape)
 	shape.scale_xyz(rng.randf_range(0.5, 1.5), rng.randf_range(0.5, 1.5), 1.0)
 	var r := shape.get_radius()
 	if r > 1e-4:
@@ -51,8 +54,8 @@ static func sausage(seed: int, detail: int = 2) -> ShapeLibShape:
 	return shape
 
 
-static func sausage_mesh(seed: int, hull_color: Color = Color(0.4, 0.38, 0.36), detail: int = 2) -> ArrayMesh:
-	return sausage(seed, detail).finalize_mesh(hull_color)
+static func sausage_mesh(seed: int, hull_color: Color = Color(0.4, 0.38, 0.36), detail: int = 2, style: String = "industrial") -> ArrayMesh:
+	return sausage(seed, detail, style).finalize_mesh(hull_color)
 
 
 static func hull(rng: SeededRNG, detail: int = 2) -> ShapeLibShape:

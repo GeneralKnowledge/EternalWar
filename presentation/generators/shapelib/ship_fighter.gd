@@ -5,7 +5,7 @@ class_name ShapeLibShipFighter
 extends RefCounted
 
 
-static func standard(seed: int, detail: int = 2) -> ShapeLibShape:
+static func standard(seed: int, detail: int = 2, style: String = "military") -> ShapeLibShape:
 	var rng := SeededRNG.new(seed)
 	var shape := hull_standard(rng, detail)
 	var body_aabb: Dictionary = shape.get_aabb()
@@ -16,7 +16,10 @@ static func standard(seed: int, detail: int = 2) -> ShapeLibShape:
 		shape.add_shape(wings_tie(rng, detail))
 	if detail >= 1:
 		shape.add_shape(wing_mounts(rng, body_aabb, int(rng.choose([3, 4, 6, 8, 10, 20])), detail))
-	# LT ShipFighter.SurfaceDetail lottery (default Settings path).
+	# Style-favored warp (LT Style.lua) then SurfaceDetail lottery.
+	if detail >= 2:
+		var st := ShapeLibStyle.from_style(style, seed)
+		shape = st.apply_warp(shape)
 	if detail >= 1:
 		shape = surface_detail(rng, shape)
 	else:
@@ -28,8 +31,8 @@ static func standard(seed: int, detail: int = 2) -> ShapeLibShape:
 	return shape
 
 
-static func standard_mesh(seed: int, hull_color: Color = Color(0.42, 0.42, 0.45), detail: int = 2) -> ArrayMesh:
-	return standard(seed, detail).finalize_mesh(hull_color)
+static func standard_mesh(seed: int, hull_color: Color = Color(0.42, 0.42, 0.45), detail: int = 2, style: String = "military") -> ArrayMesh:
+	return standard(seed, detail, style).finalize_mesh(hull_color)
 
 
 ## LT ShipFighter.SurfaceDetail — bevel default; rare stellate/extrude/greeble.
@@ -157,7 +160,23 @@ static func wing_mounts(rng: SeededRNG, body_aabb: Dictionary, res: int, detail:
 	var upper: Vector3 = body_aabb["upper"]
 	var l := rng.randf_range(0.2, maxf(0.25, absf(upper.z - lower.z)))
 	mount.scale_xyz(r, r, l)
-	mount.translate_xyz(lower.x, 0.0, 0.0)
+	# Prefer joint attach from a side-facing poly when available.
+	var side := ShapeLibBasic.box(0)
+	side.scale_xyz(0.01, 0.01, 0.01)
+	side.translate_xyz(lower.x, 0.0, 0.0)
+	var host := ShapeLibBasic.box(0)
+	host.scale_xyz(absf(upper.x - lower.x) * 0.5, absf(upper.y - lower.y) * 0.5, absf(upper.z - lower.z) * 0.5)
+	var side_poly := host.get_poly_with_normal(Vector3(-1, 0, 0))
+	if detail >= 1 and side_poly >= 0:
+		var joint := ShapeLibJoint.from_poly(host, host.polys[side_poly])
+		if joint != null:
+			joint.scale = Vector3(r, r, l)
+			mount.center_at()
+			joint.attach_shape(mount)
+		else:
+			mount.translate_xyz(lower.x, 0.0, 0.0)
+	else:
+		mount.translate_xyz(lower.x, 0.0, 0.0)
 	if detail >= 1:
 		mount = mount.bevel(rng.randf_range(0.1, 1.0))
 	var mount2 := mount.clone()

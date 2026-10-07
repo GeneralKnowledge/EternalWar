@@ -5,18 +5,19 @@ class_name StarfieldGen
 extends RefCounted
 
 
-static func build_from_composition(comp: Dictionary) -> Dictionary:
+static func build_from_composition(comp: Dictionary, ir_map: NebulaIRMap = null) -> Dictionary:
 	## Returns {micro, field, notable, gems, dust} MultiMeshes driven by SkyComposition.
+	## Optional ir_map (LT genIRMap) modulates star colours by direction through gas.
 	var seed: int = int(comp.get("seed", 42))
 	var galaxy_n: Vector3 = comp.get("galaxy_normal", Vector3.UP)
 	var voids: Array = comp.get("voids", [])
 	var masses: Array = comp.get("masses", [])
 	var gem_defs: Array = comp.get("gems", [])
 	return {
-		"micro": _build_population(seed, "starfield_micro", int(comp.get("star_micro_count", 11000)), galaxy_n, voids, masses, 1),
-		"field": _build_population(seed, "starfield_field", int(comp.get("star_field_count", 5600)), galaxy_n, voids, masses, 0),
-		"notable": _build_population(seed, "starfield_notable", int(comp.get("star_notable_count", 180)), galaxy_n, voids, masses, 2),
-		"gems": _build_gems(seed, gem_defs),
+		"micro": _build_population(seed, "starfield_micro", int(comp.get("star_micro_count", 11000)), galaxy_n, voids, masses, 1, ir_map),
+		"field": _build_population(seed, "starfield_field", int(comp.get("star_field_count", 5600)), galaxy_n, voids, masses, 0, ir_map),
+		"notable": _build_population(seed, "starfield_notable", int(comp.get("star_notable_count", 180)), galaxy_n, voids, masses, 2, ir_map),
+		"gems": _build_gems(seed, gem_defs, ir_map),
 		"dust": build_galactic_dust(seed, int(comp.get("dust_count", 480)), galaxy_n, comp.get("palette", {})),
 	}
 
@@ -24,7 +25,7 @@ static func build_from_composition(comp: Dictionary) -> Dictionary:
 static func build_multimesh(system_seed: int, count: int = 5600) -> MultiMesh:
 	## Back-compat for tests — field population without full composition.
 	var comp := SkyComposition.build(system_seed)
-	return _build_population(system_seed, "starfield", count, comp["galaxy_normal"], comp["voids"], comp["masses"], 0)
+	return _build_population(system_seed, "starfield", count, comp["galaxy_normal"], comp["voids"], comp["masses"], 0, null)
 
 
 static func build_galactic_dust(system_seed: int, count: int = 480, galaxy_n: Vector3 = Vector3.UP, palette: Dictionary = {}) -> MultiMesh:
@@ -89,7 +90,8 @@ static func _build_population(
 	galaxy_n: Vector3,
 	voids: Array,
 	masses: Array,
-	mode: int
+	mode: int,
+	ir_map: NebulaIRMap = null
 ) -> MultiMesh:
 	## mode 0=field, 1=micro, 2=notable
 	var rng := SeedHash.make_rng(system_seed, tag)
@@ -180,6 +182,9 @@ static func _build_population(
 			_:
 				bright = 0.03 + exp_m * 1.55
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
+		if ir_map != null and ir_map.width > 0:
+			var sup := 0.62 if mode == 1 else (0.48 if mode == 0 else 0.28)
+			col = ir_map.modulate_star(dir, col, sup, 0.38)
 		var pos := dir * dist
 		var i3 := i * 3
 		positions[i3] = pos.x
@@ -194,7 +199,7 @@ static func _build_population(
 	return _mm_from_soa(count, positions, scales, colors)
 
 
-static func _build_gems(system_seed: int, gem_defs: Array) -> MultiMesh:
+static func _build_gems(system_seed: int, gem_defs: Array, ir_map: NebulaIRMap = null) -> MultiMesh:
 	var rng := SeedHash.make_rng(system_seed, "starfield_gems")
 	var count := maxi(gem_defs.size(), 1)
 	var positions := PackedFloat32Array()
@@ -212,6 +217,8 @@ static func _build_gems(system_seed: int, gem_defs: Array) -> MultiMesh:
 		var col := StellarColour.from_temperature(float(g.get("temp", 6000.0)))
 		var bright := 0.8 + pow(mag, 2.5) * 2.2
 		col = Color(col.r * bright, col.g * bright, col.b * bright)
+		if ir_map != null and ir_map.width > 0:
+			col = ir_map.modulate_star(dir, col, 0.22, 0.25)
 		var pos := dir * dist
 		var i3 := i * 3
 		positions[i3] = pos.x
