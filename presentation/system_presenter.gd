@@ -22,6 +22,11 @@ var sky_comp: Dictionary = {}
 var _star_packs: Dictionary = {}
 var _nebula_volume_mats: Array = []
 var _starfield_mats: Array = []
+var _nebula_bake: Dictionary = {}
+var _ir_map: NebulaIRMap = null
+var _pulse_mesh: MeshInstance3D
+var _explosion_mesh: MeshInstance3D
+var _fx_age := 0.0
 
 const NEAR_SHIP_CAP := 28
 
@@ -97,9 +102,14 @@ func _clear_visuals() -> void:
 	_dust = null
 	_engine_fx = null
 	_thruster_mesh = null
+	_pulse_mesh = null
+	_explosion_mesh = null
 	_env_node = null
 	_post_layer = null
 	_starfield_mats.clear()
+	_nebula_bake.clear()
+	_ir_map = null
+	_fx_age = 0.0
 	_built = false
 
 
@@ -130,6 +140,7 @@ func _build_environment() -> void:
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	# Prefer Rust IFS panorama bake (LT Nebula1 TexCube path). Live shader is fallback.
+	# Also builds IRMap from the same bake for starbg sit-in-gas.
 	var baked := _bake_nebula_sky_texture(palette)
 	if baked != null:
 		var pano := PanoramaSkyMaterial.new()
@@ -140,6 +151,7 @@ func _build_environment() -> void:
 		sky.process_mode = Sky.PROCESS_MODE_REALTIME
 		sky.radiance_size = Sky.RADIANCE_SIZE_256
 		sky_comp["nebula_bake"] = "rust"
+		sky_comp["ir_map"] = _ir_map != null and _ir_map.width > 0
 	else:
 		sky.process_mode = Sky.PROCESS_MODE_REALTIME
 		sky.radiance_size = Sky.RADIANCE_SIZE_256
@@ -148,6 +160,7 @@ func _build_environment() -> void:
 		_apply_sky_uniforms(sky_mat, palette)
 		sky.sky_material = sky_mat
 		sky_comp["nebula_bake"] = "live_shader"
+		sky_comp["ir_map"] = false
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = ambient_c
@@ -256,11 +269,16 @@ func _bake_nebula_sky_texture(palette: Dictionary) -> ImageTexture:
 		"lut_b_edge": lut["lut_b_edge"],
 	})
 	if not bool(bake.get("ok", false)):
+		_nebula_bake.clear()
+		_ir_map = null
 		return null
+	_nebula_bake = bake
+	_ir_map = NebulaIRMap.from_bake(bake, 256)
 	sky_comp["nebula_bake_ms"] = float(bake.get("ms", 0.0))
-	print("Nebula IFS bake %dx%d in %.1fms (%s)" % [
+	print("Nebula IFS bake %dx%d in %.1fms (%s) IR=%dx%d" % [
 		int(bake.get("width", 0)), int(bake.get("height", 0)),
 		float(bake.get("ms", 0.0)), str(bake.get("backend", "?")),
+		_ir_map.width, _ir_map.height,
 	])
 	return NativeBridge.nebula_panorama_texture(bake)
 
@@ -299,6 +317,9 @@ func _build_lt_post() -> void:
 	mat.set_shader_parameter("expmap_k", 2.3)
 	mat.set_shader_parameter("expmap_p", 1.0)
 	mat.set_shader_parameter("strength", 1.0)
+	mat.set_shader_parameter("bloom_threshold", 0.68)
+	mat.set_shader_parameter("bloom_intensity", 0.52)
+	mat.set_shader_parameter("bloom_radius", 3.8)
 	rect.material = mat
 	_post_layer.add_child(rect)
 	add_child(_post_layer)
@@ -306,7 +327,7 @@ func _build_lt_post() -> void:
 
 func _build_starfield_layer(key: String) -> void:
 	if _star_packs.is_empty():
-		_star_packs = StarfieldGen.build_from_composition(sky_comp)
+		_star_packs = StarfieldGen.build_from_composition(sky_comp, _ir_map)
 	var mm: MultiMesh = _star_packs.get(key)
 	if mm == null:
 		return
@@ -530,7 +551,8 @@ func _build_planets() -> void:
 		mat.set_shader_parameter("ocean_level", float(p.get("ocean_level", 0.3)))
 		mat.set_shader_parameter("cloud_level", float(p.get("cloud_level", 0.1)))
 		mat.set_shader_parameter("roughness_val", 0.88)
-		mat.set_shader_parameter("seed_offset", float(int(p.get("terrain_seed", p.get("seed", 1))) % 1000) * 0.01)
+		var seed_off := float(int(p.get("terrain_seed", p.get("seed", 1))) % 1000) * 0.01
+		mat.set_shader_parameter("seed_offset", seed_off)
 		mat.set_shader_parameter("atmosphere_tint", float(p.get("atmosphere", 0.3)))
 		var pclass := str(p.get("planet_class", "rocky"))
 		mat.set_shader_parameter("gas_giant", 1.0 if pclass == "gas_giant" else 0.0)
@@ -544,6 +566,10 @@ func _build_planets() -> void:
 		elif pclass == "habitable" or pclass == "ocean":
 			mat.set_shader_parameter("ocean_level", float(p.get("ocean_level", 0.45)))
 			mat.set_shader_parameter("cloud_level", float(p.get("cloud_level", 0.28)))
+		# LT TexCube stand-in: equirect bake of genHeight/genColor/genClouds.
+		var bake_tex := PlanetBake.bake_equirect(seed_off, 4.0, 1.35, Vector4(1, 1, 1, 1), 256, 128)
+		mat.set_shader_parameter("planet_map", bake_tex)
+		mat.set_shader_parameter("use_bake", 1.0)
 		mi.material_override = mat
 		root.add_child(mi)
 
@@ -677,8 +703,9 @@ func _build_yields() -> void:
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		# Family mesh from field seed + composition — not one rock scaled forever
-		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), 1, composition)
+		# Near-field LOD band (detail 2 → band 6) for denser SDF rocks in capture/view.
+		var rock_detail := 2 if float(y.get("spread", 90.0)) < 140.0 else 1
+		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), rock_detail, composition)
 		mm.instance_count = count
 		var rng := SeededRNG.new(SeedHash.derive(int(y.get("seed", 1)), "field"))
 		var base_col: Color = pal["color"]
@@ -701,7 +728,11 @@ func _build_yields() -> void:
 				s *= 1.45
 			var basis := Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU))
 			mm.set_instance_transform(i, Transform3D(basis.scaled(Vector3.ONE * s), p))
+			# Density AO: rocks deeper in the belt darken slightly (Tex3D cavity spirit).
+			var dens := clampf(1.0 - p.length() / maxf(spread, 1.0), 0.0, 1.0)
+			var ao := lerpf(1.0, 0.72, dens * 0.85)
 			var c := base_col.lightened(rng.randf_range(-0.12, 0.18))
+			c = Color(c.r * ao, c.g * ao, c.b * ao, c.a)
 			if composition == "ice":
 				c = c.lerp(Color(0.85, 0.92, 1.0), rng.randf() * 0.35)
 			mm.set_instance_color(i, c)
@@ -849,6 +880,33 @@ func _build_life_fx() -> void:
 	draw.material = dm
 	_engine_fx.draw_pass_1 = draw
 	add_child(_engine_fx)
+
+	# LT pulse bolt + explosion disc (showcase near thruster / ship).
+	_pulse_mesh = MeshInstance3D.new()
+	var pq := QuadMesh.new()
+	pq.size = Vector2(0.9, 8.0)
+	_pulse_mesh.mesh = pq
+	var pm := ShaderMaterial.new()
+	pm.shader = load("res://shaders/pulse.gdshader")
+	pm.set_shader_parameter("pulse_color", Vector3(0.45, 0.75, 1.0))
+	pm.set_shader_parameter("intensity", 1.15)
+	_pulse_mesh.material_override = pm
+	_pulse_mesh.name = "pulse_bolt"
+	_pulse_mesh.visible = false
+	add_child(_pulse_mesh)
+
+	_explosion_mesh = MeshInstance3D.new()
+	var eq := QuadMesh.new()
+	eq.size = Vector2(14.0, 14.0)
+	_explosion_mesh.mesh = eq
+	var em := ShaderMaterial.new()
+	em.shader = load("res://shaders/explosion.gdshader")
+	em.set_shader_parameter("age", 0.2)
+	em.set_shader_parameter("seed", 1.0)
+	_explosion_mesh.material_override = em
+	_explosion_mesh.name = "explosion_disc"
+	_explosion_mesh.visible = false
+	add_child(_explosion_mesh)
 
 
 func _ship_scale(s: Dictionary) -> float:
@@ -1076,13 +1134,48 @@ func sync_ships() -> void:
 			if tm != null:
 				tm.set_shader_parameter("thruster_color", Vector3(exhaust.r, exhaust.g, exhaust.b))
 			_thruster_mesh.visible = true
-	elif _thruster_mesh != null:
-		_thruster_mesh.visible = false
+		# Pulse bolt along heading (periodic showcase).
+		if _pulse_mesh != null:
+			var pulse_phase := fmod(_fx_age * 0.35, 2.8)
+			var along := clampf(pulse_phase / 1.4, 0.0, 1.0)
+			var tip := np + nh.normalized() * lerpf(4.0, 42.0, along)
+			_pulse_mesh.global_position = tip
+			_pulse_mesh.look_at_from_position(tip, tip + nh.normalized(), Vector3.UP)
+			var pm_s: ShaderMaterial = _pulse_mesh.material_override as ShaderMaterial
+			if pm_s != null:
+				pm_s.set_shader_parameter("intensity", 1.2 * (1.0 - along * 0.35))
+				pm_s.set_shader_parameter("pulse_color", Vector3(
+					lerpf(0.4, exhaust.r, 0.35),
+					lerpf(0.75, exhaust.g, 0.25),
+					1.0
+				))
+			_pulse_mesh.visible = pulse_phase < 1.55
+		# Explosion disc cycles beside nearest ship for visual proof.
+		if _explosion_mesh != null:
+			var boom_t := fmod(_fx_age * 0.22, 3.5)
+			_explosion_mesh.global_position = np + nh.normalized().cross(Vector3.UP).normalized() * 18.0 + Vector3(0, 4, 0)
+			if _camera != null:
+				_explosion_mesh.look_at_from_position(
+					_explosion_mesh.global_position, _camera.global_position, Vector3.UP
+				)
+			var em_s: ShaderMaterial = _explosion_mesh.material_override as ShaderMaterial
+			if em_s != null:
+				em_s.set_shader_parameter("age", boom_t)
+				em_s.set_shader_parameter("seed", float(int(nearest.get("id", 1)) % 97) + 1.0)
+			_explosion_mesh.visible = boom_t < 1.8
+	else:
+		if _thruster_mesh != null:
+			_thruster_mesh.visible = false
+		if _pulse_mesh != null:
+			_pulse_mesh.visible = false
+		if _explosion_mesh != null:
+			_explosion_mesh.visible = false
 
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
 	if not _built:
 		return
+	_fx_age += dt
 	sync_ships()
 	if _dust != null and _camera != null:
 		_dust.global_position = _camera.global_position

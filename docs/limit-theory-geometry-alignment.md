@@ -10,27 +10,27 @@
 | --- | --- | --- | --- |
 | **Nebula IFS** | `gen/nebula.glsl` direction-space | Live sky + Rust bake | **Done** |
 | **Nebula bake quality** | ~1024 TexCube + mips | **1024×512 / 96 spp / 24 iter** | Partial (mips/mood still) |
-| **IRMap / starbg** | `genIRMap(256)` | Starfield `ir_suppress` + `nebula_tint` | Partial (no true IR bake) |
+| **IRMap / starbg** | `genIRMap(256)` | **`NebulaIRMap` from bake → star modulate** | **Done** (approx luminance IR) |
 | **Starfield** | `Starfield.lua` cluster + Exp^2.5 | `StarfieldGen` MultiMesh tiers | Mostly aligned |
-| **Fighter** | `ShipFighter.Standard` | ShapeLib all LODs + SurfaceDetail lottery | **Done** (IoU polish open) |
-| **Capital** | `ShipCapital.Sausage` | ShapeLib all LODs + `addAtIntersection` | **Done** (Joint still missing) |
+| **Fighter** | `ShipFighter.Standard` | ShapeLib all LODs + SurfaceDetail + Style + Joint mounts | **Done** (IoU polish open) |
+| **Capital** | `ShipCapital.Sausage` | ShapeLib all LODs + `addAtIntersection` + Style | **Done** |
 | **Ship finalize AO** | `computeAO` | Soft neighbourhood AO in `finalize_mesh` | Partial |
-| **UV / DiffuseMap** | `UVMap.lua`, `DiffuseMap.lua` | Vertex colour | Missing (optional) |
+| **UV / DiffuseMap** | `UVMap.lua`, `DiffuseMap.lua` | Spherical UV + panel tint in finalize | Partial |
 | **Station** | `Box` + `greeble` | ShapeLib station + role accents | Partial |
-| **Asteroid SDF** | `sdf/asteroid.glsl` | ShapeLibAsteroid radial displace | Partial |
-| **Asteroid LodMesh** | 8-band Tex3D bake | **8-band subdiv/octave tiers** (no Tex3D) | Partial |
-| **Asteroid fields** | SystemBasic exp ball + belts | **LT field + belt formulas** | Partial (counts EW-scaled) |
-| **Planet surface** | `gen/planet.glsl` → TexCube | Live IFS (18/16 iters); gas = colour field | Partial (**TexCube bake still missing**) |
+| **Asteroid SDF** | `sdf/asteroid.glsl` | ShapeLibAsteroid + density AO tint | Partial |
+| **Asteroid LodMesh** | 8-band Tex3D bake | **8-band subdiv/octave + dens AO** (no Tex3D) | Partial |
+| **Asteroid fields** | SystemBasic exp ball + belts | **LT field + belt formulas** + dens AO | Partial (counts EW-scaled) |
+| **Planet surface** | `gen/planet.glsl` → TexCube | **`PlanetBake` equirect + `use_bake`** | Partial (equirect not cube mips) |
 | **Planet materials** | `material/planet.glsl` | Spatial + fresnel atmo | Partial |
-| **Thruster VFX** | `effect/thruster.glsl` | **`thruster.gdshader` plume + spray** | Partial (pulse/explosion still missing) |
+| **Thruster VFX** | `effect/thruster.glsl` | **`thruster.gdshader` plume + spray** | Partial |
+| **Pulse / explosion** | `effect/pulse`, explosion | **`pulse` + `explosion` shaders** | Partial |
 | **Dust flecks** | `effect/dustfleck.glsl` | **`dustfleck.gdshader` quads** | Partial |
-| **Post** | tonemap2 expmap + vignette + bloom2 | **`lt_post` expmap+vignette**; glow off | Partial (bloom blocked on Compatibility) |
+| **Post** | tonemap2 expmap + vignette + bloom2 | **`lt_post` expmap+vignette+soft bloom** | Partial (no hex tiles) |
 | **System layout** | `SystemBasic` scale 5000 | **`SYSTEM_RADIUS=5000`** + LT place formulas | Partial (richer EW counts) |
 | **Ship materials** | AO + metal/triplanar | Soft AO + StandardMaterial3D | Partial |
 | **Local star / corona** | Engine lighting + bloom | Mesh + DirectionalLight | Partial |
-| **Style.lua warps** | Favored shapes by style | StyleProfile paint/exhaust | Approximate |
-| **ShapeLib Joint** | `ShapeLib/Joint` | Not ported | Missing |
-| **Pulse / explosion** | `effect/pulse`, explosion | None | Missing |
+| **Style.lua warps** | Favored shapes by style | **`ShapeLibStyle` favored warps** | Partial |
+| **ShapeLib Joint** | `ShapeLib/Joint` | **`ShapeLibJoint` wing mounts** | Partial |
 | **Economy / AI / fleets** | Think / Universe | Foundation; frozen until visuals | Frozen |
 
 ---
@@ -42,6 +42,8 @@
 | verts/polys, `extrudePoly`, `finalize`, `addAtIntersection` | `ShapeLib/Shape.lua` |
 | `scale`, `rotate`, `mirror`, `bevel`, `greeble`, `tessellate`, `stellate`, `sphereize` | `ShapeLib/Warp.lua` |
 | `Box`, `Prism` | `ShapeLib/BasicShapes.lua` |
+| `Joint` attach | `ShapeLib/Joint` → `shapelib/joint.gd` |
+| Style favored warps | `Style.lua` → `shapelib/style.gd` |
 | Fighter assembly + `SurfaceDetail` | `ShipFighter.lua` |
 | Station (active) | `Station.lua` `if true` → Box + greeble |
 | Asteroid | `Asteroid.lua` + `sdf/asteroid.glsl` |
@@ -55,16 +57,17 @@ EternalWar port: `presentation/generators/shapelib/`.
 ```
 HullStandard: Prism|sphereize → pitch90 → extrude → scale
 + WingsStandard | WingsTie
-+ WingMounts
++ WingMounts (Joint attach when side face found)
++ Style favored warp (detail≥2)
 + SurfaceDetail (bevel default; ~5% stellate/extrude/greeble)
 + normalize radius→3
-→ finalize (+ soft AO)
+→ finalize (+ soft AO + spherical UV panel tint)
 ```
 
-- **Patrol/Miner** → `ShapeLibShipFighter.standard(detail)`
-- **Hauler/Trader** → `ShapeLibShipCapital.sausage(detail)` with ray `addAtIntersection` for cockpit/plate
+- **Patrol/Miner** → `ShapeLibShipFighter.standard(detail, style)`
+- **Hauler/Trader** → `ShapeLibShipCapital.sausage(detail, style)` with ray `addAtIntersection`
 - All VisualLODs; uniform scale to design length; BATCH hull-only
-- Cache key: `v7shapelib`
+- Cache key: `v8shapelib`
 
 ---
 
@@ -85,23 +88,25 @@ HullStandard: Prism|sphereize → pitch90 → extrude → scale
 | Shader / pass | Path |
 | --- | --- |
 | Thruster plume | `shaders/thruster.gdshader` |
+| Pulse bolt | `shaders/pulse.gdshader` |
+| Explosion disc | `shaders/explosion.gdshader` |
 | Dust flecks | `shaders/dustfleck.gdshader` |
-| Post (expmap + vignette) | `shaders/lt_post.gdshader` |
-| Starfield IR tint | `shaders/starfield.gdshader` uniforms |
-| Planet IFS | `shaders/planet.gdshader` (live; TexCube later) |
+| Post (expmap + vignette + bloom) | `shaders/lt_post.gdshader` |
+| Starfield IR | `NebulaIRMap` + `StarfieldGen` modulate |
+| Planet IFS bake | `PlanetBake` equirect → `planet.gdshader` `use_bake` |
 | Nebula bake | NativeBridge `bake_nebula_panorama` 1024×512 |
 
 ---
 
 ## 6. Highest-leverage remaining
 
-1. **Planet TexCube bake** (`gen/planet.glsl` offline cubemap) — still the largest reinvented surface risk  
-2. **True asteroid Tex3D LodMesh** (8-band SDF bake)  
-3. **True IRMap** for starbg (not uniform tint)  
-4. **bloom2 without Compatibility hex tiles** (Forward+/custom blur)  
-5. **ShapeLib Joint + Style.lua favored warps**  
-6. **Pulse / explosion VFX**  
-7. **UV / DiffuseMap bake**  
+1. ~~Planet TexCube bake~~ → equirect bake landed; true cube mips still open  
+2. True asteroid Tex3D LodMesh (8-band SDF bake) — denser bands + dens AO only  
+3. ~~True IRMap~~ → luminance IR from nebula bake landed; LT genIRMap fidelity polish  
+4. ~~bloom2 without Compatibility hex~~ → soft custom bloom in `lt_post`  
+5. ~~ShapeLib Joint + Style.lua~~ → landed (partial; more Joint consumers)  
+6. ~~Pulse / explosion VFX~~ → shaders + presenter showcase  
+7. ~~UV / DiffuseMap~~ → spherical UV + panel tint; full UVMap packer still open  
 8. **Nebula mood / anisotropy** to close compare scores (~79 ship, ~72 star)
 
 ---
@@ -123,8 +128,8 @@ HullStandard: Prism|sphereize → pitch90 → extrude → scale
 | Capital | Sausage + ray attach; Hauler gallery |
 | Station | Greebled-box vs LT station stills |
 | Asteroid | SDF look + band LODs; Tex3D later |
-| Planet | IFS language now; TexCube bake next |
-| Thruster | Plume shader on nearest ship |
-| Post | Vignette + expmap without hex sky tiles |
+| Planet | IFS bake via equirect; cube mips later |
+| Thruster / pulse / boom | Shaders on nearest ship |
+| Post | Vignette + expmap + soft bloom without hex sky tiles |
 
 Progress = compare / IoU vs LT refs — not “more modules.”

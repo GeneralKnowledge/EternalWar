@@ -436,8 +436,7 @@ func intersect_ray(ray_origin: Vector3, ray_dir: Vector3) -> Variant:
 	return hit
 
 
-## Finalize → ArrayMesh. Soft cavity AO (approx LT computeAO) via neighbour darkening.
-## UV / DiffuseMap bake still deferred.
+## Finalize → ArrayMesh. Soft AO + spherical UV panel tint (DiffuseMap spirit).
 func finalize_mesh(hull_color: Color = Color(0.45, 0.45, 0.48), with_ao: bool = true) -> ArrayMesh:
 	var work := clone()
 	work.triangulate_fan()
@@ -451,12 +450,21 @@ func finalize_mesh(hull_color: Color = Color(0.45, 0.45, 0.48), with_ao: bool = 
 			continue
 		for k in 3:
 			var vi := int(poly[k])
+			var p: Vector3 = work.verts[vi]
 			var c := hull_color
+			# Spherical UV → mild panel / triplanar-ish variation (no full UVMap packer).
+			var nrm := p.normalized() if p.length_squared() > 1e-8 else Vector3.UP
+			var u := 0.5 + atan2(nrm.z, nrm.x) / TAU
+			var v := acos(clampf(nrm.y, -1.0, 1.0)) / PI
+			var panel := 0.92 + 0.12 * sin(u * 28.0) * sin(v * 18.0)
+			var seam := 1.0 - 0.08 * absf(sin(u * PI * 6.0))
+			c = Color(c.r * panel * seam, c.g * panel * seam, c.b * panel * seam, c.a)
 			if with_ao and ao.size() > vi:
 				var a := ao[vi]
 				c = Color(c.r * a, c.g * a, c.b * a, c.a)
 			st.set_color(c)
-			st.add_vertex(work.verts[vi])
+			st.set_uv(Vector2(u, v))
+			st.add_vertex(p)
 	st.generate_normals()
 	return st.commit()
 

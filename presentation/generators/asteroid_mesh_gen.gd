@@ -21,7 +21,7 @@ static func build(seed: int, detail: int = 1, composition: String = "iron") -> A
 		_:
 			family = seed % 4
 
-	var key := "asteroid_sdf:%d:%d:%s" % [seed, detail, composition]
+	var key := "asteroid_sdf:%d:%d:%s:v2dens" % [seed, detail, composition]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
