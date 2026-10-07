@@ -58,27 +58,47 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
         "preset": "sky",
         "label": "Sky",
-        "blurb": "IFS nebula + stars — no ships",
+        "blurb": "IFS nebula + stars — the void alone",
     },
     "ship": {
         "preset": "ship",
         "label": "Ship",
-        "blurb": "ShapeLib fighter in an asteroid field",
+        "blurb": "Fighter drifting a rock field",
     },
     "solo": {
         "preset": "solo",
         "label": "Solo ship",
-        "blurb": "Fighter against the sky only",
+        "blurb": "One hull against the nebula",
+    },
+    "fleet": {
+        "preset": "fleet",
+        "label": "Fleet",
+        "blurb": "Lead ship with ShapeLib escorts",
+    },
+    "skirmish": {
+        "preset": "skirmish",
+        "label": "Skirmish",
+        "blurb": "Two wings mid-fight — turrets live",
+    },
+    "station": {
+        "preset": "station",
+        "label": "Station",
+        "blurb": "Industrial hub and light traffic",
+    },
+    "system": {
+        "preset": "system",
+        "label": "System",
+        "blurb": "Station, rocks, ships — a living plate",
     },
     "asteroids": {
         "preset": "asteroids",
         "label": "Asteroids",
-        "blurb": "Rock field, camera pulled back",
+        "blurb": "Ore field, camera pulled back",
     },
     "planet": {
         "preset": "planet",
         "label": "Planet",
-        "blurb": "Procedural world plate",
+        "blurb": "Procedural world under the sky",
     },
 }
 

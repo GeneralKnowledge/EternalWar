@@ -9,11 +9,17 @@ Rate limit: **1 bake per IP per minute**.
 
 ## Categories
 
+Dreams of Limit Theory — scenes from the real engine, not a port.
+
 | UI | Native `preset=` |
 |----|------------------|
 | Sky | `sky` |
-| Ship | `ship` (fighter + rocks) |
-| Solo ship | `solo` (fighter only) |
+| Ship | `ship` |
+| Solo ship | `solo` |
+| Fleet | `fleet` (escorts) |
+| Skirmish | `skirmish` (Attack AI + turrets) |
+| Station | `station` |
+| System | `system` (station + rocks + traffic) |
 | Asteroids | `asteroids` |
 | Planet | `planet` |
 
