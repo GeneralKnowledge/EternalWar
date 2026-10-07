@@ -164,7 +164,14 @@ vec3 lut_wave(float t) {
 // Direction-space IFS only — no mass lobes, void discs, galaxy band, or sparkle grid.
 vec3 generate(vec3 dir_in, int sample_count) {
 	vec3 dir = normalize(dir_in);
-	vec3 c = vec3(bg_density(dir)) * 1.25;
+	vec3 c = vec3(bg_density(dir)) * 1.35;
+
+	// Large-scale IFS mood at this direction (not a painted mass lobe).
+	float m_sky = magic(dir * 0.018);
+	float sky_t = exp(-m_sky * m_sky);
+	vec3 sky_wave = lut_wave(sky_t);
+	c += sky_wave * 0.06;
+	c += mix(secondary_color, primary_color, sky_t) * 0.05 * sky_t;
 
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
@@ -174,6 +181,9 @@ vec3 generate(vec3 dir_in, int sample_count) {
 	float w = 1.0 / float(sample_count);
 	vec3 c_emit = primary_color;
 	vec3 emit_acc = vec3(0.0);
+	// Without composition lobes the old live path used gas_gate≈0.55 so absorb
+	// did not crush the whole product to black on mediump.
+	const float absorb_scale = 0.55;
 
 	for (int i = 0; i < 64; i++) {
 		if (i >= sample_count) {
@@ -193,20 +203,18 @@ vec3 generate(vec3 dir_in, int sample_count) {
 		vs -= 1.15 * cavity;
 		vec3 filament_emit = 0.55 * c_emit * filament;
 		filament_emit += 0.22 * secondary_color * pow(clamp(t, 0.0, 1.0), 1.4);
-		// Ring modulation from the IFS field — breaks constant wash without
-		// painting lobes on the dome.
 		float rings = 0.55 + 0.45 * sin(40.0 * m) * cos(30.0 * m);
-		filament_emit *= clamp(rings, 0.15, 1.0);
+		filament_emit *= clamp(rings, 0.20, 1.0);
 		vs += filament_emit;
 
-		c *= exp(-kAbsorb * w * max(vs, vec3(0.0)));
-		emit_acc += filament_emit * w * 0.70 * wave;
+		c *= exp(-kAbsorb * w * max(vs, vec3(0.0)) * absorb_scale);
+		emit_acc += filament_emit * w * 0.55 * (0.65 + 0.35 * sky_t);
 	}
 
 	c += emit_acc;
-	c = mix(bg_color * 0.45, c, 0.92);
-	c *= 1.10;
-	return max(c, bg_color * 0.20);
+	c = mix(bg_color * 0.55, c, 0.95);
+	c *= 1.15;
+	return max(c, bg_color * 0.22);
 }
 
 void sky() {
