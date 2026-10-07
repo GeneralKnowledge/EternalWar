@@ -122,8 +122,10 @@ func _build_environment() -> void:
 	# Visible sky runs generate() every pixel (see deep_space_sky.gdshader).
 	# REALTIME + 256 is fine for IBL; avoid QUALITY 512 bake on Compatibility
 	# (minutes per system seed with heavy IFS).
+	# Visible sky = live IFS generate(dir). Radiance is for IBL only — keep it
+	# modest so Compatibility doesn't bake for minutes (QUALITY 512 is too slow).
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
-	sky.radiance_size = Sky.RADIANCE_SIZE_256
+	sky.radiance_size = Sky.RADIANCE_SIZE_512
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
 	_apply_sky_uniforms(sky_mat, palette)
@@ -131,19 +133,19 @@ func _build_environment() -> void:
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = ambient_c
-	e.ambient_light_energy = 0.16
+	e.ambient_light_energy = 0.14
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 0.92
-	# Bloom for star peaks; keep blacks (avoid hex-blob wash on Compatibility).
+	e.tonemap_exposure = 0.95
+	# Bloom for star peaks; keep blacks (hex bokeh wash reads as "sphere tiles").
 	e.glow_enabled = true
-	e.glow_intensity = 0.42
-	e.glow_bloom = 0.08
-	e.glow_hdr_threshold = 1.15
-	e.glow_hdr_scale = 1.2
-	e.set_glow_level(2, 0.55)
-	e.set_glow_level(3, 0.85)
-	e.set_glow_level(4, 0.6)
-	e.set_glow_level(5, 0.35)
+	e.glow_intensity = 0.38
+	e.glow_bloom = 0.06
+	e.glow_hdr_threshold = 1.2
+	e.glow_hdr_scale = 1.1
+	e.set_glow_level(2, 0.45)
+	e.set_glow_level(3, 0.75)
+	e.set_glow_level(4, 0.5)
+	e.set_glow_level(5, 0.28)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)

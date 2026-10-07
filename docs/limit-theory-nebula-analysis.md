@@ -126,12 +126,15 @@ System hue picks now reserve ~18% amber–gold so random seeds are not cyan-lock
 
 | LT | EternalWar now |
 | --- | --- |
-| `magic()` Kaliset IFS (~30 iters) | `deep_space_sky.gdshader` `magic()` (~28 iters) |
-| ~128 absorption samples along `dir` (bake) | 48 samples along `EYEDIR` (live sky) |
-| `ColorLUT` 1D textures | Seeded LUT knots + mood palette |
-| TexCube env map at runtime | Godot Sky shader (virtual cubemap) |
-| Separate starfield mesh | MultiMesh star layers |
+| `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (30 iters) |
+| ~128 absorption samples `p = dir*kScale*i/N` | 72 live / 40 cubemap samples, **same path** |
+| `ColorLUT` 1D textures | Seeded LUT knots + mild mood tint |
+| TexCube env map at runtime | Godot Sky shader (live `generate`; bake still TODO) |
+| Separate starfield mesh | MultiMesh star layers (no sparkle lattice in sky) |
 
-- World-space `nebula_volume` / billboard wisps are **off** the primary path (optional future accent only)
-- Composition still gates lobes / voids / band
-- Future closer match: bake TexCube once per seed like `Nebula1.lua`
+### Why it looked like a giant painted sphere
+Earlier EW sky added **directional mass lobes, void paints, galaxy-band wash, and a `floor(dir)` sparkle grid** on top of IFS. Those read as soft blobs / tiles on a dome. LT structure comes only from IFS absorption along the ray — remove dome paints.
+
+- World-space `nebula_volume` / billboard wisps stay **off**
+- Soft lobe/void/band **paints removed** from `generate()`
+- Future closer match: bake TexCube once per seed like `Nebula1.lua` (1024 + mips)

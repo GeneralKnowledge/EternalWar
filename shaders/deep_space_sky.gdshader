@@ -1,17 +1,16 @@
 shader_type sky;
 
-// Limit Theory–aligned direction-space nebula (gen/nebula.glsl principles).
-// Primary look = Kaliset IFS density + absorption along EYEDIR.
-// NOT world-space fog volumes. Composition biases lobes / voids / palette.
+// Limit Theory direction-space nebula — port of gen/nebula.glsl `generate(dir)`.
+// Structure comes from Kaliset IFS + absorption along the view ray into dir-space,
+// NOT soft lobes / lattices painted on a sky sphere.
+//
+// LT runtime path: bake this into a TexCube, then sample with skybox.glsl.
+// We evaluate live (Godot Sky) with a reduced sample count for realtime.
 
 uniform float seed = 42.0;
 uniform vec3 bg_color = vec3(0.02, 0.025, 0.05);
-uniform vec3 band_color = vec3(0.45, 0.4, 0.7);
 uniform vec3 primary_color = vec3(0.4, 0.3, 0.7);
 uniform vec3 secondary_color = vec3(0.3, 0.35, 0.55);
-uniform vec3 galaxy_normal = vec3(0.15, 1.0, 0.1);
-uniform float band_width = 3.6;
-uniform float band_strength = 0.55;
 uniform vec3 star_dir = vec3(0.2, 0.55, 0.15);
 uniform float roughness = 0.72;
 
@@ -19,26 +18,36 @@ uniform float roughness = 0.72;
 uniform vec3 lut_r = vec3(0.2, 0.55, 0.9);
 uniform vec3 lut_g = vec3(0.25, 0.5, 0.75);
 uniform vec3 lut_b = vec3(0.35, 0.55, 0.85);
-uniform vec2 lut_rg_mid = vec2(0.45, 0.4); // R/G knot at t≈0.5
-uniform vec2 lut_b_edge = vec2(0.3, 0.7);  // B knots at t≈0.25 / 0.75
+uniform vec2 lut_rg_mid = vec2(0.45, 0.4);
+uniform vec2 lut_b_edge = vec2(0.3, 0.7);
 
+// Kept for GDScript wiring / future bake bias — NOT used to paint dome lobes.
+uniform vec3 band_color = vec3(0.45, 0.4, 0.7);
+uniform vec3 galaxy_normal = vec3(0.15, 1.0, 0.1);
+uniform float band_width = 3.6;
+uniform float band_strength = 0.55;
 uniform vec3 mass0_dir = vec3(0.4, 0.1, 0.35);
 uniform vec3 mass0_params = vec3(1.0, 0.6, 0.4);
 uniform vec3 mass1_dir = vec3(-0.3, 0.05, 0.6);
 uniform vec3 mass1_params = vec3(0.8, 0.5, 0.45);
 uniform vec3 mass2_dir = vec3(0.1, -0.2, -0.7);
 uniform vec3 mass2_params = vec3(0.7, 0.4, 0.5);
-
 uniform vec3 void0_dir = vec3(-0.6, 0.4, -0.3);
 uniform float void0_radius = 0.5;
 uniform vec3 void1_dir = vec3(0.5, -0.5, 0.4);
 uniform float void1_radius = 0.45;
 
 const float kScale = 0.040;
-const int kSamples = 48; // LT bake uses 128; 48 is realtime sky budget
-const int kIterations = 28; // LT uses 30
+// LT bake uses 128; live sky budget. Cubemap pass can go lower.
+const int kSamplesBg = 72;
+const int kSamplesCube = 40;
+const int kIterations = 30;
 const float kBrightConstant = 0.075;
 const float kBrightCell = 0.100;
+
+float hash11(float x) {
+	return fract(sin(x * 127.1 + seed * 0.13) * 43758.5453);
+}
 
 float hash21(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21) + seed * 0.01);
@@ -46,13 +55,49 @@ float hash21(vec2 p) {
 	return fract(p.x * p.y);
 }
 
-float noise3(vec3 p) {
+// Cheap stand-in for LT noise4(float) used inside magic().
+float noise4(float x) {
+	float i = floor(x);
+	float f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(hash11(i), hash11(i + 1.0), f);
+}
+
+// fSmoothNoise-ish: multi-octave value noise for bgDensity (LT uses 8 octaves).
+float smooth_noise3(vec3 p) {
 	vec3 i = floor(p);
 	vec3 f = fract(p);
 	f = f * f * (3.0 - 2.0 * f);
-	float n = hash21(i.xy + i.z * 17.0);
-	float n2 = hash21(i.yz + i.x * 13.0 + 3.1);
-	return mix(n, n2, f.z);
+	float n000 = hash21(i.xy + i.z * 19.0);
+	float n100 = hash21(i.xy + vec2(1.0, 0.0) + i.z * 19.0);
+	float n010 = hash21(i.xy + vec2(0.0, 1.0) + i.z * 19.0);
+	float n110 = hash21(i.xy + vec2(1.0, 1.0) + i.z * 19.0);
+	float n001 = hash21(i.xy + (i.z + 1.0) * 19.0);
+	float n101 = hash21(i.xy + vec2(1.0, 0.0) + (i.z + 1.0) * 19.0);
+	float n011 = hash21(i.xy + vec2(0.0, 1.0) + (i.z + 1.0) * 19.0);
+	float n111 = hash21(i.xy + vec2(1.0, 1.0) + (i.z + 1.0) * 19.0);
+	float nx00 = mix(n000, n100, f.x);
+	float nx10 = mix(n010, n110, f.x);
+	float nx01 = mix(n001, n101, f.x);
+	float nx11 = mix(n011, n111, f.x);
+	return mix(mix(nx00, nx10, f.y), mix(nx01, nx11, f.y), f.z);
+}
+
+float f_smooth_noise(vec3 p, int octaves, float lac) {
+	float sum = 0.0;
+	float amp = 1.0;
+	float norm = 0.0;
+	vec3 q = p;
+	for (int o = 0; o < 8; o++) {
+		if (o >= octaves) {
+			break;
+		}
+		sum += amp * smooth_noise3(q);
+		norm += amp;
+		amp *= 0.5;
+		q *= lac;
+	}
+	return sum / max(norm, 1e-4);
 }
 
 // LT magic() — Kaliset 4D with noise injection (gen/nebula.glsl)
@@ -68,8 +113,9 @@ float magic(vec3 p) {
 			break;
 		}
 		float m = dot(z, z);
-		z = abs(z) / max(m, 1e-4) - c;
-		z += 0.02 * log(1e-4 + noise3(vec3(float(i) + seed * 0.01)));
+		// LT divides by m directly; guard only the singularity.
+		z = abs(z) / max(m, 1e-8) - c;
+		z += 0.02 * log(1.0e-10 + noise4(float(i) + seed));
 		z += 0.25 * sin(z);
 		float lm = l - m;
 		a += w * exp(-2.0 * lm * lm);
@@ -81,15 +127,14 @@ float magic(vec3 p) {
 		c = c.yzwx;
 	}
 	float t = a / max(tw, 1e-4);
-	// LT: high-frequency filament rings from the IFS field
 	return 0.5 + 0.5 * min(cos(30.0 * t), sin(40.0 * t));
 }
 
 float bg_density(vec3 p) {
-	return kBrightConstant + kBrightCell * noise3(p * 4.0 + vec3(seed));
+	// LT: kBrightConstant + kBrightCell * fSmoothNoise(p*4 + seed, 8, 2.0)
+	return kBrightConstant + kBrightCell * f_smooth_noise(p * 4.0 + vec3(seed * 0.01), 8, 2.0);
 }
 
-// Piecewise LUT approx — LT samples texture1D(lut*, t)
 float lut1(float t, float a, float b, float c, float d, float e) {
 	t = clamp(t, 0.0, 1.0);
 	if (t < 0.25) {
@@ -105,91 +150,63 @@ float lut1(float t, float a, float b, float c, float d, float e) {
 }
 
 vec3 lut_wave(float t) {
+	// Approximate texture1D(lut*, t) then wave *= sqrt(wave) as in LT.
 	float r = lut1(t, lut_r.x * 0.35, lut_r.x, lut_rg_mid.x, lut_r.y, lut_r.z);
 	float g = lut1(t, lut_g.x * 0.35, lut_g.x, lut_rg_mid.y, lut_g.y, lut_g.z);
 	float b = lut1(t, lut_b.x * 0.4, lut_b_edge.x, lut_b.x, lut_b_edge.y, lut_b.z);
 	vec3 wave = vec3(r, g, b);
-	// Nudge toward mood palette so forced moods read clearly
-	wave = mix(wave, mix(secondary_color, primary_color, t), 0.35);
-	return sqrt(max(wave, vec3(0.0)));
+	// Mild mood tint — keep LUT-driven structure dominant (not a dome wash).
+	wave = mix(wave, mix(secondary_color, primary_color, t), 0.18);
+	wave *= sqrt(max(wave, vec3(0.0)));
+	return wave;
 }
 
-float mass_bias(vec3 dir) {
-	float b = 0.0;
-	b += pow(max(0.0, dot(dir, normalize(mass0_dir))), 6.0) * mass0_params.x;
-	b += pow(max(0.0, dot(dir, normalize(mass1_dir))), 7.0) * mass1_params.x * 0.75;
-	b += pow(max(0.0, dot(dir, normalize(mass2_dir))), 8.0) * mass2_params.x * 0.55;
-	return clamp(b, 0.0, 2.0);
-}
+// LT Nebula1 / gen/nebula.glsl generate(dir) — absorption IFS, no dome paints.
+vec3 generate(vec3 dir_in, int sample_count) {
+	vec3 dir = normalize(dir_in);
+	vec3 c = vec3(bg_density(dir));
 
-// LT Nebula1.lua path: bake generate(dir) into the radiance cubemap, sample as skybox.
-vec3 generate(vec3 dir) {
-	// Soft voids — intentional negative space (composition)
-	float void_w = 0.0;
-	void_w = max(void_w, smoothstep(void0_radius * 1.05, void0_radius * 0.15, 1.0 - max(dot(dir, normalize(void0_dir)), 0.0)));
-	void_w = max(void_w, smoothstep(void1_radius * 1.05, void1_radius * 0.15, 1.0 - max(dot(dir, normalize(void1_dir)), 0.0)));
-	void_w = clamp(void_w, 0.0, 1.0);
-
-	float bias = mass_bias(dir);
-	float lobe = smoothstep(0.02, 0.45, bias);
-	float gas_gate = mix(0.55, 1.0, lobe) * (1.0 - void_w * 0.75);
-
-	vec3 c = vec3(bg_density(dir)) * 1.35;
-	c += mix(secondary_color, primary_color, 0.45) * 0.04 * gas_gate;
-
+	// Central star term (also present as a mesh; this matches LT bake energy).
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
 	c += dd * primary_color;
 
-	vec3 march_dir = dir * kScale * (1.0 + bias * 0.08);
-	float w = 1.0 / float(kSamples);
+	// Critical LT path: sample along dir * kScale * i / N  (NOT a sphere surface paint).
+	vec3 march = dir * kScale;
+	float w = 1.0 / float(sample_count);
 	vec3 c_emit = primary_color;
-	vec3 emit_acc = vec3(0.0);
-	for (int i = 0; i < 64; i++) {
-		if (i >= kSamples) {
+	for (int i = 0; i < 128; i++) {
+		if (i >= sample_count) {
 			break;
 		}
-		vec3 p = march_dir * (float(i) + 0.5) * w * 12.0;
+		vec3 p = march * float(i) * w;
 		float t = magic(p);
 		t = exp(-t * t);
 		vec3 wave = lut_wave(t);
 
-		const float k = 3.6;
+		// LT constants: k=6, q=1.2, cavity at t≈0.90, emit 0.50*cEmit
+		const float k = 6.0;
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
-		vs -= 1.15 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
-		vec3 filament_emit = 0.55 * c_emit * exp(-pow(10.0 * abs(t - 0.88), 0.50));
-		filament_emit += 0.22 * secondary_color * pow(clamp(t, 0.0, 1.0), 1.4);
-		vs += filament_emit;
-		c *= exp(-k * w * max(vs, vec3(0.0)) * mix(0.55, 1.0, gas_gate));
-		emit_acc += filament_emit * w * gas_gate * (0.55 + bias * 0.5);
+		vs -= 1.25 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
+		vs += 0.50 * c_emit * exp(-pow(10.0 * abs(t - 0.90), 0.50));
+		// Slight secondary filament colour (mood), still inside absorption — not a lobe.
+		vs += 0.08 * secondary_color * pow(clamp(t, 0.0, 1.0), 2.0);
+		c *= exp(-k * w * max(vs, vec3(0.0)));
 	}
-	c += emit_acc;
 
-	vec3 gn = normalize(galaxy_normal);
-	float plane = 1.0 - abs(dot(dir, gn));
-	float band = pow(clamp(plane, 0.0, 1.0), max(band_width * 0.95, 2.5));
-	c += band_color * band * 0.10 * band_strength * gas_gate;
-	c += mix(primary_color, secondary_color, 0.35) * bias * 0.18 * gas_gate;
-
-	vec3 col = mix(bg_color * 0.55, c, 0.95);
-	col = mix(col, bg_color * 0.25, void_w * 0.65);
-	col *= 1.0 - void_w * 0.25;
-	col *= 1.15;
-
-	vec2 suv = dir.xy * 110.0 + dir.z * 45.0 + seed;
-	float cell = hash21(floor(suv));
-	if (cell > 0.986 && void_w < 0.42) {
-		vec2 f = fract(suv) - 0.5;
-		float spark = exp(-dot(f, f) * 150.0) * (0.22 + cell * 0.32);
-		col += vec3(0.85, 0.9, 1.0) * spark * 0.4;
-	}
-	return max(col, vec3(0.0));
+	// Floor so Compatibility doesn't crush to pure black in deep cavities.
+	c = max(c, bg_color * 0.15);
+	return c;
 }
 
 void sky() {
 	vec3 dir = normalize(EYEDIR);
-	// Always generate for the visible sky (Compatibility/OpenGL3 RADIANCE sampling
-	// can return black). Cubemap pass still bakes for IBL — LT TexCube intent.
-	COLOR = generate(dir);
+	// Always evaluate generate() for the visible sky. Compatibility RADIANCE
+	// sampling can return black if we only write during AT_CUBEMAP_PASS.
+	int samples = kSamplesBg;
+	if (AT_CUBEMAP_PASS) {
+		samples = kSamplesCube;
+	}
+	COLOR = generate(dir, samples);
 }
