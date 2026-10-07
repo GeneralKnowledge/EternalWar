@@ -35,8 +35,16 @@ python3 -m http.server 8765
 - `js/rng.js` — seeded param derivation (HSL nebula color like `Nebula1.lua`)
 - `js/app.js` — WebGL2 bootstrap, UI, PNG export
 
+## Pipeline
+
+1. Midpoint-displacement ColorLUT → 256×1 textures  
+2. Direction-space IFS absorption (`kScale=0.040`, up to 128 samples) → HDR target  
+3. Clustered starfield point sprites (additive)  
+4. Threshold bloom + unsharp  
+5. LT tonemap (gamma → vignette → expmap → bezier grading)
+
 ## Next
 
-- Closer ColorLUT (midpoint-displacement 1D textures)
-- Match native seeds more tightly
-- Optional worker / progressive refinement for 4K
+- Match native uint64 seed stream more tightly  
+- Progressive refinement / worker for 4K exports  
+- Optional cubemap bake preview (closer to native env path)
