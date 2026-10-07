@@ -103,6 +103,21 @@ Put the camera in front of a large mass. Dolly / orbit / pass near dense gas.
 
 Planet compare score ≈ **85/100**. Remaining gap is mid-frequency edge density / anisotropy vs LT planet stills — chase with filament ridges, not higher cavity or overall density.
 
+### Mood sheet (palette coverage)
+
+Capture with `lt_compare.tscn --nebula-sheet`. Latest sheet (`out/nebula_mood_sheet.png`):
+
+| Mood | Gas B−R | Family |
+| --- | --- | --- |
+| amber_gold | −0.29 | warm (LT cockpit) |
+| magenta_rose | −0.08 | warm (LT ship gas) |
+| crimson | −0.29 | warm |
+| cyan_teal | +0.23 | cool |
+| indigo_violet | +0.21 | cool |
+| cold_white | +0.10 | cool |
+
+System hue picks now reserve ~18% amber–gold so random seeds are not cyan-locked.
+
 ---
 
 ## 6. Implementation notes (this milestone)

@@ -20,6 +20,22 @@ godot --path . --rendering-driver opengl3 --resolution 1280x720 \
   res://scenes/lt_compare.tscn -- --capture=/workspace/tools/visual_compare/eternalwar
 ```
 
+## Nebula mood sheet
+
+Force each palette family (amber / cyan / indigo / magenta / crimson / cold white) and compose a contact sheet vs LT refs:
+
+```bash
+godot --path . --rendering-driver opengl3 --resolution 1280x720 \
+  res://scenes/lt_compare.tscn -- \
+  --nebula-sheet --capture=/workspace/tools/visual_compare/eternalwar/nebula_sheet
+
+python3 tools/visual_compare/make_nebula_sheet.py \
+  --ew-dir tools/visual_compare/eternalwar/nebula_sheet \
+  --out tools/visual_compare/out/nebula_mood_sheet.png
+```
+
+LT stills are not cyan-only: cockpit = warm amber, ship gas = magenta/rose, planet = cool blue. The sheet checks EW is not stuck on one cool mood.
+
 ## Ship gallery capture
 
 ```bash
