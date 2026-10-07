@@ -126,14 +126,14 @@ System hue picks now reserve ~18% amber–gold so random seeds are not cyan-lock
 
 | LT | EternalWar now |
 | --- | --- |
-| `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (30 iters) |
-| ~128 absorption samples `p = dir*kScale*i/N` | 72 live / 40 cubemap samples, **same path** |
+| `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (18 live iters) |
+| ~128 absorption samples `p = dir*kScale*i/N` | 40 / 28 samples, **same march path** |
 | `ColorLUT` 1D textures | Seeded LUT knots + mild mood tint |
-| TexCube env map at runtime | Godot Sky shader (live `generate`; bake still TODO) |
+| TexCube env map at runtime | Godot Sky QUALITY radiance bake from `generate(dir)` |
 | Separate starfield mesh | MultiMesh star layers (no sparkle lattice in sky) |
 
 ### Why it looked like a giant painted sphere
-Earlier EW sky added **directional mass lobes, void paints, galaxy-band wash, and a `floor(dir)` sparkle grid** on top of IFS. Those read as soft blobs / tiles on a dome. LT structure comes only from IFS absorption along the ray — remove dome paints.
+Earlier EW sky added **directional mass lobes, void paints, galaxy-band wash, and a `floor(dir)` sparkle grid** on top of IFS. Those read as soft blobs / tiles on a dome. On Compatibility, REALTIME radiance also showed **cubemap face seams**. LT structure comes only from IFS absorption along the ray — remove dome paints; bake QUALITY radiance; keep cavity emission additive so mediump cannot crush to black.
 
 - World-space `nebula_volume` / billboard wisps stay **off**
 - Soft lobe/void/band **paints removed** from `generate()`

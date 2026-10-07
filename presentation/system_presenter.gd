@@ -119,13 +119,11 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
-	# Visible sky runs generate() every pixel (see deep_space_sky.gdshader).
-	# REALTIME + 256 is fine for IBL; avoid QUALITY 512 bake on Compatibility
-	# (minutes per system seed with heavy IFS).
-	# Visible sky = live IFS generate(dir). Radiance is for IBL only — keep it
-	# modest so Compatibility doesn't bake for minutes (QUALITY 512 is too slow).
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
-	sky.radiance_size = Sky.RADIANCE_SIZE_512
+	# Compatibility samples the radiance cubemap for the background. REALTIME +
+	# heavy IFS showed face seams ("inside a giant sphere") and often baked black.
+	# QUALITY bakes once from generate(dir); 256 is enough with the cheaper live IFS.
+	sky.process_mode = Sky.PROCESS_MODE_QUALITY
+	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	var sky_mat := ShaderMaterial.new()
 	sky_mat.shader = load("res://shaders/deep_space_sky.gdshader")
 	_apply_sky_uniforms(sky_mat, palette)

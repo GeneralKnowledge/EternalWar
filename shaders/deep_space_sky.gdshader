@@ -5,7 +5,9 @@ shader_type sky;
 // NOT soft lobes / lattices painted on a sky sphere.
 //
 // LT runtime path: bake this into a TexCube, then sample with skybox.glsl.
-// We evaluate live (Godot Sky) with a reduced sample count for realtime.
+// We evaluate live (Godot Sky). Compatibility displays via the radiance
+// cubemap, so the shader must stay cheap enough to bake and numerically
+// stable in mediump (pure `c *= exp(...)` underflows to irreversible black).
 
 uniform float seed = 42.0;
 uniform vec3 bg_color = vec3(0.02, 0.025, 0.05);
@@ -38,12 +40,14 @@ uniform vec3 void1_dir = vec3(0.5, -0.5, 0.4);
 uniform float void1_radius = 0.45;
 
 const float kScale = 0.040;
-// LT bake uses 128; live sky budget. Cubemap pass can go lower.
-const int kSamplesBg = 72;
-const int kSamplesCube = 40;
-const int kIterations = 30;
+// LT bake uses 128×30. Live/Compatibility budget: enough structure, no mediump death.
+const int kSamplesBg = 40;
+const int kSamplesCube = 28;
+const int kIterations = 18;
 const float kBrightConstant = 0.075;
 const float kBrightCell = 0.100;
+// Slightly softer than LT k=6 so mediump radiance bake keeps energy.
+const float kAbsorb = 4.5;
 
 float hash11(float x) {
 	return fract(sin(x * 127.1 + seed * 0.13) * 43758.5453);
@@ -88,7 +92,7 @@ float f_smooth_noise(vec3 p, int octaves, float lac) {
 	float amp = 1.0;
 	float norm = 0.0;
 	vec3 q = p;
-	for (int o = 0; o < 8; o++) {
+	for (int o = 0; o < 6; o++) {
 		if (o >= octaves) {
 			break;
 		}
@@ -132,7 +136,7 @@ float magic(vec3 p) {
 
 float bg_density(vec3 p) {
 	// LT: kBrightConstant + kBrightCell * fSmoothNoise(p*4 + seed, 8, 2.0)
-	return kBrightConstant + kBrightCell * f_smooth_noise(p * 4.0 + vec3(seed * 0.01), 8, 2.0);
+	return kBrightConstant + kBrightCell * f_smooth_noise(p * 4.0 + vec3(seed), 6, 2.0);
 }
 
 float lut1(float t, float a, float b, float c, float d, float e) {
@@ -162,20 +166,27 @@ vec3 lut_wave(float t) {
 }
 
 // LT Nebula1 / gen/nebula.glsl generate(dir) — absorption IFS, no dome paints.
+// Compatibility mediump cannot survive a long product of exp(-k*w*vs); we keep the
+// LT absorb term on transmittance and deposit cavity emission additively (same
+// energy LT gets from negative vs, without irreversible underflow to black).
 vec3 generate(vec3 dir_in, int sample_count) {
 	vec3 dir = normalize(dir_in);
-	vec3 c = vec3(bg_density(dir));
+	vec3 bg = vec3(bg_density(dir));
 
 	// Central star term (also present as a mesh; this matches LT bake energy).
 	float dstar = max(0.0, 1.0 - dot(dir, normalize(star_dir)));
 	float dd = 8.0 * exp(-sqrt(4096.0 * dstar)) + 4.0 * exp(-sqrt(sqrt(1024.0 * dstar)));
-	c += dd * primary_color;
+	bg += dd * primary_color;
 
 	// Critical LT path: sample along dir * kScale * i / N  (NOT a sphere surface paint).
 	vec3 march = dir * kScale;
 	float w = 1.0 / float(sample_count);
 	vec3 c_emit = primary_color;
-	for (int i = 0; i < 128; i++) {
+
+	vec3 T = vec3(1.0);
+	vec3 emit_acc = vec3(0.0);
+
+	for (int i = 0; i < 64; i++) {
 		if (i >= sample_count) {
 			break;
 		}
@@ -184,17 +195,29 @@ vec3 generate(vec3 dir_in, int sample_count) {
 		t = exp(-t * t);
 		vec3 wave = lut_wave(t);
 
-		// LT constants: k=6, q=1.2, cavity at t≈0.90, emit 0.50*cEmit.
-		// Do NOT clamp vs — negative vs is intentional (boost / filament).
-		const float k = 6.0;
+		// LT constants: q=1.2, cavity at t≈0.90, emit 0.50*cEmit.
 		const float q = 1.2;
 		vec3 vs = exp(-q * wave * t);
-		vs -= 1.25 * exp(-pow(8.0 * abs(t - 0.90), 0.75));
-		vs += 0.50 * c_emit * exp(-pow(10.0 * abs(t - 0.90), 0.50));
-		c *= exp(-k * w * vs);
+		float cavity = exp(-pow(8.0 * abs(t - 0.90), 0.75));
+		float filament = exp(-pow(10.0 * abs(t - 0.90), 0.50));
+		vs -= 1.25 * cavity;
+		vs += 0.50 * c_emit * filament;
+
+		// Split signed vs: absorb via transmittance, emit via additive deposit.
+		// Equivalent in spirit to LT `c *= exp(-k*w*vs)` when vs crosses zero,
+		// but safe when T would otherwise underflow in mediump.
+		vec3 absorb = max(vs, vec3(0.0));
+		vec3 boost = max(-vs, vec3(0.0));
+		T *= exp(-kAbsorb * w * absorb);
+		T = max(T, vec3(1.0e-4));
+		// Cavity / filament glow — direction-space only (no mass-lobe gates).
+		vec3 filament_emit = (0.55 * c_emit * filament) + (0.20 * secondary_color * cavity);
+		filament_emit += boost * wave * 0.35;
+		emit_acc += T * filament_emit * w * 1.15;
 	}
 
-	return max(c, vec3(0.0));
+	vec3 c = T * bg + emit_acc;
+	return max(c, bg_color * 0.12);
 }
 
 void sky() {
