@@ -381,6 +381,34 @@ func _test_perf_benchmarks() -> void:
 func _test_native_kernels() -> void:
 	print("--- Native kernels ---")
 	_ok("NativeBridge reports a backend", NativeBridge.backend_name() in ["rust", "gdscript"])
+	# Nebula IFS panorama bake (Rust). Skip soft-fail when .so missing.
+	var bake: Dictionary = NativeBridge.bake_nebula_panorama({
+		"width": 64,
+		"height": 32,
+		"samples": 16,
+		"iterations": 12,
+		"seed": 42.0,
+		"roughness": 0.72,
+		"primary": Vector3(0.25, 0.55, 0.55),
+		"secondary": Vector3(0.15, 0.35, 0.4),
+		"bg": Vector3(0.02, 0.03, 0.04),
+		"star_dir": Vector3(0.2, 0.55, 0.15),
+	})
+	if NativeBridge.backend_name() == "rust":
+		_ok("Nebula bake ok", bool(bake.get("ok", false)), str(bake))
+		if bool(bake.get("ok", false)):
+			var rgba: PackedFloat32Array = bake["rgba"]
+			_ok("Nebula bake size", rgba.size() == 64 * 32 * 4, "len=%d" % rgba.size())
+			var sum := 0.0
+			for i in range(0, rgba.size(), 4):
+				sum += float(rgba[i]) + float(rgba[i + 1]) + float(rgba[i + 2])
+			var mean := sum / float(64 * 32 * 3)
+			_ok("Nebula bake lit", mean > 0.02, "mean=%s ms=%s" % [mean, bake.get("ms")])
+			var tex: ImageTexture = NativeBridge.nebula_panorama_texture(bake)
+			_ok("Nebula bake → texture", tex != null)
+			print("  nebula bake 64x32 → %.1fms mean=%.3f" % [float(bake.get("ms", 0)), mean])
+	else:
+		print("  (skip nebula bake — native .so not loaded)")
 	# Travel math equivalence: one ship toward a far destination.
 	var ships: Array = [{
 		"position": Vector3.ZERO,

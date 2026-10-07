@@ -6,6 +6,7 @@
 use godot::classes::MultiMesh;
 use godot::prelude::*;
 
+mod nebula;
 mod travel;
 mod transforms;
 
@@ -37,7 +38,7 @@ impl NativeKernels {
 	/// Library identity for capability checks from GDScript.
 	#[func]
 	fn version() -> GString {
-		GString::from("0.1.0-travel+transforms")
+		GString::from("0.2.0-travel+transforms+nebula")
 	}
 
 	/// Always true when this class loads — GDScript uses ClassDB to detect presence.
@@ -122,5 +123,14 @@ impl NativeKernels {
 	#[func]
 	fn bench_transforms(n: i32, iters: i32) -> f32 {
 		transforms::bench_transforms(n.max(0) as usize, iters.max(1) as usize)
+	}
+
+	/// Bake LT-style nebula IFS to an equirectangular panorama (RGBAF floats).
+	///
+	/// `params` PackedFloat32Array layout — see `nebula::bake_nebula_panorama_godot`.
+	/// Returns Dictionary: ok, width, height, rgba, ms, backend.
+	#[func]
+	fn bake_nebula_panorama(params: PackedFloat32Array) -> Dictionary {
+		nebula::bake_nebula_panorama_godot(params)
 	}
 }

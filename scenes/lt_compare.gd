@@ -281,8 +281,9 @@ func _refresh_label() -> void:
 	var sky: Dictionary = sim.world.get("sky_composition", {})
 	label.text = "\n".join(PackedStringArray([
 		"LT COMPARE  |  scenario %s  seed %s" % [str(sc["id"]), str(sc["seed"])],
-		"mood=%s masses=%s  fov=65  backend=%s" % [
+		"mood=%s masses=%s  fov=65  backend=%s  sky=%s (%.0fms)" % [
 			str(sky.get("mood", "?")), str(sky.get("masses", "?")), NativeBridge.backend_name(),
+			str(sky.get("nebula_bake", "?")), float(sky.get("nebula_bake_ms", 0.0)),
 		],
 		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids 7 planet   C capture  A all   Esc main",
 	]))
