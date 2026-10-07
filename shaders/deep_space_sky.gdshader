@@ -214,8 +214,8 @@ vec3 generate(vec3 dir_in, int sample_count) {
 
 	c += emit_acc;
 	c = mix(bg_color * 0.40, c, 0.96);
-	c *= 1.12;
-	return max(c, bg_color * 0.16);
+	c *= 1.45;
+	return max(c, bg_color * 0.18);
 }
 
 void sky() {

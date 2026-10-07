@@ -134,16 +134,9 @@ func _build_environment() -> void:
 	e.ambient_light_energy = 0.14
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 0.95
-	# Bloom for star peaks only — heavy hex bokeh reads as "sphere tiles".
-	e.glow_enabled = true
-	e.glow_intensity = 0.22
-	e.glow_bloom = 0.03
-	e.glow_hdr_threshold = 1.55
-	e.glow_hdr_scale = 0.85
-	e.set_glow_level(2, 0.35)
-	e.set_glow_level(3, 0.55)
-	e.set_glow_level(4, 0.30)
-	e.set_glow_level(5, 0.12)
+	# Compatibility glow uses hex bokeh that reads as "sphere tiles" on the sky.
+	# Keep glow off for the IFS sky authority; star mesh + thrusters carry peaks.
+	e.glow_enabled = false
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)
