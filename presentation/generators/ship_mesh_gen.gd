@@ -16,7 +16,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var ship_class: int = int(design.get("ship_class", SimEntities.ShipClass.TRADER))
 	var style: String = str(design.get("style", STYLE_CIVILIAN))
-	var key := "ship:%d:%d:%s:lod%d:v4shapelib" % [seed, ship_class, style, lod]
+	var key := "ship:%d:%d:%s:lod%d:v5shapelib" % [seed, ship_class, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -31,11 +31,16 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var hull: Dictionary = desc.get("hull", {})
 	var exhaust: Color = desc.get("exhaust", Color(0.4, 0.7, 1.0))
 
-	# LT ShapeLib path for fighters (ShipFighter.Standard) — not loft guessing.
-	if ship_class == SimEntities.ShipClass.PATROL and lod <= VisualLOD.LOD_SIMPLE:
-		var shape := ShapeLibShipFighter.standard(seed)
-		var mesh := _shapelib_to_dims(shape, length, width, height, color, accent, exhaust, desc, lod)
-		return MeshCache.store(key, mesh) as ArrayMesh
+	# LT ShapeLib paths — fighters + capital sausage (not loft guessing).
+	if lod <= VisualLOD.LOD_SIMPLE:
+		if ship_class == SimEntities.ShipClass.PATROL:
+			var shape := ShapeLibShipFighter.standard(seed)
+			var mesh := _shapelib_to_dims(shape, length, width, height, color, accent, exhaust, desc, lod)
+			return MeshCache.store(key, mesh) as ArrayMesh
+		if ship_class == SimEntities.ShipClass.HAULER or ship_class == SimEntities.ShipClass.TRADER:
+			var cap := ShapeLibShipCapital.sausage(seed)
+			var cmesh := _shapelib_to_dims(cap, length, width, height, color, accent, exhaust, desc, lod)
+			return MeshCache.store(key, cmesh) as ArrayMesh
 
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
