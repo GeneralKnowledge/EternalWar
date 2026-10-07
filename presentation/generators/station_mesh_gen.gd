@@ -13,7 +13,7 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var seed: int = int(design.get("seed", 1))
 	var role: String = str(design.get("role", ROLE_TRADE))
 	var style: String = str(design.get("style", "industrial"))
-	var key := "station:%d:%s:%s:lod%d" % [seed, role, style, lod]
+	var key := "station_lt:%d:%s:%s:lod%d" % [seed, role, style, lod]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
@@ -26,7 +26,34 @@ static func build(design: Dictionary, lod: int = VisualLOD.LOD_FULL) -> ArrayMes
 	var include_connectors := lod <= VisualLOD.LOD_SIMPLE
 	var include_extras := lod <= VisualLOD.LOD_LOW
 
-	# Core + modules from graph
+	# LT active station path: greebled box as the primary mass (Station.lua).
+	var lt_station := ShapeLibStation.generate(seed)
+	lt_station.scale_xyz(1.35, 1.1, 1.35)
+	var lt_mesh := lt_station.finalize_mesh(accent.darkened(0.05))
+	# Emit LT tris into SurfaceTool via temporary merge at end — first emit modules at lower weight.
+	# Bake LT mesh verts into st:
+	if lt_mesh.get_surface_count() > 0:
+		var arrs := lt_mesh.surface_get_arrays(0)
+		var vs: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
+		var ix: PackedInt32Array = arrs[Mesh.ARRAY_INDEX]
+		if ix.is_empty():
+			for i in range(0, vs.size(), 3):
+				st.set_color(accent)
+				st.add_vertex(vs[i])
+				st.set_color(accent)
+				st.add_vertex(vs[i + 1])
+				st.set_color(accent)
+				st.add_vertex(vs[i + 2])
+		else:
+			for i in range(0, ix.size(), 3):
+				st.set_color(accent)
+				st.add_vertex(vs[ix[i]])
+				st.set_color(accent)
+				st.add_vertex(vs[ix[i + 1]])
+				st.set_color(accent)
+				st.add_vertex(vs[ix[i + 2]])
+
+	# Role modules as secondary accents (gameplay readability), not the silhouette authority.
 	for node in desc["nodes"]:
 		var ntype: String = str(node["type"])
 		var pos: Vector3 = node["pos"]

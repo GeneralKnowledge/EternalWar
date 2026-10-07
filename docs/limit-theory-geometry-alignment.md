@@ -1,134 +1,97 @@
-# Limit Theory Geometry Alignment (Ships / Stations / Asteroids)
+# Limit Theory Geometry & Systems Alignment
 
-**Principle (same as nebula):** stop inventing parallel generators. Port Limit Theory’s actual pipelines from `JoshParnell/ltheory` `script/Gen/`.
-
----
-
-## 1. Source of truth
-
-| Asset | LT method (fact) | Files |
-| --- | --- | --- |
-| **Fighter** | ShapeLib mesh: Prism → `extrudePoly` taper → wings → mounts → `bevel` (default) → `mirror` → `finalize` | `ShipFighter.lua` (`Standard`), `ShapeLib/*` |
-| **Capital** | Segmented “sausage”: overlapping hull segments + optional cockpit/plate | `ShipCapital.lua` (`Sausage`), `ShipLib/*` |
-| **Station (active)** | `BasicShapes.Box()` + `greeble(rng, 2, 0.01, 0.05)` → finalize | `Station.lua` (`if true` branch) |
-| **Station (alt, disabled)** | Prism extrusions + engines + mirrored wings + bevel | same file, `else` |
-| **Asteroid** | Cell-noise SDF → Tex3D → mesh + occlusion, 8 LOD bands | `Asteroid.lua`, `res/shader/fragment/sdf/asteroid.glsl` |
-
-Shared infrastructure:
-
-- `ShapeLib/Shape.lua` — verts/polys, `extrudePoly`, `bevel`, `stellate`, `greeble`, `mirror`, `clone`, `add`, `finalize`
-- `ShapeLib/BasicShapes.lua` — `Box`, `Prism`, `Ellipsoid`, …
-- `ShapeLib/Warp.lua` — axial push, sphereize, etc.
-- Finalize → UV map + AO (LT engine); Godot equivalent = ArrayMesh + matte materials
+**Principle (same as nebula):** stop inventing parallel generators. Port Limit Theory’s actual pipelines from `JoshParnell/ltheory`.
 
 ---
 
-## 2. What EternalWar does today (gap)
+## 1. Full gap audit (LT vs EternalWar)
 
-| Asset | EternalWar | Match? |
-| --- | --- | --- |
-| Ships | `ShipDesign` → `GeometryKernel` loft/planform/bevel_profile — **inspired by** LT, not a ShapeLib port | Partial (proportions); topology ops diverge |
-| Stations | Role module graph + rings/spines (`StationDesign`) | No — different architecture |
-| Asteroids | Subdivided chunk/shard/lobed/crag families (`AsteroidMeshGen`) | No — not SDF |
+| Area | LT source of truth | EW today | Status |
+| --- | --- | --- | --- |
+| **Nebula** | `gen/nebula.glsl` IFS TexCube | Direction-space IFS sky | Aligned (live sky; bake later) |
+| **Starfield** | `Starfield.lua` — cluster growth, `Exp^2.5`, blackbody, far quads | `StarfieldGen` MultiMesh tiers | Mostly aligned |
+| **Fighter** | `ShipFighter.Standard` + ShapeLib | **ShapeLib port** for Patrol | **In progress** |
+| **Capital** | `ShipCapital.Sausage` | Loft / spine grammar | Still approximate |
+| **Station** | Active: `Box` + `greeble` | **ShapeLib station** + role accents | **In progress** |
+| **Asteroid mesh** | `sdf/asteroid.glsl` cell-noise SDF | **ShapeLibAsteroid** SDF displace | **In progress** |
+| **Asteroid field** | `SystemBasic` — exp ball + planetary belts | `system_generator` yields | Layout still EW-specific |
+| **Planet surface** | `gen/planet.glsl` — IFS height/color/clouds → TexCube | `planet.gdshader` FBM bands | **Missing** — reinvented |
+| **Planet materials** | `material/planet.glsl`, atmosphere | Simple spatial shader | Partial |
+| **Local star / corona** | Engine lighting + bloom | Mesh + DirectionalLight | Partial (post differs) |
+| **Thruster / VFX** | `effect/thruster.glsl`, pulse, explosion | Minimal / none | **Missing** |
+| **Dust flecks** | `effect/dustfleck.glsl`, dustcloud | Galactic dust MultiMesh | Partial |
+| **Ship materials** | AO + metal/triplanar | StandardMaterial3D matte | Partial |
+| **Post** | tonemap2, bloom2, vignette, colorgrade | Godot Environment filmic + glow | Partial |
+| **UV / diffuse bake** | `UVMap.lua`, `DiffuseMap.lua` | Vertex color | Optional later |
+| **System layout** | `SystemBasic.lua` scale 5000, fields/stations/planets/belts | `system_generator.gd` | Different numbers; port layout next |
 
-Guessing risk: tuning loft stations / module offsets / icosa noise without ShapeLib ops or the SDF formula. That is the same class of mistake as inventing volume raymarch for nebulas.
+---
+
+## 2. ShapeLib source of truth
+
+| Op | File |
+| --- | --- |
+| verts/polys, `extrudePoly`, `finalize` | `ShapeLib/Shape.lua` |
+| `scale`, `rotate`, `mirror`, `bevel`, `greeble`, `tessellate` | `ShapeLib/Warp.lua` |
+| `Box`, `Prism` | `ShapeLib/BasicShapes.lua` |
+| Fighter assembly | `ShipFighter.lua` |
+| Station (active) | `Station.lua` `if true` → Box + greeble |
+| Asteroid | `Asteroid.lua` + `sdf/asteroid.glsl` |
+
+EternalWar port lives under `presentation/generators/shapelib/`.
 
 ---
 
 ## 3. Fighter pipeline (verbatim LT)
 
-From `ShipFighter.Standard` / `HullStandard` / `WingsStandard` / `WingMounts` / `SurfaceDetail`:
-
 ```
-HullStandard:
-  Prism(2, res) → rotate Y90
-  → extrudePoly(front, length, scale=(point,point,1), dir=forward)
-  → extrudePoly(back, 0.3, scale=0.5, dir=aft)
-  → scale(radius, radius, 1)
-
-+ WingsStandard | WingsTie   (mirrored)
-+ WingMounts                 (side prisms, mirrored)
-+ SurfaceDetail              (~85%+ bevel; stellate/extrude/greeble each ~5%)
-+ normalize to unit radius
-→ finalize()
+HullStandard: Prism → pitch90 → extrudePoly forward/aft → scale
++ WingsStandard | WingsTie (mirror)
++ WingMounts (mirror)
++ bevel
++ normalize radius→3
+→ finalize
 ```
 
-`Ship.lua` dispatches: fighter → mostly `Standard`; capital → `Sausage`.
+Wired: **Patrol** → `ShapeLibShipFighter.standard` (other roles still loft until Capital port).
 
 ---
 
-## 4. Station pipeline (verbatim LT)
+## 4. Station / asteroid
 
-**Active path in repo today** (`if true`):
-
-```
-Box() → greeble(rng, tessellations=2, size 0.01–0.05) → finalize()
-```
-
-The elaborate prism/wing station is **behind `else`** (disabled). Matching LT as shipped means greebled boxes first; optional later: enable the prism path as a variant.
+- **Station:** greebled box primary; role modules secondary accents.
+- **Asteroid:** `d = |p| - mix(0.05,1, fCellNoise(2p))` via radial search on sphere (full Tex3D LOD later).
 
 ---
 
-## 5. Asteroid pipeline (verbatim LT)
+## 5. Other high-value missing ports (priority)
 
-```glsl
-// sdf/asteroid.glsl
-n = fCellNoise(2*p, seed, octaves=8, smoothness=2.5)
-d = length(p) - mix(0.05, 1.0, n)
-```
-
-```
-for LOD i in 1..8:
-  ShaderToTex3D(R32F, res) → SDF → mesh + normals + occlusion
-  res /= 1.5; distance band expands
-→ LodMesh
-```
-
-EternalWar should bake density with the same formula (GDScript/Rust or compute), extract isosurface, matte rock materials — not invent chunk families as the primary look.
+1. **Planet TexCube** — port `gen/planet.glsl` height/color/clouds (same “don’t invent FBM” rule as nebula).
+2. **ShipCapital.Sausage** — Hauler/Trader silhouette.
+3. **SystemBasic layout** — field/station/planet/belt placement constants.
+4. **Thruster / pulse VFX** — `effect/thruster.glsl` language.
+5. **Post stack** — closer bloom/tonemap/vignette to LT filters.
+6. **True asteroid LodMesh** — 8-band Tex3D bake like `Asteroid.lua`.
 
 ---
 
-## 6. Implementation order (no guessing)
+## 6. Non-goals
 
-1. **ShapeLib core (GDScript)**  
-   Port `Shape` + `BasicShapes.Box/Prism` + `extrudePoly` + `bevel` + `mirror` + `greeble` + `finalize→ArrayMesh`.  
-   Unit tests: prism face counts, mirror symmetry, bevel manifold-ish.
-
-2. **ShipFighter.Standard**  
-   Port hull/wings/mounts/surface detail with seeded RNG (no LT Settings UI).  
-   Wire **Patrol / Military** through ShapeLib path; keep old loft as fallback flag.  
-   Gate: clay silhouette IoU vs `lt_fighter_engines_crop` / gallery refs.
-
-3. **ShipCapital.Sausage**  
-   Port for Hauler / heavy Trader roles.
-
-4. **Station**  
-   Replace primary mesh with LT greebled box; keep role modules as optional low-weight accents if needed for gameplay readability.
-
-5. **Asteroid SDF**  
-   Port cell-noise SDF + isosurface; single high-res mesh first, LOD later.
-
-6. **Evidence loop**  
-   `ship_gallery` / station / asteroid captures → silhouette + side-by-side vs LT refs (same as nebula mood sheet discipline).
+- New pretty ship families unrelated to ShapeLib
+- Proportion guessing without IoU vs LT crops
+- Rust until GDScript ShapeLib is correct
+- Station disabled prism path before greeble matches
 
 ---
 
-## 7. Non-goals
-
-- New “pretty” ship families unrelated to ShapeLib
-- Proportion guessing without IoU against LT crops
-- Moving to Rust until GDScript ShapeLib is correct and measured hot
-- Re-enabling Station’s disabled prism path before the active greeble path matches
-
----
-
-## 8. Definition of done
+## 7. Definition of done
 
 | Checkpoint | Metric |
 | --- | --- |
-| Fighter | ShapeLib path default for Patrol; IoU ≥ current clay baseline vs engines crop |
-| Capital | Sausage silhouette reads as spine + gaps (gallery) |
-| Station | Greebled-box primary; side-by-side vs LT station stills |
-| Asteroid | Cell-noise SDF; no obvious icosa-chunk look in asteroid field shots |
+| Fighter | ShapeLib default for Patrol; clay IoU vs engines crop |
+| Capital | Sausage port for Hauler |
+| Station | Greebled-box primary vs LT station stills |
+| Asteroid | SDF look; no chunky icosa family |
+| Planet | IFS cubemap language vs LT planet stills |
 
-Progress = climbing compare scores / silhouette IoU against LT references — not “more modules.”
+Progress = compare / IoU vs LT refs — not “more modules.”

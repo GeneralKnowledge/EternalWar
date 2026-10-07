@@ -21,27 +21,24 @@ static func build(seed: int, detail: int = 1, composition: String = "iron") -> A
 		_:
 			family = seed % 4
 
-	var key := "asteroid:%d:%d:%s:%d" % [seed, detail, composition, family]
+	var key := "asteroid_sdf:%d:%d:%s" % [seed, detail, composition]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
 
-	var rng := SeededRNG.new(seed)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-
-	match family:
-		FAMILY_SHARD:
-			_build_shard(st, rng, composition)
-		FAMILY_LOBED:
-			_build_lobed(st, rng)
-		FAMILY_CRAG:
-			_build_crag(st, rng, detail)
+	# LT path: cell-noise SDF asteroid (Asteroid.lua / sdf/asteroid.glsl).
+	# Family only tints composition colour; shape comes from SDF.
+	var tint := Color(0.38, 0.35, 0.32)
+	match composition:
+		"ice":
+			tint = Color(0.72, 0.78, 0.85)
+		"carbon":
+			tint = Color(0.22, 0.2, 0.19)
+		"silicate":
+			tint = Color(0.48, 0.42, 0.34)
 		_:
-			_build_chunk(st, rng, detail)
-
-	st.generate_normals()
-	var mesh: ArrayMesh = st.commit()
+			tint = Color(0.4, 0.36, 0.3)
+	var mesh: ArrayMesh = ShapeLibAsteroid.generate_mesh(seed, detail, tint)
 	return MeshCache.store(key, mesh) as ArrayMesh
 
 
