@@ -28,5 +28,15 @@ func _process(_dt: float) -> bool:
 	}
 	var sm := ShipMeshGen.build(design, VisualLOD.LOD_FULL)
 	print("ShipMeshGen patrol surfaces=", sm.get_surface_count())
+	var cap := ShapeLibShipCapital.sausage(11)
+	print("capital verts=", cap.get_vertex_count(), " polys=", cap.polys.size(), " r=", cap.get_radius())
+	var hauler := {
+		"seed": 11,
+		"ship_class": SimEntities.ShipClass.HAULER,
+		"style": "industrial",
+		"color": Color(0.38, 0.36, 0.34),
+	}
+	var hm := ShipMeshGen.build(hauler, VisualLOD.LOD_FULL)
+	print("ShipMeshGen hauler surfaces=", hm.get_surface_count())
 	print("SHAPE_TEST_DONE")
 	return true

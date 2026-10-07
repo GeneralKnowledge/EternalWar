@@ -11,6 +11,7 @@ const SCENARIOS := [
 	{"id": "ship", "seed": 42, "view": "ship", "yaw": 0.55, "pitch": -0.1, "dist": 45.0},
 	{"id": "station", "seed": 42, "view": "station", "yaw": 0.7, "pitch": -0.18, "dist": 200.0},
 	{"id": "asteroids", "seed": 42, "view": "asteroid", "yaw": 1.1, "pitch": -0.2, "dist": 240.0},
+	{"id": "planet", "seed": 42, "view": "planet", "yaw": 0.85, "pitch": -0.08, "dist": 380.0},
 ]
 
 @export var ship_count: int = 80
@@ -145,6 +146,17 @@ func _apply_scenario() -> void:
 			focus = sim.world["yields"][0]["position"] if not sim.world["yields"].is_empty() else Vector3.ZERO
 			distance = float(sc["dist"])
 			yaw = float(sc["yaw"])
+		"planet":
+			# Frame lit hemisphere: camera on the sunward / terminator side.
+			var pfocus := presenter.get_planet_focus()
+			var star_p: Vector3 = sim.world["star"].get("position", Vector3(200, 80, 100))
+			var to_star := (star_p - pfocus).normalized()
+			# Slight offset off the sun vector so terrain + terminator both read.
+			var view_dir := (to_star + Vector3(0.45, 0.12, 0.28)).normalized()
+			focus = pfocus
+			distance = float(sc["dist"])
+			yaw = atan2(view_dir.x, view_dir.z)
+			pitch = clampf(asin(clampf(view_dir.y, -1.0, 1.0)), -0.75, 0.45)
 		_:
 			# Aim into the primary nebula mass lobe on the IFS sky.
 			var sky_dir := SkyComposition.primary_mass_dir(presenter.sky_comp)
@@ -156,9 +168,10 @@ func _apply_scenario() -> void:
 				yaw = atan2(-sky_dir.x, -sky_dir.z) + 0.2
 			else:
 				yaw = float(sc["yaw"])
+	# Preserve custom pitch for nebula / planet framing
 	if str(sc["id"]) == "nebula":
 		pitch = clampf(float(sc["pitch"]) - 0.05, -1.2, 1.2)
-	else:
+	elif str(sc["id"]) != "planet":
 		pitch = float(sc["pitch"])
 	_frames = 0
 	_hide_hud_for_capture = false
@@ -224,10 +237,12 @@ func _write_capture() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
-			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6:
-				scenario_i = event.keycode - KEY_1
-				_capturing = false
-				_apply_scenario()
+			KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7:
+				var idx := event.keycode - KEY_1
+				if idx >= 0 and idx < SCENARIOS.size():
+					scenario_i = idx
+					_capturing = false
+					_apply_scenario()
 			KEY_C:
 				_capture_queue = [scenario_i]
 				_capturing = true
@@ -259,5 +274,5 @@ func _refresh_label() -> void:
 		"mood=%s masses=%s  fov=65  backend=%s" % [
 			str(sky.get("mood", "?")), str(sky.get("masses", "?")), NativeBridge.backend_name(),
 		],
-		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids   C capture  A all   Esc main",
+		"1 empty 2 nebula 3 star 4 ship 5 station 6 asteroids 7 planet   C capture  A all   Esc main",
 	]))

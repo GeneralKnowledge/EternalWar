@@ -45,13 +45,13 @@ func _ready() -> void:
 
 	light = DirectionalLight3D.new()
 	light.light_color = Color(1.0, 0.95, 0.88)
-	light.light_energy = 1.35
+	light.light_energy = 1.85
 	light.transform = Transform3D(Basis.looking_at(Vector3(-0.45, -0.55, -0.35), Vector3.UP), Vector3.ZERO)
 	add_child(light)
 
 	fill = DirectionalLight3D.new()
 	fill.light_color = Color(0.55, 0.65, 0.85)
-	fill.light_energy = 0.35
+	fill.light_energy = 0.55
 	fill.transform = Transform3D(Basis.looking_at(Vector3(0.6, 0.2, 0.5), Vector3.UP), Vector3.ZERO)
 	add_child(fill)
 
@@ -192,9 +192,9 @@ func _process(_dt: float) -> void:
 	_frames += 1
 	if not _capturing:
 		return
-	if _frames == 6 and label:
+	if _frames == 10 and label:
 		label.visible = false
-	elif _frames == 8:
+	elif _frames == 14:
 		_write_capture()
 		if not _capture_queue.is_empty():
 			role_i = int(_capture_queue.pop_front())
