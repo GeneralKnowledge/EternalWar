@@ -126,15 +126,18 @@ System hue picks now reserve ~18% amber–gold so random seeds are not cyan-lock
 
 | LT | EternalWar now |
 | --- | --- |
-| `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (18 live iters) |
-| ~128 absorption samples `p = dir*kScale*i/N` | 40 / 28 samples, **same march path** |
+| `magic()` Kaliset IFS (30 iters) | `deep_space_sky.gdshader` `magic()` (22 live iters) |
+| ~128 absorption samples `p = dir*kScale*i/N` | 48 / 32 samples along `dir*kScale` with live extent `×12` |
 | `ColorLUT` 1D textures | Seeded LUT knots + mild mood tint |
-| TexCube env map at runtime | Godot Sky REALTIME radiance from `generate(dir)` (QUALITY left half-black faces on Compatibility) |
+| TexCube env map at runtime | Godot Sky REALTIME radiance from `generate(dir)` |
 | Separate starfield mesh | MultiMesh star layers (no sparkle lattice in sky) |
 
 ### Why it looked like a giant painted sphere
-Earlier EW sky added **directional mass lobes, void paints, galaxy-band wash, and a `floor(dir)` sparkle grid** on top of IFS. Those read as soft blobs / tiles on a dome. On Compatibility, REALTIME radiance also showed **cubemap face seams**. LT structure comes only from IFS absorption along the ray — remove dome paints; bake QUALITY radiance; keep cavity emission additive so mediump cannot crush to black.
+Earlier EW sky added **directional mass lobes, void paints, galaxy-band wash, and a `floor(dir)` sparkle grid** on top of IFS. Those read as soft blobs / tiles on a dome. Compatibility **hex glow bokeh** also painted disc tiles. Pure LT `c *= exp(-k*w*vs)` crushed to black in mediump once paints were removed.
+
+**Live fix (no dome paints):** keep dir-space IFS march; absorb with `gas_gate≈0.55` scale; additive filament `emit_acc`; extended sample extent (`×12`) so fewer live samples still walk the IFS; glow off on Compatibility.
 
 - World-space `nebula_volume` / billboard wisps stay **off**
-- Soft lobe/void/band **paints removed** from `generate()`
+- Soft lobe/void/band/sparkle **paints removed** from `generate()`
+- Captures: `tools/visual_compare/eternalwar/skybox_ifs/`
 - Future closer match: bake TexCube once per seed like `Nebula1.lua` (1024 + mips)
