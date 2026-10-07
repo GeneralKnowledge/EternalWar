@@ -69,7 +69,6 @@ for (const name of [
   "uFov",
   "uSamples",
   "uIterations",
-  "uTime",
 ]) {
   u[name] = gl.getUniformLocation(program, name);
 }
@@ -127,9 +126,9 @@ function draw(targetW, targetH, samples, iterations) {
   gl.uniform1f(u.uFov, (65 * Math.PI) / 180);
   gl.uniform1i(u.uSamples, samples);
   gl.uniform1i(u.uIterations, iterations);
-  gl.uniform1f(u.uTime, performance.now() * 0.001);
 
   gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.finish();
 }
 
 function frame(now) {

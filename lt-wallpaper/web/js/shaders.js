@@ -33,7 +33,6 @@ uniform vec2 uYawPitch;
 uniform float uFov;
 uniform int uSamples;
 uniform int uIterations;
-uniform float uTime;
 
 float hash11(float x) {
   return fract(sin(x * 127.1 + uSeed * 0.13) * 43758.5453);
@@ -205,14 +204,16 @@ vec3 stars(vec3 dir) {
       float h = hash21(cell.x + 17.0 * cell.z, cell.y + 31.0 * float(layer));
       if (h > 0.992 - 0.01 * float(layer)) {
         vec3 starDir = normalize(cell + 0.5 + (vec3(hash11(h), hash11(h + 1.3), hash11(h + 2.7)) - 0.5) * 0.8);
-        float ang = max(0.0, dot(dir, starDir));
+        float ang = clamp(dot(dir, starDir), 0.0, 1.0);
         float mag = pow(h, 12.0);
         float temp = mix(1600.0, 15000.0, hash11(h + 9.1));
         // rough blackbody tint
         vec3 col = mix(vec3(1.0, 0.55, 0.25), vec3(0.75, 0.85, 1.0), clamp((temp - 3000.0) / 9000.0, 0.0, 1.0));
-        float bright = 0.015 * pow(mag + 0.05, 2.5) * (1.0 + 2.0 * float(2 - layer));
-        float disc = exp(-900.0 * (1.0 - ang));
-        sum += col * bright * disc * 40.0;
+        float bright = 0.02 * pow(mag + 0.05, 2.5) * (1.0 + 1.5 * float(2 - layer));
+        /* Soft pinprick — angular gaussian in direction space (avoids hard quads). */
+        float sigma = mix(0.0018, 0.00055, float(layer) * 0.45);
+        float disc = exp(-((1.0 - ang) * (1.0 - ang)) / max(sigma * sigma, 1e-10));
+        sum += col * bright * disc * 28.0;
       }
     }
   }
