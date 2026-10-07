@@ -41,7 +41,7 @@ See [`overlay/WALLPAPER.md`](overlay/WALLPAPER.md) for flags.
 cd lt-wallpaper/gallery
 cp .env.example .env   # set LTHEORY_ROOT
 ./scripts/run.sh
-# open http://localhost:8787 — categories, 1 bake/min, gallery
+# open http://localhost:8080 — categories, 1 bake/min, gallery
 ```
 
 **Deploy to a VPS / Docker:** [`gallery/DEPLOY.md`](gallery/DEPLOY.md)  

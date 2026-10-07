@@ -10,7 +10,7 @@ services:
       dockerfile: gallery/Dockerfile
     image: lt-wallpaper-gallery:local
     ports:
-      - "${LT_GALLERY_PORT:-8787}:8787"
+      - "${LT_GALLERY_PORT:-8080}:8080"
     environment:
       LT_GALLERY_PROFILE: ${LT_GALLERY_PROFILE:-small}
       LT_GALLERY_RATE_SEC: ${LT_GALLERY_RATE_SEC:-60}

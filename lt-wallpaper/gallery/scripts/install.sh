@@ -55,7 +55,7 @@ echo "==> Writing $INSTALL_ROOT/gallery/.env (profile=$PROFILE)"
 cat > "$INSTALL_ROOT/gallery/.env" <<EOF
 LTHEORY_ROOT=$INSTALL_ROOT/ltheory
 LT_GALLERY_HOST=127.0.0.1
-LT_GALLERY_PORT=8787
+LT_GALLERY_PORT=8080
 LT_GALLERY_DATA=$DATA_ROOT
 LT_GALLERY_PROFILE=$PROFILE
 LT_GALLERY_RATE_SEC=60
@@ -89,9 +89,7 @@ systemctl enable --now lt-wallpaper-gallery.service
 echo
 echo "Installed."
 echo "  service:  systemctl status lt-wallpaper-gallery"
-echo "  health:   curl -sS http://127.0.0.1:8787/api/health"
-echo "  UI:       http://127.0.0.1:8787/  (bind is localhost — put nginx in front)"
+echo "  health:   curl -sS http://127.0.0.1:8080/api/health"
+echo "  UI:       http://127.0.0.1:8080/  (localhost — point your tunnel/proxy here)"
 echo "  env:      $INSTALL_ROOT/gallery/.env"
 echo "  data:     $DATA_ROOT"
-echo
-echo "Optional TLS reverse proxy example: $GALLERY_SRC/deploy/nginx.example.conf"

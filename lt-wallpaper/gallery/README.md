@@ -24,7 +24,7 @@ Requires a built `ltheory` tree (see `../setup.sh`).
 ```bash
 cp .env.example .env   # set LTHEORY_ROOT
 ./scripts/run.sh
-# open http://localhost:8787
+# open http://localhost:8080
 make health
 ```
 

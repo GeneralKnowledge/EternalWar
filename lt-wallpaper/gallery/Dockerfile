@@ -4,7 +4,7 @@
 # Deploy the image to smaller hosts; use LT_GALLERY_PROFILE=small at runtime.
 #
 #   docker build -t lt-wallpaper-gallery -f Dockerfile ..
-#   docker run --rm -p 8787:8787 -v gallery-data:/var/lib/lt-wallpaper/gallery \
+#   docker run --rm -p 8080:8080 -v gallery-data:/var/lib/lt-wallpaper/gallery \
 #     -e LT_GALLERY_PROFILE=small lt-wallpaper-gallery
 
 FROM ubuntu:24.04 AS build
@@ -46,7 +46,7 @@ COPY gallery /opt/lt-wallpaper/gallery
 
 ENV LTHEORY_ROOT=/opt/lt-wallpaper/ltheory \
     LT_GALLERY_HOST=0.0.0.0 \
-    LT_GALLERY_PORT=8787 \
+    LT_GALLERY_PORT=8080 \
     LT_GALLERY_DATA=/var/lib/lt-wallpaper/gallery \
     LT_GALLERY_PROFILE=small \
     LT_GALLERY_RATE_SEC=60 \
@@ -58,8 +58,8 @@ RUN mkdir -p /var/lib/lt-wallpaper/gallery/images \
 
 USER ltwallpaper
 WORKDIR /opt/lt-wallpaper/gallery
-EXPOSE 8787
+EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health')"
+  CMD python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health')"
 
 CMD ["python3", "server.py"]

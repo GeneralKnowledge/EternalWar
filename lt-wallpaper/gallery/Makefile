@@ -4,7 +4,7 @@ run:
 	./scripts/run.sh
 
 health:
-	curl -sS http://127.0.0.1:$${LT_GALLERY_PORT:-8787}/api/health | python3 -m json.tool
+	curl -sS http://127.0.0.1:$${LT_GALLERY_PORT:-8080}/api/health | python3 -m json.tool
 
 install-deps:
 	sudo ./scripts/install-deps.sh

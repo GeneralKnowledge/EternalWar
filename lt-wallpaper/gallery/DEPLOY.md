@@ -21,11 +21,11 @@ sudo ./scripts/install.sh        # deps + build ltheory + systemd
 Then:
 
 ```bash
-curl -sS http://127.0.0.1:8787/api/health
+curl -sS http://127.0.0.1:8080/api/health
 sudo systemctl status lt-wallpaper-gallery
 ```
 
-Put nginx in front (see `deploy/nginx.example.conf`). The unit binds **127.0.0.1:8787** by default.
+The unit binds **127.0.0.1:8080** by default — point a tunnel or reverse proxy at that. Optional nginx sample: `deploy/nginx.example.conf`.
 
 ### What install.sh does
 
@@ -53,7 +53,7 @@ sudo edit /opt/lt-wallpaper/gallery/.env   # then restart
 cd lt-wallpaper/gallery
 docker compose build
 docker compose up -d
-curl -sS http://127.0.0.1:8787/api/health
+curl -sS http://127.0.0.1:8080/api/health
 ```
 
 Runtime env (Compose / `-e`):

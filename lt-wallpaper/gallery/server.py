@@ -52,7 +52,7 @@ STATIC = ROOT / "static"
 RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
 BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
 DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
-DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8787"))
+DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8080"))
 
 CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
