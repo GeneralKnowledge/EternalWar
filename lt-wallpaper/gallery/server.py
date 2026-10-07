@@ -30,8 +30,8 @@ IMAGES = DATA / "images"
 MANIFEST_PATH = DATA / "manifest.json"
 STATIC = ROOT / "static"
 
-RATE_LIMIT_SEC = 60
-BAKE_TIMEOUT_SEC = 300
+RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
+BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
 
 CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
@@ -61,17 +61,43 @@ CATEGORIES: dict[str, dict[str, str]] = {
     },
 }
 
-SIZES = {
+ALL_SIZES = {
     "720p": (1280, 720),
     "1080p": (1920, 1080),
     "1440p": (2560, 1440),
     "ultrawide": (2560, 1080),
 }
 
-QUALITY = {
+ALL_QUALITY = {
     "draft": 256,
     "good": 512,
     "high": 1024,
+}
+
+# Measured peaks (lt64 + Xvfb) on Linux bake — use to pick a safe profile.
+# draft/720p ≈ 510 MiB · good/1080p ≈ 760 MiB · high/1080p ≈ 920 MiB
+PROFILES = {
+    "small": {  # ~1 GiB RAM / 1 core VPS
+        "sizes": ("720p",),
+        "quality": ("draft", "good"),
+        "defaultSize": "720p",
+        "defaultQuality": "draft",
+        "note": "Capped for ≈1 GiB hosts. Prefer draft; good/720p is tight.",
+    },
+    "standard": {
+        "sizes": ("720p", "1080p", "ultrawide"),
+        "quality": ("draft", "good", "high"),
+        "defaultSize": "1080p",
+        "defaultQuality": "good",
+        "note": "Default. Avoid high+1440p on hosts under 2 GiB.",
+    },
+    "full": {
+        "sizes": tuple(ALL_SIZES),
+        "quality": tuple(ALL_QUALITY),
+        "defaultSize": "1080p",
+        "defaultQuality": "good",
+        "note": "All sizes unlocked.",
+    },
 }
 
 _lock = threading.Lock()
@@ -79,6 +105,38 @@ _bake_lock = threading.Lock()
 _rate: dict[str, float] = {}  # ip -> last bake monotonic time
 _busy = False
 _last_error: str | None = None
+
+
+def mem_total_mib() -> int | None:
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    kb = int(line.split()[1])
+                    return kb // 1024
+    except OSError:
+        return None
+    return None
+
+
+def resolve_profile() -> str:
+    forced = os.environ.get("LT_GALLERY_PROFILE", "").strip().lower()
+    if forced in PROFILES:
+        return forced
+    mem = mem_total_mib()
+    if mem is not None and mem <= 1536:
+        return "small"
+    return "standard"
+
+
+def active_sizes() -> dict[str, tuple[int, int]]:
+    keys = PROFILES[resolve_profile()]["sizes"]
+    return {k: ALL_SIZES[k] for k in keys}
+
+
+def active_quality() -> dict[str, int]:
+    keys = PROFILES[resolve_profile()]["quality"]
+    return {k: ALL_QUALITY[k] for k in keys}
 
 
 def utc_now() -> str:
@@ -240,6 +298,10 @@ class Handler(SimpleHTTPRequestHandler):
         path = parsed.path
 
         if path == "/api/meta":
+            profile = resolve_profile()
+            cfg = PROFILES[profile]
+            sizes = active_sizes()
+            quality = active_quality()
             self._json(
                 HTTPStatus.OK,
                 {
@@ -247,9 +309,16 @@ class Handler(SimpleHTTPRequestHandler):
                         {"id": k, **v} for k, v in CATEGORIES.items()
                     ],
                     "sizes": {
-                        k: {"width": w, "height": h} for k, (w, h) in SIZES.items()
+                        k: {"width": w, "height": h} for k, (w, h) in sizes.items()
                     },
-                    "quality": QUALITY,
+                    "quality": quality,
+                    "defaults": {
+                        "size": cfg["defaultSize"],
+                        "quality": cfg["defaultQuality"],
+                    },
+                    "profile": profile,
+                    "profileNote": cfg["note"],
+                    "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
                     "ltheory": str(find_ltheory_root()),
                 },
@@ -330,17 +399,32 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        size_key = str(body.get("size") or "1080p")
-        if size_key not in SIZES:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad size"})
+        sizes = active_sizes()
+        quality = active_quality()
+        cfg = PROFILES[resolve_profile()]
+        size_key = str(body.get("size") or cfg["defaultSize"])
+        if size_key not in sizes:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "error": f"bad size for profile {resolve_profile()}; "
+                    f"allowed: {list(sizes)}",
+                },
+            )
             return
-        width, height = SIZES[size_key]
+        width, height = sizes[size_key]
 
-        quality_key = str(body.get("quality") or "good")
-        if quality_key not in QUALITY:
-            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad quality"})
+        quality_key = str(body.get("quality") or cfg["defaultQuality"])
+        if quality_key not in quality:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {
+                    "error": f"bad quality for profile {resolve_profile()}; "
+                    f"allowed: {list(quality)}",
+                },
+            )
             return
-        nebula_res = QUALITY[quality_key]
+        nebula_res = quality[quality_key]
 
         seed = str(body.get("seed") or "").strip()
         if not seed:
@@ -380,11 +464,15 @@ def main() -> None:
         save_manifest({"version": 1, "items": []})
 
     ltheory = find_ltheory_root()
-    print(f"LT Wallpaper Gallery")
+    profile = resolve_profile()
+    mem = mem_total_mib()
+    print("LT Wallpaper Gallery")
     print(f"  ltheory:  {ltheory}")
     print(f"  gallery:  {DATA}")
     print(f"  listen:   http://{args.host}:{args.port}/")
     print(f"  rate:     1 bake / {RATE_LIMIT_SEC}s / IP")
+    print(f"  profile:  {profile}" + (f" (MemTotal {mem} MiB)" if mem else ""))
+    print(f"  note:     {PROFILES[profile]['note']}")
 
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     try:

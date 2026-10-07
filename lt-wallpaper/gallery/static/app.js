@@ -85,12 +85,13 @@ function renderCategories() {
 }
 
 function fillSelects() {
+  const defaults = state.meta.defaults || {};
   els.size.innerHTML = "";
   for (const [key, dim] of Object.entries(state.meta.sizes)) {
     const opt = document.createElement("option");
     opt.value = key;
     opt.textContent = `${key} · ${dim.width}×${dim.height}`;
-    if (key === "1080p") opt.selected = true;
+    if (key === (defaults.size || "1080p")) opt.selected = true;
     els.size.appendChild(opt);
   }
   els.quality.innerHTML = "";
@@ -98,7 +99,7 @@ function fillSelects() {
     const opt = document.createElement("option");
     opt.value = key;
     opt.textContent = `${key} · nebula ${res}`;
-    if (key === "good") opt.selected = true;
+    if (key === (defaults.quality || "good")) opt.selected = true;
     els.quality.appendChild(opt);
   }
 }
@@ -224,7 +225,12 @@ async function boot() {
   await refreshGallery();
   await refreshStatus();
   startStatusPoll();
-  setStatus("Ready — uses the real wallpaper.sh binary (1 per minute).");
+  const profileBit = state.meta.profile
+    ? ` Profile: ${state.meta.profile}${state.meta.profileNote ? ` — ${state.meta.profileNote}` : ""}`
+    : "";
+  setStatus(
+    `Ready — native wallpaper.sh (1 bake / ${state.meta.rateLimitSec || 60}s).${profileBit}`,
+  );
 }
 
 boot().catch((err) => {
