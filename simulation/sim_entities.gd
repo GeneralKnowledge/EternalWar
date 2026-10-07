@@ -53,7 +53,7 @@ static func make_yield_site(
 	richness: float,
 	extra: Dictionary = {}
 ) -> Dictionary:
-	return {
+	var out := {
 		"id": id,
 		"kind": "yield",
 		"name": name,
@@ -66,7 +66,13 @@ static func make_yield_site(
 		"asteroid_count": int(extra.get("asteroid_count", 24)),
 		"spread": float(extra.get("spread", 90.0)),
 		"color": extra.get("color", Color(0.5, 0.42, 0.32)),
+		"layout": str(extra.get("layout", "field")),
 	}
+	# Pass through SystemBasic belt/field extras (rc/rw, growth factor, planet link).
+	for k in extra.keys():
+		if not out.has(k):
+			out[k] = extra[k]
+	return out
 
 
 static func make_station(

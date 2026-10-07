@@ -37,6 +37,12 @@ func randfn(mean: float = 0.0, deviation: float = 1.0) -> float:
 	return _rng.randfn(mean, deviation)
 
 
+## Unit-mean exponential draw (LT `RNG:getExp()`): −ln(U), U∈(0,1].
+func exp_rand() -> float:
+	var u := clampf(_rng.randf(), 1e-7, 1.0)
+	return -log(u)
+
+
 ## Unit vector in XZ plane (y = 0).
 func dir2() -> Vector3:
 	var a: float = _rng.randf() * TAU

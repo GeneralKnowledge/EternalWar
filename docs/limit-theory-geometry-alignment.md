@@ -11,19 +11,19 @@
 | **Nebula** | `gen/nebula.glsl` IFS TexCube | Direction-space IFS sky | Aligned (live sky; bake later) |
 | **Starfield** | `Starfield.lua` — cluster growth, `Exp^2.5`, blackbody, far quads | `StarfieldGen` MultiMesh tiers | Mostly aligned |
 | **Fighter** | `ShipFighter.Standard` + ShapeLib | **ShapeLib port** for Patrol | **In progress** |
-| **Capital** | `ShipCapital.Sausage` | Loft / spine grammar | Still approximate |
-| **Station** | Active: `Box` + `greeble` | **ShapeLib station** + role accents | **In progress** |
-| **Asteroid mesh** | `sdf/asteroid.glsl` cell-noise SDF | **ShapeLibAsteroid** SDF displace | **In progress** |
-| **Asteroid field** | `SystemBasic` — exp ball + planetary belts | `system_generator` yields | Layout still EW-specific |
-| **Planet surface** | `gen/planet.glsl` — IFS height/color/clouds → TexCube | `planet.gdshader` FBM bands | **Missing** — reinvented |
+| **Capital** | `ShipCapital.Sausage` | **ShapeLib sausage** (Hauler/Trader) | Aligned |
+| **Station** | Active: `Box` + `greeble` | **ShapeLib station** + role accents | Aligned |
+| **Asteroid mesh** | `sdf/asteroid.glsl` + 8-band LodMesh | **ShapeLibAsteroid** SDF + detail bands 0..3 | Aligned (no Tex3D bake) |
+| **Asteroid field** | `SystemBasic` — exp ball + planetary belts | **SystemBasic layout** in `system_generator` | Aligned |
+| **Planet surface** | `gen/planet.glsl` — IFS height/color/clouds → TexCube | **IFS live shader** (`planet.gdshader`) | Aligned (live; bake later) |
 | **Planet materials** | `material/planet.glsl`, atmosphere | Simple spatial shader | Partial |
 | **Local star / corona** | Engine lighting + bloom | Mesh + DirectionalLight | Partial (post differs) |
-| **Thruster / VFX** | `effect/thruster.glsl`, pulse, explosion | Minimal / none | **Missing** |
+| **Thruster / VFX** | `effect/thruster.glsl`, pulse, explosion | **Thruster plume shader** + soft particles | Aligned (plume); pulse later |
 | **Dust flecks** | `effect/dustfleck.glsl`, dustcloud | Galactic dust MultiMesh | Partial |
 | **Ship materials** | AO + metal/triplanar | StandardMaterial3D matte | Partial |
-| **Post** | tonemap2, bloom2, vignette, colorgrade | Godot Environment filmic + glow | Partial |
+| **Post** | tonemap2, bloom2, vignette, colorgrade | Env glow + **`lt_post` vignette/tonemap2** | Aligned (approx) |
 | **UV / diffuse bake** | `UVMap.lua`, `DiffuseMap.lua` | Vertex color | Optional later |
-| **System layout** | `SystemBasic.lua` scale 5000, fields/stations/planets/belts | `system_generator.gd` | Different numbers; port layout next |
+| **System layout** | `SystemBasic.lua` scale 5000, fields/stations/planets/belts | **Ported placement** (EW counts) | Aligned |
 
 ---
 
@@ -66,12 +66,14 @@ Wired: **Patrol** → `ShapeLibShipFighter.standard` (other roles still loft unt
 
 ## 5. Other high-value missing ports (priority)
 
-1. **Planet TexCube** — port `gen/planet.glsl` height/color/clouds (same “don’t invent FBM” rule as nebula).
-2. **ShipCapital.Sausage** — Hauler/Trader silhouette.
-3. **SystemBasic layout** — field/station/planet/belt placement constants.
-4. **Thruster / pulse VFX** — `effect/thruster.glsl` language.
-5. **Post stack** — closer bloom/tonemap/vignette to LT filters.
-6. **True asteroid LodMesh** — 8-band Tex3D bake like `Asteroid.lua`.
+1. ~~**Planet TexCube**~~ — live IFS in `planet.gdshader` (bake optional later).
+2. ~~**ShipCapital.Sausage**~~ — ShapeLib path for Hauler/Trader.
+3. ~~**SystemBasic layout**~~ — exp-ball fields, equatorial stations/planets, planetary belts.
+4. ~~**Thruster VFX**~~ — `shaders/thruster.gdshader` plume (pulse/explosion still open).
+5. ~~**Post stack**~~ — stronger Env bloom + `shaders/lt_post.gdshader` vignette/tonemap2 mix.
+6. ~~**Asteroid LodMesh bands**~~ — detail 0..3 SDF resolution (full Tex3D bake still open).
+
+**Still open:** pulse/explosion FX, planet TexCube bake, true 8-band Tex3D asteroid, ship AO/triplanar.
 
 ---
 

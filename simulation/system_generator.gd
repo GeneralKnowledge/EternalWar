@@ -1,9 +1,16 @@
 ## Deterministic procedural star-system generator with hierarchical seeds.
-## Layout counts use the system stream; each object's content uses an independent child seed.
+## Layout follows Limit Theory `SystemBasic.lua` (scale 5000, exp-ball fields,
+## equatorial stations/planets, planetary belts). Content still uses child seeds.
 class_name SystemGenerator
 extends RefCounted
 
-const SYSTEM_RADIUS := 4200.0
+## LT `kSystemScale` — primary layout radius for fields/stations/planets.
+const SYSTEM_SCALE := 5000.0
+## Kept as alias for callers that still reference the old name.
+const SYSTEM_RADIUS := SYSTEM_SCALE
+## LT `AsteroidField.lua` growth scale / exp factor.
+const FIELD_SCALE := 750.0
+const FIELD_EXP_FACTOR := 0.75
 
 var seed_value: int = 0
 var rng: SeededRNG
@@ -19,17 +26,30 @@ func generate(ship_count: int = 400) -> Dictionary:
 
 	var star := _make_star()
 
-	var planet_count := rng.randi_range(6, 10)
+	# --- Planets first (belts need anchors); LT places on equatorial disc. ---
+	var planet_count := rng.randi_range(4, 8)
 	var planets: Array = []
 	for i in planet_count:
 		planets.append(_make_planet(i + 1, i, planet_count))
 
-	var yield_count := rng.randi_range(8, 14)
+	# --- Asteroid fields: LT exp-ball centers (SystemBasic + AsteroidField). ---
+	var field_count := rng.randi_range(8, 14)
 	var yields: Array = []
-	for i in yield_count:
-		yields.append(_make_yield(1000 + i, i, planets))
+	var yield_i := 0
+	for i in field_count:
+		yields.append(_make_field_yield(1000 + yield_i, yield_i))
+		yield_i += 1
 
-	var station_count := rng.randi_range(14, 22)
+	# --- Planetary belts: LT rc=2R, rw=0.2R ring samples. ---
+	for pi in planets.size():
+		var belt_n := rng.randi_range(10, 22)
+		if belt_n <= 0:
+			continue
+		yields.append(_make_belt_yield(1000 + yield_i, yield_i, planets[pi], belt_n))
+		yield_i += 1
+
+	# --- Stations: LT equatorial ring at SYSTEM_SCALE (keep EW economy count). ---
+	var station_count := rng.randi_range(10, 18)
 	var stations: Array = []
 	for i in station_count:
 		stations.append(_make_station(2000 + i, i, planets))
@@ -115,24 +135,23 @@ func _make_star() -> Dictionary:
 
 
 func _make_planet(id: int, index: int, total: int) -> Dictionary:
-	# Orbital layout from system stream (stable full-system regen).
-	var t := (float(index) + 1.0) / float(total + 1)
-	var orbit := lerpf(600.0, SYSTEM_RADIUS * 0.85, t)
-	var angle := rng.randf() * TAU
-	var y_off := rng.randf_range(-40.0, 40.0)
-	var pos := Vector3(cos(angle) * orbit, y_off, sin(angle) * orbit)
-
 	# Content from independent child seed — regenerating planet i does not affect j.
 	var child := SeedHash.derive_i(seed_value, "planet", index)
 	var prng := SeededRNG.new(child)
 	var terrain_seed := SeedHash.derive(child, "terrain")
 	var atmosphere_seed := SeedHash.derive(child, "atmosphere")
+	# Orbit fraction for classification only (LT uses disc radius, not sequential rings).
+	var t := (float(index) + 0.5) / float(maxi(total, 1))
 	var habit_jitter := prng.randf_range(-0.15, 0.15)
 	var habit := clampf(1.0 - absf(t - 0.45) * 2.2 + habit_jitter, 0.0, 1.0)
 	var pclass := _classify_planet(t, habit, prng)
 	var radius := prng.randf_range(40.0, 110.0)
 	if pclass == "gas_giant":
 		radius = prng.randf_range(140.0, 220.0)
+	# LT SystemBasic: pos = dir2 * (scale + kSystemScale * (0.25 + 0.75 * sqrt(u)))
+	var dir: Vector3 = rng.dir2()
+	var orbit := radius + SYSTEM_SCALE * (0.25 + 0.75 * sqrt(rng.randf()))
+	var pos := dir * orbit
 	var colors := _planet_palette(pclass, prng)
 	var resources := {
 		Commodities.ORE: prng.randf_range(0.2, 1.0),
@@ -160,16 +179,7 @@ func _make_planet(id: int, index: int, total: int) -> Dictionary:
 	})
 
 
-func _make_yield(id: int, index: int, planets: Array) -> Dictionary:
-	var anchor: Dictionary = rng.choose(planets)
-	var dir: Vector3 = rng.dir3()
-	var dist: float = rng.randf_range(180.0, 420.0)
-	var offset: Vector3 = dir * dist
-	offset.y *= 0.35
-	var pos: Vector3 = anchor["position"] + offset
-
-	var child := SeedHash.derive_i(seed_value, "yield", index)
-	var yrng := SeededRNG.new(child)
+func _composition_from_rng(yrng: SeededRNG) -> Dictionary:
 	var composition := "iron"
 	var roll := yrng.randf()
 	if roll < 0.35:
@@ -188,28 +198,64 @@ func _make_yield(id: int, index: int, planets: Array) -> Dictionary:
 			color = Color(0.25, 0.25, 0.28)
 		"ice":
 			color = Color(0.7, 0.8, 0.9)
+	return {"composition": composition, "color": color}
+
+
+## Free-floating field — LT SystemBasic exp-ball center + AsteroidField growth.
+func _make_field_yield(id: int, index: int) -> Dictionary:
+	# center = dir3 * kSystemScale * (exp^(1/3))
+	var center: Vector3 = rng.dir3() * SYSTEM_SCALE * pow(rng.exp_rand(), 1.0 / 3.0)
+	var child := SeedHash.derive_i(seed_value, "yield_field", index)
+	var yrng := SeededRNG.new(child)
+	var comp: Dictionary = _composition_from_rng(yrng)
+	# LT nFieldSize ≈ 200*(exp+1); keep EW-friendly instance counts.
+	var raw_n := 200.0 * (yrng.exp_rand() + 1.0)
+	var count := clampi(int(raw_n * 0.12), 18, 48)
 	var old := rng
 	rng = SeededRNG.new(SeedHash.derive(child, "name"))
 	var yname := _gen_name() + " Field"
 	rng = old
-	return SimEntities.make_yield_site(id, yname, pos, Commodities.ORE, yrng.randf_range(0.6, 1.4), {
+	return SimEntities.make_yield_site(id, yname, center, Commodities.ORE, yrng.randf_range(0.6, 1.4), {
 		"seed": child,
-		"composition": composition,
-		"asteroid_count": yrng.randi_range(18, 40),
-		"spread": yrng.randf_range(70.0, 140.0),
-		"color": color,
+		"composition": str(comp["composition"]),
+		"asteroid_count": count,
+		"spread": FIELD_SCALE,
+		"field_exp_factor": FIELD_EXP_FACTOR,
+		"layout": "field",
+		"color": comp["color"],
 	})
 
 
-func _make_station(id: int, index: int, planets: Array) -> Dictionary:
-	var anchor: Dictionary = rng.choose(planets)
-	var dir: Vector3 = rng.dir2()
-	var dist: float = rng.randf_range(140.0, 280.0)
-	var offset: Vector3 = dir * dist
-	offset.y = rng.randf_range(-20.0, 20.0)
-	var pos: Vector3 = anchor["position"] + offset
-	var faction_id := index % 4
+## Planetary belt — LT SystemBasic rc/rw ring around a planet.
+func _make_belt_yield(id: int, index: int, planet: Dictionary, count: int) -> Dictionary:
+	var center: Vector3 = planet["position"]
+	var pr: float = float(planet["radius"])
+	var child := SeedHash.derive_i(seed_value, "yield_belt", index)
+	var yrng := SeededRNG.new(child)
+	var comp: Dictionary = _composition_from_rng(yrng)
+	var old := rng
+	rng = SeededRNG.new(SeedHash.derive(child, "name"))
+	var yname := str(planet.get("name", "Orbit")) + " Belt"
+	rng = old
+	return SimEntities.make_yield_site(id, yname, center, Commodities.ORE, yrng.randf_range(0.5, 1.2), {
+		"seed": child,
+		"composition": str(comp["composition"]),
+		"asteroid_count": count,
+		"layout": "belt",
+		"belt_rc": 2.0 * pr,
+		"belt_rw": 0.2 * pr,
+		"spread": 2.2 * pr,
+		"color": comp["color"],
+		"planet_id": int(planet.get("id", -1)),
+	})
 
+
+func _make_station(id: int, index: int, _planets: Array) -> Dictionary:
+	# LT SystemBasic: equatorial disc at kSystemScale (not planet-anchored pods).
+	var dir: Vector3 = rng.dir2()
+	var pos: Vector3 = dir * SYSTEM_SCALE
+	pos.y = rng.randf_range(-35.0, 35.0)
+	var faction_id := index % 4
 	var child := SeedHash.derive_i(seed_value, "station", index)
 	var srng := SeededRNG.new(child)
 	var role := "trade"

@@ -1,28 +1,50 @@
 ## Limit Theory asteroid SDF — cell-noise sphere displacement.
 ## Source: res/shader/fragment/sdf/asteroid.glsl + script/Gen/Asteroid.lua
 ## d = length(p) - mix(0.05, 1.0, fCellNoise(2p, seed, octaves, smoothness))
+##
+## LodMesh approximation: LT bakes 8 Tex3D bands (res 96, lac 1.5). We expose
+## detail 0..3 as decreasing sphere resolution / octaves for distance LOD.
 class_name ShapeLibAsteroid
 extends RefCounted
 
+## LT-style band count (Asteroid.lua loop 1..8). Callers pick a band by distance.
+const LOD_BANDS := 4
+
+
+static func lod_detail_for_distance(dist: float, field_scale: float = 750.0) -> int:
+	# Map eye distance → detail 3 (near) .. 0 (far), lacunae-ish thresholds.
+	var t := dist / maxf(field_scale, 1.0)
+	if t < 0.35:
+		return 3
+	if t < 0.9:
+		return 2
+	if t < 2.2:
+		return 1
+	return 0
+
 
 static func generate_mesh(seed: int, detail: int = 1, color: Color = Color(0.35, 0.32, 0.28)) -> ArrayMesh:
-	var key := "shapelib_asteroid:%d:%d" % [seed, detail]
+	var d := clampi(detail, 0, 3)
+	var key := "shapelib_asteroid:v2:%d:%d" % [seed, d]
 	var cached: Mesh = MeshCache.get_mesh(key)
 	if cached != null:
 		return cached as ArrayMesh
 
 	var rng := SeededRNG.new(seed)
 	var noise_seed := rng.randf_range(0.0, 1000.0)
-	var octaves := 6 if detail <= 0 else (8 if detail >= 2 else 7)
+	# LT uses octaves=8 on the SDF shader; drop for far LODs.
+	var octaves := 5 + d  # 5..8
 	var smoothness := 2.5
 
 	# Sphere base, then displace along radial by SDF residual
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var mesh_base := SphereMesh.new()
-	var subdiv := 1 if detail <= 0 else (3 if detail >= 2 else 2)
-	mesh_base.radial_segments = 8 * (subdiv + 1)
-	mesh_base.rings = 4 * (subdiv + 1)
+	# Band 0≈far (low res) … band 3≈near (closer to LT res≈96 ish on Compatibility).
+	var radial_opts: Array[int] = [8, 12, 16, 24]
+	var ring_opts: Array[int] = [4, 6, 8, 12]
+	mesh_base.radial_segments = radial_opts[d]
+	mesh_base.rings = ring_opts[d]
 	mesh_base.radius = 1.0
 	mesh_base.height = 2.0
 	var arr := mesh_base.surface_get_arrays(0)

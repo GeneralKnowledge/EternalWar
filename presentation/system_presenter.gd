@@ -15,7 +15,11 @@ var _camera: Camera3D
 var _inspect_target: Dictionary = {}
 var _dust: GPUParticles3D
 var _engine_fx: GPUParticles3D
+var _thruster_plume: MeshInstance3D
+var _thruster_mat: ShaderMaterial
+var _thruster_time: float = 0.0
 var _env_node: WorldEnvironment
+var _post_layer: CanvasLayer
 var sky_comp: Dictionary = {}
 var _star_packs: Dictionary = {}
 var _nebula_volume_mats: Array = []
@@ -89,7 +93,13 @@ func _clear_visuals() -> void:
 	_nebula_volume_mats.clear()
 	_dust = null
 	_engine_fx = null
+	_thruster_plume = null
+	_thruster_mat = null
+	_thruster_time = 0.0
 	_env_node = null
+	if _post_layer != null and is_instance_valid(_post_layer):
+		_post_layer.queue_free()
+	_post_layer = null
 	_built = false
 
 
@@ -131,31 +141,34 @@ func _build_environment() -> void:
 	e.sky = sky
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = ambient_c
-	e.ambient_light_energy = 0.16
+	e.ambient_light_energy = 0.14
+	# Filmic base; lt_post.gdshader adds mild tonemap2 mix + vignette (LT post stack).
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 0.92
-	# Bloom for star peaks; keep blacks (avoid hex-blob wash on Compatibility).
+	e.tonemap_exposure = 0.98
+	# Bloom closer to LT bloom2 — stronger on peaks, blacks stay (threshold ~1.05).
 	e.glow_enabled = true
-	e.glow_intensity = 0.42
-	e.glow_bloom = 0.08
-	e.glow_hdr_threshold = 1.15
-	e.glow_hdr_scale = 1.2
-	e.set_glow_level(2, 0.55)
-	e.set_glow_level(3, 0.85)
-	e.set_glow_level(4, 0.6)
-	e.set_glow_level(5, 0.35)
+	e.glow_intensity = 0.58
+	e.glow_bloom = 0.16
+	e.glow_hdr_threshold = 1.05
+	e.glow_hdr_scale = 1.45
+	e.set_glow_level(1, 0.25)
+	e.set_glow_level(2, 0.65)
+	e.set_glow_level(3, 0.95)
+	e.set_glow_level(4, 0.7)
+	e.set_glow_level(5, 0.4)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)
 	e.fog_density = 0.000003
 	e.fog_aerial_perspective = 0.035
 	e.adjustment_enabled = true
-	e.adjustment_saturation = 0.92
-	e.adjustment_contrast = 1.16
-	e.adjustment_brightness = 0.95
+	e.adjustment_saturation = 0.94
+	e.adjustment_contrast = 1.12
+	e.adjustment_brightness = 0.97
 	env.environment = e
 	_env_node = env
 	add_child(env)
+	_build_lt_post()
 
 	# LT path: direction-space IFS sky is the nebula authority (gen/nebula.glsl).
 	# World-space volumes/wisps are off — they reinvent fog and fight the IFS look.
@@ -592,6 +605,23 @@ func _composition_palette(composition: String) -> Dictionary:
 			}
 
 
+func _build_lt_post() -> void:
+	# Fullscreen LT vignette + mild tonemap2 mix (shaders/lt_post.gdshader).
+	_post_layer = CanvasLayer.new()
+	_post_layer.layer = 8
+	var rect := ColorRect.new()
+	rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/lt_post.gdshader")
+	mat.set_shader_parameter("vignette_strength", 0.22)
+	mat.set_shader_parameter("vignette_hardness", 18.0)
+	mat.set_shader_parameter("tonemap_mix", 0.32)
+	rect.material = mat
+	_post_layer.add_child(rect)
+	add_child(_post_layer)
+
+
 func _build_yields() -> void:
 	for y in sim.world["yields"]:
 		var root := Node3D.new()
@@ -603,33 +633,50 @@ func _build_yields() -> void:
 			count = int(float(count) * 1.25)
 		elif composition == "iron":
 			count = int(float(count) * 0.9)
+		var layout := str(y.get("layout", "field"))
 		var spread: float = float(y.get("spread", 90.0)) * float(pal["spread_mul"])
 		var mm_i := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		# Family mesh from field seed + composition — not one rock scaled forever
-		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), 1, composition)
+		# LodMesh band: belts/near fields use higher SDF detail (LT 8-band spirit).
+		var detail := 2 if layout == "belt" else 1
+		mm.mesh = AsteroidMeshGen.build(int(y.get("seed", 1)), detail, composition)
 		mm.instance_count = count
 		var rng := SeededRNG.new(SeedHash.derive(int(y.get("seed", 1)), "field"))
 		var base_col: Color = pal["color"]
-		# Belt / cluster composition (LT asteroid fields are spatial structures, not isotropic).
-		var belt_n := Vector3(rng.randf_range(-0.25, 0.25), 1.0, rng.randf_range(-0.25, 0.25)).normalized()
-		var cluster_a := rng.dir3()
-		var cluster_b := (cluster_a + rng.dir3() * 0.5).normalized()
+		var positions: Array[Vector3] = []
+		positions.resize(count)
 		for i in count:
-			var dir: Vector3
-			if rng.randf() < 0.7:
-				dir = rng.dir3()
-				dir = (dir - belt_n * dir.dot(belt_n) * rng.randf_range(0.7, 0.95)).normalized()
+			var p: Vector3
+			if layout == "belt":
+				# LT SystemBasic planetary belt: r = rc ± rw*(0.5+0.5*exp), h = 0.1*rw*gauss
+				var rc := float(y.get("belt_rc", spread))
+				var rw := float(y.get("belt_rw", spread * 0.1))
+				var r := rc + rng.randf_range(-rw, rw) * (0.5 + 0.5 * rng.exp_rand())
+				var h := 0.1 * rw * rng.randfn(0.0, 1.0)
+				var bdir: Vector3 = rng.dir2()
+				p = Vector3(r * bdir.x, h, r * bdir.z)
+			elif layout == "field":
+				# LT AsteroidField growth: first at center, rest sample prior + dir3*scale*exp^k
+				if i == 0:
+					p = Vector3.ZERO
+				else:
+					var prior: Vector3 = positions[rng.randi_range(0, i - 1)]
+					var k := float(y.get("field_exp_factor", 0.75))
+					p = prior + rng.dir3() * (spread * pow(rng.exp_rand(), k))
 			else:
-				var cdir: Vector3 = cluster_a if rng.randf() < 0.55 else cluster_b
-				dir = (cdir + rng.dir3() * rng.randf_range(0.05, 0.35)).normalized()
-			var p: Vector3 = dir * rng.randf_range(spread * 0.15, spread)
-			p.y *= 0.28 if composition != "ice" else 0.4
-			var s := rng.randf_range(3.5, 13.0) * (0.55 + float(y.get("richness", 1.0)) * 0.45) * float(pal["size_mul"])
-			if composition == "iron" and rng.randf() < 0.2:
-				s *= 1.45
+				# Legacy isotropic fallback
+				var belt_n := Vector3(rng.randf_range(-0.25, 0.25), 1.0, rng.randf_range(-0.25, 0.25)).normalized()
+				var dir: Vector3 = rng.dir3()
+				dir = (dir - belt_n * dir.dot(belt_n) * rng.randf_range(0.7, 0.95)).normalized()
+				p = dir * rng.randf_range(spread * 0.15, spread)
+				p.y *= 0.28 if composition != "ice" else 0.4
+			positions[i] = p
+			# LT asteroid scale ≈ 7*(1+exp^2) for fields; belts use 5*(1+exp^2)
+			var scale_base := 5.0 if layout == "belt" else 7.0
+			var s := scale_base * (1.0 + pow(rng.exp_rand(), 2.0))
+			s *= (0.55 + float(y.get("richness", 1.0)) * 0.45) * float(pal["size_mul"])
 			var basis := Basis.from_euler(Vector3(rng.randf() * TAU, rng.randf() * TAU, rng.randf() * TAU))
 			mm.set_instance_transform(i, Transform3D(basis.scaled(Vector3.ONE * s), p))
 			var c := base_col.lightened(rng.randf_range(-0.12, 0.18))
@@ -742,37 +789,52 @@ func _build_ships() -> void:
 
 
 func _build_life_fx() -> void:
+	# Soft particle trail (secondary) + LT thruster billboard plume (primary language).
 	_engine_fx = GPUParticles3D.new()
-	_engine_fx.amount = 64
-	_engine_fx.lifetime = 1.2
+	_engine_fx.amount = 48
+	_engine_fx.lifetime = 0.9
 	_engine_fx.emitting = true
 	_engine_fx.visibility_aabb = AABB(Vector3(-2000, -2000, -2000), Vector3(4000, 4000, 4000))
 	var mat := ParticleProcessMaterial.new()
 	mat.direction = Vector3(0, 0, 1)
-	mat.spread = 12.0
-	mat.initial_velocity_min = 8.0
-	mat.initial_velocity_max = 28.0
+	mat.spread = 10.0
+	mat.initial_velocity_min = 6.0
+	mat.initial_velocity_max = 22.0
 	mat.gravity = Vector3.ZERO
-	mat.scale_min = 0.3
-	mat.scale_max = 1.2
-	# Warm amber default — style-specific exhaust lives on the mesh; FX stays neutral-warm.
-	mat.color = Color(1.0, 0.55, 0.25, 0.5)
+	mat.scale_min = 0.2
+	mat.scale_max = 0.85
+	mat.color = Color(0.55, 0.7, 1.0, 0.35)
 	_engine_fx.process_material = mat
 	var draw := SphereMesh.new()
-	draw.radius = 0.6
-	draw.height = 1.2
+	draw.radius = 0.45
+	draw.height = 0.9
 	draw.radial_segments = 4
 	draw.rings = 2
 	var dm := StandardMaterial3D.new()
-	dm.albedo_color = Color(1.0, 0.6, 0.3, 0.4)
+	dm.albedo_color = Color(0.5, 0.65, 1.0, 0.3)
 	dm.emission_enabled = true
-	dm.emission = Color(1.0, 0.5, 0.2)
-	dm.emission_energy_multiplier = 2.0
+	dm.emission = Color(0.35, 0.55, 1.0)
+	dm.emission_energy_multiplier = 1.6
 	dm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	dm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	draw.material = dm
 	_engine_fx.draw_pass_1 = draw
 	add_child(_engine_fx)
+
+	# LT Thruster.render: additive billboard jet (effect/thruster.glsl).
+	_thruster_plume = MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2.2, 18.0)
+	quad.center_offset = Vector3(0, 0, -9.0)
+	_thruster_plume.mesh = quad
+	_thruster_mat = ShaderMaterial.new()
+	_thruster_mat.shader = load("res://shaders/thruster.gdshader")
+	_thruster_mat.set_shader_parameter("thruster_color", Vector3(0.3, 0.5, 1.0))
+	_thruster_mat.set_shader_parameter("alpha", 0.85)
+	_thruster_mat.set_shader_parameter("plume_time", 0.0)
+	_thruster_plume.material_override = _thruster_mat
+	_thruster_plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_thruster_plume)
 
 
 func _ship_scale(s: Dictionary) -> float:
@@ -974,19 +1036,44 @@ func sync_ships() -> void:
 	_prune_near_ships(keep)
 	_inspect_target = nearest
 
-	if _engine_fx != null and not nearest.is_empty():
+	if not nearest.is_empty():
 		var np: Vector3 = nearest.get("position", Vector3.ZERO)
 		var nh: Vector3 = nearest.get("heading", Vector3(0, 0, -1))
 		if nh.length_squared() < 0.001:
 			nh = Vector3(0, 0, -1)
-		var aft := np - nh.normalized() * 6.0
-		_engine_fx.global_position = aft
-		_engine_fx.look_at_from_position(aft, np - nh.normalized() * 20.0, Vector3.UP)
+		var forward := nh.normalized()
+		var aft := np - forward * 6.0
+		var speed := float(nearest.get("speed", 40.0))
+		var activation := clampf(speed / 110.0, 0.25, 1.0)
+		var boost := clampf((speed - 70.0) / 50.0, 0.0, 1.0)
+		if _engine_fx != null:
+			_engine_fx.global_position = aft
+			_engine_fx.look_at_from_position(aft, np - forward * 20.0, Vector3.UP)
+		if _thruster_plume != null and _thruster_mat != null:
+			# LT size ≈ (2, 32*activation); color shifts cyan→warm with boost.
+			var jet_len := 10.0 + 22.0 * activation
+			var quad := _thruster_plume.mesh as QuadMesh
+			if quad != null:
+				quad.size = Vector2(2.0 + 0.4 * boost, jet_len)
+				quad.center_offset = Vector3(0, 0, -jet_len * 0.5)
+			_thruster_plume.global_position = aft
+			_thruster_plume.look_at(aft - forward * 40.0, Vector3.UP)
+			_thruster_mat.set_shader_parameter("alpha", activation)
+			_thruster_mat.set_shader_parameter(
+				"thruster_color",
+				Vector3(0.1 + 1.2 * boost, 0.3 + 0.2 * boost, 1.0 - 0.7 * boost)
+			)
+			_thruster_plume.visible = true
+	elif _thruster_plume != null:
+		_thruster_plume.visible = false
 
 
-func _process(_dt: float) -> void:
+func _process(dt: float) -> void:
 	if not _built:
 		return
+	_thruster_time += dt
+	if _thruster_mat != null:
+		_thruster_mat.set_shader_parameter("plume_time", _thruster_time)
 	sync_ships()
 	if _dust != null and _camera != null:
 		_dust.global_position = _camera.global_position
