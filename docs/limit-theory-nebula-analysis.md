@@ -120,11 +120,18 @@ System hue picks now reserve ~18% amber–gold so random seeds are not cyan-lock
 
 ---
 
-## 6. Implementation notes (this milestone)
+## 6. Implementation notes (LT-aligned path)
 
-- Shader: `shaders/nebula_volume.gdshader` — sphere-bounded raymarch, anisotropic filament ridges, domain warp, soft-knee emission
-- Wisps: thin `nebula.gdshader` shells (2 per major mass) as accents only
-- Sky: IFS far colour; `magic()` banding softened
-- Compare camera: mild graze through primary mass (`lt_compare` nebula scenario)
-- Presenter multipliers: filament↑ emission↑ cavity↓ absorb↓ (do not raise density/cavity to chase mid_edge)
-- Perf: ~36 steps per major mass, early exit on high alpha, only 2–3 volumes
+**Stop reinventing volumes.** LT’s nebula is a **direction-space IFS bake** (`gen/nebula.glsl` → TexCube), not world fog.
+
+| LT | EternalWar now |
+| --- | --- |
+| `magic()` Kaliset IFS (~30 iters) | `deep_space_sky.gdshader` `magic()` (~28 iters) |
+| ~128 absorption samples along `dir` (bake) | 48 samples along `EYEDIR` (live sky) |
+| `ColorLUT` 1D textures | Seeded LUT knots + mood palette |
+| TexCube env map at runtime | Godot Sky shader (virtual cubemap) |
+| Separate starfield mesh | MultiMesh star layers |
+
+- World-space `nebula_volume` / billboard wisps are **off** the primary path (optional future accent only)
+- Composition still gates lobes / voids / band
+- Future closer match: bake TexCube once per seed like `Nebula1.lua`

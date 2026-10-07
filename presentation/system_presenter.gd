@@ -119,6 +119,9 @@ func _build_environment() -> void:
 	var e := Environment.new()
 	e.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
+	# Visible sky runs generate() every pixel (see deep_space_sky.gdshader).
+	# REALTIME + 256 is fine for IBL; avoid QUALITY 512 bake on Compatibility
+	# (minutes per system seed with heavy IFS).
 	sky.process_mode = Sky.PROCESS_MODE_REALTIME
 	sky.radiance_size = Sky.RADIANCE_SIZE_256
 	var sky_mat := ShaderMaterial.new()
@@ -131,16 +134,16 @@ func _build_environment() -> void:
 	e.ambient_light_energy = 0.16
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	e.tonemap_exposure = 0.92
-	# LT post uses aggressive bloom (radius ~48) but keeps blacks — aim for that character.
+	# Bloom for star peaks; keep blacks (avoid hex-blob wash on Compatibility).
 	e.glow_enabled = true
-	e.glow_intensity = 0.58
-	e.glow_bloom = 0.16
-	e.glow_hdr_threshold = 1.0
-	e.glow_hdr_scale = 1.4
-	e.set_glow_level(2, 0.7)
-	e.set_glow_level(3, 1.0)
-	e.set_glow_level(4, 0.85)
-	e.set_glow_level(5, 0.55)
+	e.glow_intensity = 0.42
+	e.glow_bloom = 0.08
+	e.glow_hdr_threshold = 1.15
+	e.glow_hdr_scale = 1.2
+	e.set_glow_level(2, 0.55)
+	e.set_glow_level(3, 0.85)
+	e.set_glow_level(4, 0.6)
+	e.set_glow_level(5, 0.35)
 	# Fog is aerial cue only — never the nebula (LT nebula is skybox/env).
 	e.fog_enabled = true
 	e.fog_light_color = fog_c.lerp(bg, 0.7)
@@ -154,15 +157,15 @@ func _build_environment() -> void:
 	_env_node = env
 	add_child(env)
 
-	# IFS sky owns far colour. Bounded volumes + thin wisps add world-space depth
-	# (occlusion / cavities / parallax) without replacing the sky as the wash.
+	# LT path: direction-space IFS sky is the nebula authority (gen/nebula.glsl).
+	# World-space volumes/wisps are off — they reinvent fog and fight the IFS look.
 	_build_starfield_layer("micro")
-	_build_nebula_volumes(primary, secondary)
 	_build_starfield_layer("field")
 	_build_starfield_layer("notable")
 	_build_starfield_layer("gems")
 	_build_starfield_layer("dust")
 	_build_dust(primary)
+	_nebula_volume_mats.clear()
 
 
 func _apply_sky_uniforms(sky_mat: ShaderMaterial, palette: Dictionary) -> void:
@@ -179,7 +182,14 @@ func _apply_sky_uniforms(sky_mat: ShaderMaterial, palette: Dictionary) -> void:
 	sky_mat.set_shader_parameter("galaxy_normal", gn)
 	sky_mat.set_shader_parameter("band_width", float(sky_comp.get("band_width", 3.6)))
 	sky_mat.set_shader_parameter("band_strength", float(sky_comp.get("band_strength", 0.55)))
-	sky_mat.set_shader_parameter("roughness", 0.72)
+	sky_mat.set_shader_parameter("roughness", float(sky_comp.get("roughness", 0.72)))
+	# LT-style ColourLUT knots (Gen.ColorLUT) — drives IFS absorption wave colour
+	var lut := _nebula_color_luts(sim.seed_value, primary, secondary)
+	sky_mat.set_shader_parameter("lut_r", lut["lut_r"])
+	sky_mat.set_shader_parameter("lut_g", lut["lut_g"])
+	sky_mat.set_shader_parameter("lut_b", lut["lut_b"])
+	sky_mat.set_shader_parameter("lut_rg_mid", lut["lut_rg_mid"])
+	sky_mat.set_shader_parameter("lut_b_edge", lut["lut_b_edge"])
 	var star: Dictionary = sim.world.get("star", {})
 	var star_pos: Vector3 = star.get("position", Vector3(0.2, 0.55, 0.15))
 	sky_mat.set_shader_parameter("star_dir", star_pos.normalized() if star_pos.length() > 0.01 else Vector3(0.2, 0.55, 0.15))
@@ -202,6 +212,27 @@ func _apply_sky_uniforms(sky_mat: ShaderMaterial, palette: Dictionary) -> void:
 		else:
 			sky_mat.set_shader_parameter("void%d_dir" % i, Vector3(0, 1, 0))
 			sky_mat.set_shader_parameter("void%d_radius" % i, 0.2)
+
+
+## Approx LT Gen.ColorLUT — five knots per channel, seeded, biased to mood palette.
+func _nebula_color_luts(system_seed: int, primary: Color, secondary: Color) -> Dictionary:
+	var rng := SeedHash.make_rng(system_seed, "nebula_lut")
+	var knots_r: Array = []
+	var knots_g: Array = []
+	var knots_b: Array = []
+	for i in 5:
+		var t := float(i) / 4.0
+		var mood := secondary.lerp(primary, t)
+		knots_r.append(clampf(mood.r * rng.randf_range(0.75, 1.15) + rng.randf_range(-0.05, 0.08), 0.05, 1.0))
+		knots_g.append(clampf(mood.g * rng.randf_range(0.75, 1.15) + rng.randf_range(-0.05, 0.08), 0.05, 1.0))
+		knots_b.append(clampf(mood.b * rng.randf_range(0.75, 1.15) + rng.randf_range(-0.05, 0.08), 0.05, 1.0))
+	return {
+		"lut_r": Vector3(float(knots_r[1]), float(knots_r[3]), float(knots_r[4])),
+		"lut_g": Vector3(float(knots_g[1]), float(knots_g[3]), float(knots_g[4])),
+		"lut_b": Vector3(float(knots_b[1]), float(knots_b[2]), float(knots_b[4])),
+		"lut_rg_mid": Vector2(float(knots_r[2]), float(knots_g[2])),
+		"lut_b_edge": Vector2(float(knots_b[1]), float(knots_b[3])),
+	}
 
 
 func _build_starfield_layer(key: String) -> void:

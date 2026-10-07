@@ -88,8 +88,9 @@ Do **not** move shaders to Rust. Do **not** rewrite simulation.
 ## Iteration order (largest mismatch first)
 
 1. ~~Background luminance / dark fraction vs LT refs~~ — nebula/asteroid frames now ~match LT dark_frac  
-2. ~~Nebula representation (IFS sky vs fog volumes)~~ — primary is direction-space IFS  
-3. Colour mood / saturation vs specific LT stills (largest remaining on nebula_ship)  
+2. ~~Nebula representation (IFS sky vs fog volumes)~~ — primary is direction-space IFS; world volumes demoted off  
+3. Colour mood / saturation vs specific LT stills (largest remaining on nebula_ship) — LUT knots + mood sheet  
+
 4. Star-disk bloom peaks (p90) + star-system filled-frame composition  
 5. Star magnitude hierarchy polish  
 6. Object lighting / silhouettes  
