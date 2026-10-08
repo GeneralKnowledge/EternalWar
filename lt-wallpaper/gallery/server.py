@@ -160,13 +160,16 @@ ALL_QUALITY = {
 
 # Measured peaks (lt64 + Xvfb) on Linux bake — use to pick a safe profile.
 # draft/720p ≈ 510 MiB · good/1080p ≈ 760 MiB · high/1080p ≈ 920 MiB
+# On ≈1 GiB + software GL, nebulaRes=256 sky bakes often exceed 600s — use 128.
 PROFILES = {
     "small": {  # ~1 GiB RAM / 1 core VPS
         "sizes": ("720p",),
         "quality": ("draft", "good"),
+        # Override ALL_QUALITY for this profile (IFS bake cost ∝ res²).
+        "qualityValues": {"draft": 128, "good": 256},
         "defaultSize": "720p",
         "defaultQuality": "draft",
-        "note": "Capped for ≈1 GiB hosts. Prefer draft; good/720p is tight.",
+        "note": "Capped for ≈1 GiB hosts. draft=nebula 128; avoid Belt/Planet.",
     },
     "standard": {
         "sizes": ("720p", "1080p", "ultrawide"),
@@ -224,8 +227,10 @@ def active_sizes() -> dict[str, tuple[int, int]]:
 
 
 def active_quality() -> dict[str, int]:
-    keys = PROFILES[resolve_profile()]["quality"]
-    return {k: ALL_QUALITY[k] for k in keys}
+    cfg = PROFILES[resolve_profile()]
+    keys = cfg["quality"]
+    overrides = cfg.get("qualityValues") or {}
+    return {k: int(overrides.get(k, ALL_QUALITY[k])) for k in keys}
 
 
 def utc_now() -> str:
