@@ -10,7 +10,11 @@ Group=ltwallpaper
 WorkingDirectory=/opt/lt-wallpaper/ltheory
 EnvironmentFile=-/opt/lt-wallpaper/gallery/.env
 Environment=LT_WALLPAPER_SPOOL=/var/lib/lt-wallpaper/spool
-ExecStart=/usr/bin/python3 /opt/lt-wallpaper/ltheory/tools/wallpaperd.py --spool /var/lib/lt-wallpaper/spool serve --width 1920 --height 1080
+# Paths in ReadWritePaths must exist or systemd fails at NAMESPACE (status 226).
+ExecStartPre=/usr/bin/mkdir -p /opt/lt-wallpaper/ltheory/wallpaper /var/lib/lt-wallpaper/spool
+ExecStartPre=/usr/bin/chown ltwallpaper:ltwallpaper /opt/lt-wallpaper/ltheory/wallpaper /var/lib/lt-wallpaper/spool
+# 1280x720 keeps the warm process lighter on ≈1 GiB hosts; jobs can still resize.
+ExecStart=/usr/bin/python3 /opt/lt-wallpaper/ltheory/tools/wallpaperd.py --spool /var/lib/lt-wallpaper/spool serve --width 1280 --height 720
 Restart=on-failure
 RestartSec=5
 
@@ -23,7 +27,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/var/lib/lt-wallpaper /opt/lt-wallpaper/ltheory/wallpaper
+ReadWritePaths=/var/lib/lt-wallpaper /opt/lt-wallpaper/ltheory
 
 [Install]
 WantedBy=multi-user.target

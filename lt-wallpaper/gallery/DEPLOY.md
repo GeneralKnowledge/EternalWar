@@ -47,6 +47,22 @@ sudo journalctl -u lt-wallpaperd -u lt-wallpaper-gallery -f
 sudo edit /opt/lt-wallpaper/gallery/.env   # then restart
 ```
 
+### Seed the gallery
+
+Bake a batch of plates without the UI (no per-IP rate limit):
+
+```bash
+# plan only
+sudo -u ltwallpaper /opt/lt-wallpaper/gallery/scripts/fill-gallery.sh -n 20 --dry-run
+
+# ~20 light presets @ draft/720p — expect many minutes each on 1 GiB
+sudo -u ltwallpaper /opt/lt-wallpaper/gallery/scripts/fill-gallery.sh -n 20 --mix safe
+
+# leave running in tmux/screen; keep lt-wallpaperd up; avoid UI Generate
+```
+
+Images land in `/var/lib/lt-wallpaper/gallery` and show up on refresh.
+
 ## Docker
 
 **Build** on ≥4 GiB RAM (LibPHX compile will struggle on 1 GiB):
@@ -76,6 +92,8 @@ See `.env.example`. Important knobs:
 | `LT_GALLERY_HOST` / `PORT` | Bind address |
 | `LT_WALLPAPER_DAEMON` | `auto` / `on` / `off` — use warm daemon |
 | `LT_WALLPAPER_SPOOL` | Job spool shared with `lt-wallpaperd` |
+| `LT_WALLPAPER_IR_SAMPLES` | GGX IR samples (default `64`; upstream game used `256`) |
+| `LT_WALLPAPER_TIMING` | `1` to log nebula/plate timings in the engine |
 
 ## Health
 

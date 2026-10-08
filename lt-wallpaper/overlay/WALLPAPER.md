@@ -64,8 +64,10 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `nebulaStyle=` | `ifs` (Nebula1) · `lt` (Nebula2) · `auto` |
 | `hull=` | Capital: `sausage` · `triangle` · `top` · `auto` |
 | `fighter=` | `standard` · `surreal` · `auto` |
-| `thrusters=` | Engine glow on ships (`1` default, `0` off) |
-| `superSample=` | `1` / `2` / `4` export supersample (default `2`) |
+| `thrusters=` | Engine glow on ships (`1` default, `0` off; re-applied after physics) |
+| `superSample=` | `1` / `2` / `4` export supersample (default `2`); settle frames always render 1× |
+| `irSamples=` | GGX IR filter samples (default `64`; game used `256`). Quality-neutral on stills |
+| `timing=1` | Print nebula IFS / IR / plate wall times |
 | `seed=good` | Pick from Josh’s curated goodSeeds |
 
 ## Warm daemon
@@ -86,8 +88,29 @@ Spool protocol: `daemon.ready` while idle → client writes `job.req` → daemon
 
 Gallery uses the daemon automatically when ready (`LT_WALLPAPER_DAEMON=auto`). systemd unit: `lt-wallpaperd.service`.
 
+## Performance (software GL / small VPS)
+
+Wall time is dominated by **GPU work on the CPU** (Mesa llvmpipe), not Lua.
+
+| Phase | What | Quality-neutral knobs |
+|-------|------|------------------------|
+| IFS cubemap | `TexCube` nebula at `nebulaRes` | Resolution *is* quality — keep it |
+| IR filter | `genIRMap(N)` — **N = GGX samples/texel**, not size | `irSamples=64` (was hardcoded 256) |
+| Settle frames | Full deferred view each tick | Settle at 1× SS; capture at `superSample` |
+| Daemon park | Used to re-bake a sky between jobs | Park ship only; skip draw until next job |
+
+```bash
+# Profile a plate on the box
+./tools/wallpaper.sh seed=42 preset=solo nebulaRes=128 frames=6 timing=1 \
+  irSamples=64 out=/tmp/wp.png
+```
+
+Gallery passes `irSamples` from `LT_WALLPAPER_IR_SAMPLES` (default 64) and optional `LT_WALLPAPER_TIMING=1`.
+
+On multi-core hosts, Mesa can use `LP_NUM_THREADS=<n>` (Oracle Free is typically 1 core).
+
 ## Notes
 
-- Nebula bake uses `Config.gen.nebulaRes` (default 1024) — first frame can take several seconds.
+- Nebula bake uses `Config.gen.nebulaRes` (gallery `small` draft = 128) — first useful frame waits on IFS+IR.
 - SDL 2.x minor/patch mismatch vs vendored headers is allowed on Linux (major must match).
 - This is **not** Limit Theory Redux; it is Josh’s C/Lua tree plus a wallpaper App.

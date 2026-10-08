@@ -47,11 +47,18 @@
         </label>
         <label class="field">
           <span>Best of</span>
-          <input id="best" type="number" min="1" max="8" value="4" title="Bake N candidates, keep the highest-scoring plate" />
+          <input id="best" type="number" min="1" max="8" value="1" title="Bake N candidates, keep the highest-scoring plate (use 1 on small hosts)" />
         </label>
         <button type="submit" class="primary" id="generate">Generate</button>
       </form>
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <p class="progress-label" id="progressLabel">Starting…</p>
+      </div>
       <p class="status" id="status">Ready — native bake. Best-of keeps one winner; Count keeps every plate.</p>
+      <div class="error-box" id="errorBox" hidden></div>
     </section>
 
     <section class="gallery-wrap" aria-label="Gallery">

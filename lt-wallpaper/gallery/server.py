@@ -14,6 +14,7 @@ import json
 import os
 import random
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -90,12 +91,12 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "skirmish": {
         "preset": "skirmish",
         "label": "Skirmish",
-        "blurb": "Two wings facing off — turrets firing",
+        "blurb": "Knife-fight — crossfire pulses mid-flight",
     },
     "capital": {
         "preset": "capital",
         "label": "Capital",
-        "blurb": "ShapeLib capital — the ship that could have been",
+        "blurb": "ShapeLib capital — seeded angles, engines lit",
     },
     "armada": {
         "preset": "armada",
@@ -120,7 +121,7 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "mining": {
         "preset": "mining",
         "label": "Mining",
-        "blurb": "Ore rocks and posed miners",
+        "blurb": "Miners drilling ore — beams into the rock",
     },
     "aftermath": {
         "preset": "aftermath",
@@ -159,13 +160,16 @@ ALL_QUALITY = {
 
 # Measured peaks (lt64 + Xvfb) on Linux bake — use to pick a safe profile.
 # draft/720p ≈ 510 MiB · good/1080p ≈ 760 MiB · high/1080p ≈ 920 MiB
+# On ≈1 GiB + software GL, nebulaRes=256 sky bakes often exceed 600s — use 128.
 PROFILES = {
     "small": {  # ~1 GiB RAM / 1 core VPS
         "sizes": ("720p",),
         "quality": ("draft", "good"),
+        # Override ALL_QUALITY for this profile (IFS bake cost ∝ res²).
+        "qualityValues": {"draft": 128, "good": 256},
         "defaultSize": "720p",
         "defaultQuality": "draft",
-        "note": "Capped for ≈1 GiB hosts. Prefer draft; good/720p is tight.",
+        "note": "Capped for ≈1 GiB hosts. draft=nebula 128; avoid Belt/Planet.",
     },
     "standard": {
         "sizes": ("720p", "1080p", "ultrawide"),
@@ -187,7 +191,12 @@ _lock = threading.Lock()
 _bake_lock = threading.Lock()
 _rate: dict[str, float] = {}  # ip -> last bake monotonic time
 _busy = False
+_busy_since: float | None = None
 _last_error: str | None = None
+# Async bake jobs: id -> job dict (survives proxy timeouts on long POSTs)
+_jobs: dict[str, dict[str, Any]] = {}
+_jobs_lock = threading.Lock()
+_JOB_TTL_SEC = 3600
 
 
 def mem_total_mib() -> int | None:
@@ -218,8 +227,10 @@ def active_sizes() -> dict[str, tuple[int, int]]:
 
 
 def active_quality() -> dict[str, int]:
-    keys = PROFILES[resolve_profile()]["quality"]
-    return {k: ALL_QUALITY[k] for k in keys}
+    cfg = PROFILES[resolve_profile()]
+    keys = cfg["quality"]
+    overrides = cfg.get("qualityValues") or {}
+    return {k: int(overrides.get(k, ALL_QUALITY[k])) for k in keys}
 
 
 def utc_now() -> str:
@@ -269,13 +280,153 @@ def rate_status(ip: str) -> dict[str, Any]:
     now = time.monotonic()
     last = _rate.get(ip, 0.0)
     remaining = max(0.0, RATE_LIMIT_SEC - (now - last))
+    busy_for = None
+    if _busy and _busy_since is not None:
+        busy_for = int(max(0.0, now - _busy_since))
+    job = _current_job_snapshot()
     return {
         "limitSec": RATE_LIMIT_SEC,
         "retryAfterSec": int(remaining + 0.999) if remaining > 0 else 0,
         "allowed": remaining <= 0 and not _busy,
         "busy": _busy,
+        "busyForSec": busy_for,
         "lastError": _last_error,
+        "job": job,
+        "daemon": daemon_status(),
     }
+
+
+def _current_job_snapshot() -> dict[str, Any] | None:
+    with _jobs_lock:
+        running = [j for j in _jobs.values() if j.get("status") in ("queued", "running")]
+        if not running:
+            return None
+        j = max(running, key=lambda x: float(x.get("startedAtMono") or 0))
+        return _public_job(j)
+
+
+def _public_job(job: dict[str, Any]) -> dict[str, Any]:
+    now = time.monotonic()
+    started = float(job.get("startedAtMono") or now)
+    return {
+        "id": job.get("id"),
+        "status": job.get("status"),
+        "phase": job.get("phase"),
+        "progress": job.get("progress", 0),
+        "message": job.get("message"),
+        "error": job.get("error"),
+        "logTail": job.get("logTail"),
+        "hint": job.get("hint"),
+        "category": job.get("category"),
+        "preset": job.get("preset"),
+        "best": job.get("best"),
+        "count": job.get("count"),
+        "mode": job.get("mode"),
+        "elapsedSec": int(max(0.0, now - started)),
+        "item": job.get("item"),
+        "items": job.get("items"),
+    }
+
+
+def _set_job(job_id: str, **fields: Any) -> None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _prune_jobs() -> None:
+    now = time.monotonic()
+    with _jobs_lock:
+        dead = [
+            jid
+            for jid, j in _jobs.items()
+            if now - float(j.get("startedAtMono") or now) > _JOB_TTL_SEC
+        ]
+        for jid in dead:
+            del _jobs[jid]
+
+
+def _job_hint(error: str) -> str:
+    e = error.lower()
+    if "namespace" in e or "readwritepaths" in e:
+        return (
+            "Warm daemon systemd unit is crashing. "
+            "Run: sudo mkdir -p /opt/lt-wallpaper/ltheory/wallpaper && "
+            "sudo systemctl reset-failed lt-wallpaperd && sudo systemctl restart lt-wallpaperd"
+        )
+    if "timed out" in e or "timeout" in e:
+        return "Bake timed out. Try Solo + draft/720p + Best of 1, or raise LT_GALLERY_BAKE_TIMEOUT."
+    if "memory" in e or "killed" in e or "oom" in e:
+        return "Likely OOM on a small host. Use draft/720p, Best of 1, avoid Belt/Planet."
+    if "not found" in e and "ltheory" in e:
+        return "ltheory tree missing under LTHEORY_ROOT — re-run gallery/scripts/install.sh"
+    if "daemon not ready" in e:
+        return "Warm daemon down; cold fallback should still work. Check: systemctl status lt-wallpaperd"
+    if "xvfb" in e or "display" in e:
+        return "Install xvfb (sudo apt-get install xvfb) or set DISPLAY."
+    return "Check: sudo journalctl -u lt-wallpaper-gallery -u lt-wallpaperd -n 80 --no-pager"
+
+
+def _run_bake_job(job_id: str, ip: str, params: dict[str, Any]) -> None:
+    global _busy, _busy_since, _last_error
+    _set_job(
+        job_id,
+        status="running",
+        phase="starting",
+        progress=5,
+        message="Starting bake…",
+    )
+    try:
+        daemon = daemon_status()
+        mode = "warm" if daemon.get("ready") else "cold"
+        _set_job(
+            job_id,
+            mode=mode,
+            phase="engine",
+            progress=15,
+            message=f"Running native engine ({mode})…",
+        )
+        result = run_bake(**params)
+        _rate[ip] = time.monotonic()
+        if isinstance(result, list):
+            _set_job(
+                job_id,
+                status="done",
+                phase="done",
+                progress=100,
+                message=f"Saved {len(result)} plates",
+                items=result,
+                item=result[0] if result else None,
+            )
+        else:
+            _set_job(
+                job_id,
+                status="done",
+                phase="done",
+                progress=100,
+                message=f"Saved {result.get('label') or 'wallpaper'}",
+                item=result,
+                items=None,
+            )
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc).strip() or "bake failed (no details)"
+        _last_error = msg[-800:]
+        print(f"bake job {job_id} error: {msg}", flush=True)
+        _set_job(
+            job_id,
+            status="error",
+            phase="error",
+            progress=100,
+            message="Generate failed",
+            error=msg[-1200:],
+            logTail=msg[-1200:],
+            hint=_job_hint(msg),
+        )
+    finally:
+        _busy = False
+        _busy_since = None
 
 
 def random_seed() -> str:
@@ -356,7 +507,7 @@ def run_bake(
     count>1 keeps all plates. best>1 bakes that many candidates and keeps the
     highest-scoring plate only (still one engine launch).
     """
-    global _busy, _last_error
+    global _busy, _busy_since, _last_error
     cat = CATEGORIES[category]
     preset = cat["preset"]
     count = max(1, min(int(count), MAX_BATCH_COUNT))
@@ -371,14 +522,49 @@ def run_bake(
 
     batch_dir: Path | None = None
     out_path: Path | None = None
+    # Settle frames: combat/mining need travel time for pulses; sky is cheap.
+    # Nebula bake dominates wall time — a few extra update ticks are fine on 1 GiB.
+    settle_by_preset = {
+        "sky": 2,
+        "nebula": 2,
+        "solo": 6,
+        "ship": 6,
+        "fleet": 8,
+        "skirmish": 22,
+        "mining": 16,
+        "aftermath": 14,
+        "capital": 8,
+        "armada": 8,
+        "station": 5,
+        "system": 8,
+        "vista": 6,
+        "asteroids": 4,
+        "planet": 4,
+        "belt": 4,
+    }
+    settle_frames = settle_by_preset.get(preset, 6)
+    if resolve_profile() == "small":
+        settle_frames = max(2, min(settle_frames, 22))
+    # irSamples=64: GGX IR filter sample count (not resolution). Quality-neutral
+    # on stills vs upstream 256; large win under software GL.
+    ir_samples = int(os.environ.get("LT_WALLPAPER_IR_SAMPLES", "64"))
+    timing = os.environ.get("LT_WALLPAPER_TIMING", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     bake_args = [
         f"seed={seed}",
         f"preset={preset}",
         f"width={width}",
         f"height={height}",
         f"nebulaRes={nebula_res}",
-        "frames=3",
+        f"frames={settle_frames}",
+        f"irSamples={ir_samples}",
     ]
+    if timing:
+        bake_args.append("timing=1")
     if keep_best_only:
         out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
         bake_args.extend([f"best={best}", f"out={out_path}"])
@@ -401,57 +587,76 @@ def run_bake(
     spool = Path(
         os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))
     ).resolve()
+    daemon_ready = (
+        (spool / "daemon.ready").is_file() and not (spool / "job.req").is_file()
+    )
 
     with _bake_lock:
         _busy = True
+        _busy_since = time.monotonic()
         _last_error = None
         try:
-            if use_daemon and daemon.is_file():
+            # Prefer warm daemon only when actually idle. If it's mid-job or
+            # crash-looping, call wallpaper.sh directly (avoid wallpaperd wait).
+            if use_daemon and daemon.is_file() and daemon_ready:
                 args = [
                     sys.executable,
                     str(daemon),
                     "--spool",
                     str(spool),
                     "bake",
-                    "--cold",
                     *bake_args,
                 ]
             else:
                 args = [str(script), *bake_args]
-            proc = subprocess.run(
+            # New session so timeout can kill xvfb-run + lt children together.
+            proc = subprocess.Popen(
                 args,
                 cwd=str(ltheory),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
+                start_new_session=True,
                 env={
                     **os.environ,
                     "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", ""),
                     "LT_WALLPAPER_SPOOL": str(spool),
                 },
             )
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    proc.kill()
+                try:
+                    stdout, stderr = proc.communicate(timeout=5)
+                except Exception:  # noqa: BLE001
+                    stdout, stderr = "", ""
+                _last_error = f"bake timed out after {timeout}s"
+                raise RuntimeError(_last_error) from exc
+
             if proc.returncode != 0:
-                detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                detail = (stderr or stdout or "bake failed").strip()
                 _last_error = detail[-800:]
                 raise RuntimeError(_last_error)
             if count == 1:
                 assert out_path is not None
                 if not out_path.is_file():
-                    detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                    detail = (stderr or stdout or "bake failed").strip()
                     _last_error = detail[-800:]
                     raise RuntimeError(_last_error)
             else:
                 assert batch_dir is not None
                 pngs = sorted(batch_dir.glob("lt_*.png"))
                 if len(pngs) < 1:
-                    detail = (proc.stderr or proc.stdout or "batch produced no PNGs").strip()
+                    detail = (stderr or stdout or "batch produced no PNGs").strip()
                     _last_error = detail[-800:]
                     raise RuntimeError(_last_error)
-        except subprocess.TimeoutExpired as exc:
-            _last_error = f"bake timed out after {timeout}s"
-            raise RuntimeError(_last_error) from exc
         finally:
             _busy = False
+            _busy_since = None
 
     if count == 1:
         assert out_path is not None
@@ -597,6 +802,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "profileNote": cfg["note"],
                     "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
+                    "bakeTimeoutSec": BAKE_TIMEOUT_SEC,
                     "maxBatchCount": MAX_BATCH_COUNT,
                     "maxBestCount": MAX_BEST_COUNT,
                     "daemon": daemon_status(),
@@ -627,6 +833,19 @@ class Handler(SimpleHTTPRequestHandler):
 
         if path == "/api/status":
             self._json(HTTPStatus.OK, rate_status(client_ip(self)))
+            return
+
+        if path.startswith("/api/jobs/"):
+            job_id = path[len("/api/jobs/") :].strip("/")
+            if not re.fullmatch(r"[a-f0-9]{12}", job_id or ""):
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "bad job id"})
+                return
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if not job:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "job not found"})
+                return
+            self._json(HTTPStatus.OK, _public_job(job))
             return
 
         if path == "/api/gallery":
@@ -757,32 +976,60 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        _rate[ip] = time.monotonic()
-        try:
-            result = run_bake(
-                category=category,
-                seed=seed,
-                width=width,
-                height=height,
-                nebula_res=nebula_res,
-                count=count,
-                best=best,
-            )
-        except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
-            self._json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": str(exc), **rate_status(ip)},
-            )
-            return
+        # Async job so long bakes survive reverse-proxy / tunnel POST timeouts.
+        _prune_jobs()
+        job_id = uuid.uuid4().hex[:12]
+        cat = CATEGORIES[category]
+        job = {
+            "id": job_id,
+            "status": "queued",
+            "phase": "queued",
+            "progress": 1,
+            "message": "Queued…",
+            "error": None,
+            "logTail": None,
+            "hint": None,
+            "category": category,
+            "preset": cat["preset"],
+            "best": best,
+            "count": count,
+            "mode": None,
+            "startedAtMono": time.monotonic(),
+            "item": None,
+            "items": None,
+            "ip": ip,
+        }
+        with _jobs_lock:
+            _jobs[job_id] = job
+        # Reserve the bake slot immediately (run_bake also toggles _busy).
+        global _busy, _busy_since
+        _busy = True
+        _busy_since = time.monotonic()
 
-        if isinstance(result, list):
-            self._json(
-                HTTPStatus.OK,
-                {"items": result, "item": result[0] if result else None, **rate_status(ip)},
-            )
-        else:
-            self._json(HTTPStatus.OK, {"item": result, **rate_status(ip)})
-
+        params = {
+            "category": category,
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "nebula_res": nebula_res,
+            "count": count,
+            "best": best,
+        }
+        thread = threading.Thread(
+            target=_run_bake_job,
+            args=(job_id, ip, params),
+            name=f"bake-{job_id}",
+            daemon=True,
+        )
+        thread.start()
+        self._json(
+            HTTPStatus.ACCEPTED,
+            {
+                "jobId": job_id,
+                "job": _public_job(job),
+                **rate_status(ip),
+            },
+        )
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LT Wallpaper Gallery server")

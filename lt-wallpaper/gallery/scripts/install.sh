@@ -39,7 +39,9 @@ rsync -a --delete \
   --exclude '.git/' \
   "$LT_WALLPAPER_SRC/" "$INSTALL_ROOT/"
 
-mkdir -p "$DATA_ROOT/images" "$SPOOL_ROOT"
+mkdir -p "$DATA_ROOT/images" "$SPOOL_ROOT" \
+  "$INSTALL_ROOT/ltheory/wallpaper" 2>/dev/null || true
+# Ensure wallpaper staging dir exists after build too (systemd ReadWritePaths).
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT" "$DATA_ROOT" "$SPOOL_ROOT"
 
 if [[ -z "$PROFILE" ]]; then
@@ -68,12 +70,22 @@ chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/gallery/.env"
 chmod 640 "$INSTALL_ROOT/gallery/.env"
 
 echo "==> Building ltheory (this can take a while / thrash on 1 GiB)"
-sudo -u "$SERVICE_USER" env LTHEORY_DIR="$INSTALL_ROOT/ltheory" \
-  bash "$INSTALL_ROOT/setup.sh"
+# Run as service user from a cwd they can access (not ~/… of the invoking user).
+# Otherwise git fails: "failed to stat '.../gallery': Permission denied".
+sudo -u "$SERVICE_USER" -H env LTHEORY_DIR="$INSTALL_ROOT/ltheory" \
+  bash -c "cd '$INSTALL_ROOT' && bash '$INSTALL_ROOT/setup.sh'"
 
 # Ensure wallpaper overlay tools/app are present after build
 cp -a "$INSTALL_ROOT/overlay/script/App/Wallpaper.lua" \
   "$INSTALL_ROOT/ltheory/script/App/Wallpaper.lua"
+if [[ -d "$INSTALL_ROOT/overlay/script/Game" ]]; then
+  mkdir -p "$INSTALL_ROOT/ltheory/script/Game"
+  cp -a "$INSTALL_ROOT/overlay/script/Game/." "$INSTALL_ROOT/ltheory/script/Game/"
+fi
+if [[ -d "$INSTALL_ROOT/overlay/script/Gen" ]]; then
+  mkdir -p "$INSTALL_ROOT/ltheory/script/Gen"
+  cp -a "$INSTALL_ROOT/overlay/script/Gen/." "$INSTALL_ROOT/ltheory/script/Gen/"
+fi
 cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
   "$INSTALL_ROOT/overlay/tools/score_pick.py" \
   "$INSTALL_ROOT/overlay/tools/wallpaperd.py" \
@@ -81,6 +93,7 @@ cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
 chmod +x "$INSTALL_ROOT/ltheory/tools/wallpaper.sh" \
   "$INSTALL_ROOT/ltheory/tools/score_pick.py" \
   "$INSTALL_ROOT/ltheory/tools/wallpaperd.py"
+mkdir -p "$INSTALL_ROOT/ltheory/wallpaper"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/ltheory"
 
 echo "==> Installing systemd units (warm daemon + gallery)"
@@ -94,7 +107,20 @@ for unit in lt-wallpaperd.service lt-wallpaper-gallery.service; do
     "/etc/systemd/system/$unit"
 done
 
+# Match warm-daemon window to profile (small → 720p).
+if [[ "$PROFILE" == "small" ]]; then
+  sed -i \
+    -e 's|--width 1920 --height 1080|--width 1280 --height 720|g' \
+    -e 's|--width 1280 --height 720|--width 1280 --height 720|g' \
+    /etc/systemd/system/lt-wallpaperd.service
+else
+  sed -i \
+    -e 's|--width 1280 --height 720|--width 1920 --height 1080|g' \
+    /etc/systemd/system/lt-wallpaperd.service
+fi
+
 systemctl daemon-reload
+systemctl reset-failed lt-wallpaperd.service 2>/dev/null || true
 systemctl enable --now lt-wallpaperd.service
 systemctl enable --now lt-wallpaper-gallery.service
 

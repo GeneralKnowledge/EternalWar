@@ -234,6 +234,8 @@ def bake(spool: Path, argv: list[str], allow_cold: bool) -> int:
             "fighter": fields.get("fighter", ""),
             "thrusters": fields.get("thrusters", ""),
             "superSample": fields.get("superSample", "") or fields.get("ss", ""),
+            "irSamples": fields.get("irSamples", ""),
+            "timing": fields.get("timing", ""),
         }
         # Drop empties
         job = {k: v for k, v in job.items() if v}

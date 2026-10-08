@@ -84,7 +84,12 @@ function GameView:draw (focus, active)
 
   if true then -- Alpha (Additive) Pass
     self.renderer:startAlpha(BlendMode.Additive)
+      -- Thruster jets / pulses sit on or just behind hulls. Depth-testing the
+      -- additive pass against opaque geometry eats the plumes (especially when
+      -- jets are Identity-oriented). Wallpaper plates need the VFX to read.
+      RenderState.PushDepthTest(false)
       world:render(Event.Render(BlendMode.Additive, eye))
+      RenderState.PopDepthTest()
     self.renderer:stopAlpha()
   end
 
@@ -201,8 +206,12 @@ function GameView:onUpdate (state)
 
   do -- Compute Eye Velocity EMA
     local eye = self.camera.pos
-    local v = (eye - self.eyeLast):scale(1.0 / max(1e-10, state.dt))
-    self.eyeVel:setv(self.player:getControlling():getVelocity())
+    local ctrl = self.player:getControlling()
+    if ctrl and ctrl.getVelocity then
+      self.eyeVel:setv(ctrl:getVelocity())
+    else
+      self.eyeVel:set(0, 0, 0)
+    end
     self.eyeLast:setv(eye)
   end
 
@@ -264,7 +273,13 @@ function GameView.Create (player)
 
   self:setOrbit(false)
   self.eyeLast = self.camera.pos:clone()
-  self.eyeVel  = self.player:getControlling():getVelocity():clone()
+  -- Wallpaper daemon may construct GameView before a controlling body exists.
+  local ctrl = self.player:getControlling()
+  if ctrl and ctrl.getVelocity then
+    self.eyeVel = ctrl:getVelocity():clone()
+  else
+    self.eyeVel = Vec3f(0, 0, 0)
+  end
   return self
 end
 

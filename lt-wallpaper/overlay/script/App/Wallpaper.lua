@@ -34,7 +34,9 @@
     hull=sausage|triangle|top|auto   Capital hull family
     fighter=standard|surreal|auto           Fighter generator
     thrusters=0|1       Engine glow on ships (default 1)
-    superSample=1|2|4   Export supersample (default 2)
+    superSample=1|2|4   Export supersample (default 2); settle always 1x
+    irSamples=<int>     GGX IR bake samples (default 64 wallpaper / 256 game)
+    timing=0|1          Print nebula/plate phase timings
     seed=good           Pick from Josh's curated goodSeeds list
 
   Wrapper-only (tools/wallpaper.sh / wallpaperd.py):
@@ -73,21 +75,54 @@ local PRESETS = {
 local DEFAULT_FRAMES = {
   sky = 4,
   nebula = 4,
-  ship = 4,
-  solo = 4,
+  ship = 6,
+  solo = 6,
   asteroids = 4,
   planet = 5,
   belt = 5,
   station = 6,
-  fleet = 4,
-  -- Turret volleys need a few frames for pulses to be in-flight; no Attack AI.
-  skirmish = 10,
+  fleet = 8,
+  -- Pulses need travel time; ThrustController + turret aim need a few ticks.
+  skirmish = 24,
   system = 10,
-  vista = 6,
-  capital = 5,
-  armada = 5,
-  mining = 5,
-  aftermath = 8,
+  vista = 8,
+  capital = 8,
+  armada = 8,
+  mining = 18,
+  aftermath = 16,
+}
+
+-- Seeded camera packs (yaw / pitch / radius scale). Stern three-quarters first
+-- so thruster plumes read in-frame.
+local CAMERA_PACKS = {
+  ship = {
+    { yaw = -0.95, pitch = 0.22, r = 1.00 },
+    { yaw =  0.55, pitch = 0.24, r = 1.10 },
+    { yaw = -1.55, pitch = 0.40, r = 1.25 },
+    { yaw = -0.70, pitch = 0.10, r = 0.95 },
+    { yaw = -2.25, pitch = 0.18, r = 1.15 },
+  },
+  capital = {
+    { yaw = -1.05, pitch = 0.20, r = 1.00 },
+    { yaw =  0.60, pitch = 0.22, r = 1.15 },
+    { yaw = -0.80, pitch = 0.38, r = 1.35 },
+    { yaw = -1.70, pitch = 0.48, r = 1.55 },
+    { yaw = -2.35, pitch = 0.14, r = 1.20 },
+    { yaw = -1.20, pitch = 0.08, r = 0.90 },
+  },
+  skirmish = {
+    { yaw = -1.35, pitch = 0.28, r = 1.00 },
+    { yaw = -0.85, pitch = 0.42, r = 1.15 },
+    { yaw = -2.05, pitch = 0.20, r = 0.92 },
+    { yaw = -1.10, pitch = 0.14, r = 1.05 },
+    { yaw =  0.40, pitch = 0.30, r = 1.10 },
+  },
+  mining = {
+    { yaw = -1.05, pitch = 0.34, r = 1.00 },
+    { yaw = -0.70, pitch = 0.48, r = 1.20 },
+    { yaw = -1.60, pitch = 0.22, r = 0.95 },
+    { yaw =  0.35, pitch = 0.30, r = 1.10 },
+  },
 }
 
 -- Josh's curated sky seeds from Config.App.lua (digit form for CLI).
@@ -167,6 +202,10 @@ local function applyOptKV (opts, k, v)
     opts.thrusters = (v ~= '0' and v ~= 'false' and v ~= 'no')
   elseif k == 'superSample' or k == 'ss' then
     opts.superSample = tonumber(v)
+  elseif k == 'irSamples' then
+    opts.irSamples = tonumber(v)
+  elseif k == 'timing' then
+    opts.timing = (v ~= '0' and v ~= 'false' and v ~= 'no')
   elseif k == 'daemon' then
     opts.daemon = (v == '1' or v == 'true' or v == 'yes')
   elseif k == 'spool' then
@@ -217,6 +256,8 @@ local function parseArgs ()
     fighter = 'auto',
     thrusters = true,
     superSample = 2,
+    irSamples = 64,
+    timing = false,
     daemon = false,
     spool = nil,
     jobId = nil,
@@ -294,6 +335,8 @@ local function parseJobBody (body)
     fighter = 'auto',
     thrusters = true,
     superSample = 2,
+    irSamples = 64,
+    timing = false,
     jobId = nil,
   }
   for line in string.gmatch(body, '[^\r\n]+') do
@@ -381,14 +424,49 @@ local function bindShipType (system, kind, scale, opts)
   system.shipType = ShipType(system.rng:get31(), gen, scl)
 end
 
-local function faceToward (entity, forward)
-  entity:setRot(Quat.FromLookUp(forward:normalize(), Vec3f(0, 1, 0)))
+local function faceToward (entity, forward, bank)
+  local fwd = forward:normalize()
+  local up = Vec3f(0, 1, 0)
+  if bank and math.abs(bank) > 1e-4 then
+    -- Bank around the look axis so formations don't look glued flat.
+    local right = fwd:cross(up):normalize()
+    if right:length() < 1e-4 then right = Vec3f(1, 0, 0) end
+    up = (up:scale(math.cos(bank)) + right:scale(math.sin(bank))):normalize()
+  end
+  entity:setRot(Quat.FromLookUp(fwd, up))
 end
 
+local function pickCamera (rng, packName, baseRadius, system)
+  local pack = CAMERA_PACKS[packName] or CAMERA_PACKS.ship
+  local c = rng:choose(pack)
+  local yaw = c.yaw
+  local pitch = c.pitch
+  local radius = baseRadius * (c.r or 1.0)
+  -- If the pack angle looks straight into the star (silhouettes + washed VFX),
+  -- nudge toward the star-behind hemisphere — but keep pack variety.
+  local sd = system and system.starDir
+  if sd then
+    local starYaw = math.atan2(sd.z, sd.x)
+    local diff = yaw - starYaw
+    while diff > math.pi do diff = diff - 2 * math.pi end
+    while diff < -math.pi do diff = diff + 2 * math.pi end
+    if math.abs(diff) > 1.85 then
+      yaw = starYaw + (diff >= 0 and 0.85 or -0.85)
+    end
+  end
+  return yaw, pitch, radius
+end
+
+--- ThrustController overwrites activationT every tick from forward thrust.
+--- For still plates we want plumes without flinging ships out of frame, so we
+--- zero the controller then force thruster fields after root:update.
 local function igniteThrusters (ship, amount, boost)
   if not ship or not ship.hasSockets or not ship:hasSockets() then return end
-  amount = amount or 0.9
-  boost = boost or 0.4
+  amount = amount or 0.95
+  boost = boost or 0.55
+  if ship.hasThrustController and ship:hasThrustController() then
+    ship:getThrustController():clear()
+  end
   for thruster in ship:iterSocketsByType(SocketType.Thruster) do
     thruster.activationT = amount
     thruster.activation = amount
@@ -402,6 +480,58 @@ local function igniteAllShips (system, amount, boost)
     if child.hasSockets and child:hasSockets() then
       igniteThrusters(child, amount, boost)
     end
+  end
+end
+
+local function collectYieldRocks (system)
+  local rocks = {}
+  for _, child in system:iterChildren() do
+    if child.hasYield and child:hasYield() then
+      insert(rocks, child)
+    end
+  end
+  return rocks
+end
+
+local function rockRadius (rock)
+  local ok, rad = pcall(function () return rock:getRadius() end)
+  if ok and rad and rad > 1 then return rad end
+  ok, rad = pcall(function () return rock:getScale() end)
+  if ok and rad and rad > 1 then return rad end
+  return 12
+end
+
+local function addSpark (system, pos, age)
+  local boom = Entities.Explosion(pos)
+  boom.age = age or 0.6
+  system:addChild(boom)
+  return boom
+end
+
+--- Mid-flight pulse already in the gap (stills can't wait for travel time).
+local function seedPulse (system, source, fromPos, toPos, lifeFrac)
+  if not system.addProjectile then return end
+  local e = system:addProjectile(source)
+  local dir = (toPos - fromPos):normalize()
+  local dist = (toPos - fromPos):length() * 0.45
+  e.pos = fromPos + dir:scale(math.max(6.0, dist * 0.35))
+  e.vel = dir:scale(Config.game.pulseSpeed)
+  e.dir = dir
+  e.lifeMax = 1.4
+  e.life = e.lifeMax * (lifeFrac or 0.65)
+  e.dist = dist
+  if e.refreshMatrix then e:refreshMatrix() end
+  return e
+end
+
+--- Aim turrets and arm them so updateTurret fires after orientation applies.
+local function armTurretsAt (from, at)
+  if not from or not at then return end
+  if not from.hasSockets or not from:hasSockets() then return end
+  local pos = at:getPos()
+  for turret in from:iterSocketsByType(SocketType.Turret) do
+    turret:aimAtTarget(at, pos)
+    turret.firing = 1
   end
 end
 
@@ -426,6 +556,17 @@ end
 
 --- Spawn a ship. reuseType=true keeps the current ShapeLib hull (fleet cohesion).
 --- kind: nil/'fighter'/'capital' — ignored when reuseType is true.
+-- billboard/axis jets extend along local +Z. Identity attach aligns that with
+-- ship forward, so plumes fire into the hull. Point +Z aft instead.
+local THRUSTER_AFT = Quat.FromLookUp(Vec3f(0, 0, -1), Vec3f(0, 1, 0))
+
+local function orientThrustersAft (ship)
+  if not ship or not ship.hasSockets or not ship:hasSockets() then return end
+  for thruster in ship:iterSocketsByType(SocketType.Thruster) do
+    thruster:setRotLocal(THRUSTER_AFT)
+  end
+end
+
 local function spawnOwnedShip (system, owner, pos, reuseType, kind, scale, opts)
   if not reuseType then
     bindShipType(
@@ -439,6 +580,7 @@ local function spawnOwnedShip (system, owner, pos, reuseType, kind, scale, opts)
   ship:setFriction(0)
   ship:setSleepThreshold(0, 0)
   if owner then ship:setOwner(owner) end
+  orientThrustersAft(ship)
   return ship
 end
 
@@ -459,11 +601,14 @@ local function setPlateCamera (app, center, radius, yaw, pitch)
 end
 
 local function fireTurretsAt (from, at)
+  -- Legacy immediate fire (pre-orient). Prefer armTurretsAt + root:update.
+  armTurretsAt(from, at)
   if not from or not at then return end
-  local pos = at:getPos()
+  if not from.hasSockets or not from:hasSockets() then return end
   for turret in from:iterSocketsByType(SocketType.Turret) do
-    turret:aimAtTarget(at, pos)
-    turret:fire()
+    if turret.canFire and turret:canFire() then
+      turret:fire()
+    end
   end
 end
 
@@ -506,26 +651,32 @@ function Wallpaper:generate ()
   end
   -- ShapeLib stations for wallpaper plates (StationOld remains for vanilla).
   Config.gen.stationMesh = 'shape'
+  -- IR map sample count (see Nebula:forceLoad). 64 ≈ same look, ~4× less IR work.
+  Config.gen.irMapSamples = opts.irSamples or 64
+  Config.gen.wallpaperTiming = opts.timing and true or false
 
   Config.debug.metrics = false
   Config.render.vsync = false
 
-  -- Enum indices: 1=Off, 2=2x, 3=4x
-  local ss = opts.superSample or 2
-  if ss >= 4 then
-    Settings.set('render.superSample', 3)
-  elseif ss >= 2 then
-    Settings.set('render.superSample', 2)
-  else
-    Settings.set('render.superSample', 1)
-  end
+  -- Capture supersample is applied on the final frame only; settle stays 1x.
+  self.captureSuperSample = opts.superSample or 2
+  self:applySuperSample(1)
   Settings.set('postfx.vignette.enable', true)
   Settings.set('postfx.vignette.strength', 0.28)
   Settings.set('postfx.vignette.hardness', 18.0)
 
+  local tGen = TimeStamp.Get()
   if self.system then self.system:delete() end
   self.system = Entities.System(seed)
   local rng = self.system.rng
+  self._timingGenerateStart = tGen
+
+  -- Mount thrusters/turrets before any ShipType is built (FindMountPoint).
+  Config.gen.nThrusters = math.max(Config.gen.nThrusters or 1, 2)
+  Config.gen.nTurrets = math.max(Config.gen.nTurrets or 1, 2)
+  -- Fatter, faster volleys so combat/mining plates read in stills.
+  Config.game.pulseSize = math.max(Config.game.pulseSize or 64, 96)
+  Config.game.rateOfFire = math.max(Config.game.rateOfFire or 10, 18)
 
   -- Controlling body (required by GameView). Capitals use Gen.ShipCapital.
   local startKind = 'fighter'
@@ -545,15 +696,31 @@ function Wallpaper:generate ()
   self.camPitch = nil
   self.camFollow = nil
   self.skirmishPairs = nil
+  self.miningPairs = nil
 
   if isSkyPreset(preset) then
     ship:setPos(Vec3f(1e7, 1e7, 1e7))
 
   elseif preset == 'solo' then
-    -- fighter against sky
+    local origin = Config.gen.origin
+    ship:setPos(origin)
+    faceToward(ship, Vec3f(0.15, 0.05, 1), rng:getUniformRange(-0.25, 0.25))
+    self.focus = ship
+    self.hideHud = true
+    self.camFollow = ship
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'ship', 24, self.system)
+      setPlateCamera(self, nil, radius, yaw, pitch)
+    end
 
   elseif preset == 'ship' then
     self.system:spawnAsteroidField(80, 8)
+    faceToward(ship, Vec3f(0.2, 0.05, 1), rng:getUniformRange(-0.2, 0.2))
+    self.camFollow = ship
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'ship', 30, self.system)
+      setPlateCamera(self, nil, radius, yaw, pitch)
+    end
 
   elseif preset == 'asteroids' then
     self.system:spawnAsteroidField(120, 10)
@@ -596,9 +763,9 @@ function Wallpaper:generate ()
     -- Static V in frame. Do NOT push Escort: toWorldScaled×shipScale flings
     -- escorts to 4× offsets and they leave the plate during settle.
     local origin = Config.gen.origin
-    local forward = Vec3f(0, 0, 1)
+    local forward = Vec3f(0.05, 0.02, 1)
     ship:setPos(origin)
-    faceToward(ship, forward)
+    faceToward(ship, forward, 0.05)
     local slots = {
       Vec3f(-14,  3, -12),
       Vec3f( 14, -2, -12),
@@ -611,37 +778,45 @@ function Wallpaper:generate ()
     for i = 1, #slots do
       local escort = spawnOwnedShip(
         self.system, self.player, origin + slots[i], true, nil, nil, opts)
-      faceToward(escort, forward)
+      faceToward(escort, forward, ((i % 2) * 2 - 1) * 0.12)
     end
     self.focus = ship
     self.hideHud = true
-    setPlateCamera(self, nil, 62, -1.0, 0.26)
     self.camFollow = ship
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'ship', 64, self.system)
+      setPlateCamera(self, nil, radius, yaw, pitch)
+    end
 
   elseif preset == 'skirmish' then
-    -- Static two-wing tableau. Attack AI orbits out to pulseRange (~1000) and
-    -- empties the frame — we aim/fire turrets ourselves during settle instead.
+    -- Closing knife-fight tableau. Attack AI orbits to pulseRange (~1000) and
+    -- empties the frame — we arm turrets ourselves so pulses fill the gap.
     local enemy = Entities.Player()
     insert(self.system.players, enemy)
     local origin = Config.gen.origin
     ship:setPos(origin + Vec3f(0, 8000, 0))
 
     local wingA, wingB = {}, {}
-    for i = 1, 5 do
-      local z = (i - 3) * 12
-      local y = ((i % 2) * 2 - 1) * 4
+    -- Tight ~30u gap so pulses (speed 600) are mid-flight within a few frames.
+    for i = 1, 6 do
+      local z = (i - 3.5) * 9
+      local y = ((i % 3) - 1) * 5
+      local x = -16 - (i % 3) * 3
       local a = spawnOwnedShip(
-        self.system, self.player, origin + Vec3f(-22, y, z), i > 1, 'fighter', nil, opts)
-      faceToward(a, Vec3f(1, 0, 0))
+        self.system, self.player, origin + Vec3f(x, y, z), i > 1, 'fighter', nil, opts)
+      local aim = Vec3f(1.0, rng:getUniformRange(-0.08, 0.08), rng:getUniformRange(-0.2, 0.2))
+      faceToward(a, aim, ((i % 2) * 2 - 1) * 0.2)
       insert(wingA, a)
     end
     refreshShipType(self.system)
-    for i = 1, 5 do
-      local z = (i - 3) * 12
-      local y = ((i % 2) * 2 - 1) * 4
+    for i = 1, 6 do
+      local z = (i - 3.5) * 9 + 4
+      local y = ((i % 3) - 1) * -4
+      local x = 16 + (i % 3) * 3
       local b = spawnOwnedShip(
-        self.system, enemy, origin + Vec3f(22, -y, z), i > 1, 'fighter', nil, opts)
-      faceToward(b, Vec3f(-1, 0, 0))
+        self.system, enemy, origin + Vec3f(x, y, z), i > 1, 'fighter', nil, opts)
+      local aim = Vec3f(-1.0, rng:getUniformRange(-0.08, 0.08), rng:getUniformRange(-0.2, 0.2))
+      faceToward(b, aim, ((i % 2) * 2 - 1) * -0.18)
       insert(wingB, b)
     end
 
@@ -649,11 +824,34 @@ function Wallpaper:generate ()
     self.focus = wingA[3]
     self.hideHud = true
     self.skirmishPairs = {}
+    -- Crossfire: each ship tracks a staggered foe, not a mirror twin.
     for i = 1, #wingA do
-      insert(self.skirmishPairs, { from = wingA[i], at = wingB[i] })
-      insert(self.skirmishPairs, { from = wingB[i], at = wingA[i] })
+      local target = wingB[((i + 1) % #wingB) + 1]
+      insert(self.skirmishPairs, { from = wingA[i], at = target })
     end
-    setPlateCamera(self, origin + Vec3f(0, 6, 0), 70, -1.25, 0.30)
+    for i = 1, #wingB do
+      local target = wingA[((i + 2) % #wingA) + 1]
+      insert(self.skirmishPairs, { from = wingB[i], at = target })
+    end
+    -- Mid-fight chaos: muzzle-adjacent blasts already aging.
+    for i = 1, 5 do
+      local pos = origin + Vec3f(
+        rng:getUniformRange(-8, 8),
+        rng:getUniformRange(-3, 8),
+        rng:getUniformRange(-14, 14))
+      addSpark(self.system, pos, 0.45 + 0.18 * i)
+    end
+    -- Seed mid-gap pulses so the still isn't empty before travel time.
+    for i = 1, #self.skirmishPairs do
+      local pair = self.skirmishPairs[i]
+      seedPulse(
+        self.system, pair.from, pair.from:getPos(), pair.at:getPos(),
+        0.45 + 0.05 * (i % 5))
+    end
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'skirmish', 62, self.system)
+      setPlateCamera(self, origin + Vec3f(0, 5, 0), radius, yaw, pitch)
+    end
 
   elseif preset == 'system' then
     local station = self.system:spawnStation()
@@ -699,23 +897,59 @@ function Wallpaper:generate ()
     setPlateCamera(self, origin + Vec3f(40, 80, -40), 520, -1.15, 0.32)
 
   elseif preset == 'mining' then
-    self.system:spawnAsteroidField(50, 18)
-    local origin = Config.gen.origin
-    ship:setPos(origin)
-    faceToward(ship, Vec3f(0.4, 0, 1))
-    -- Pose a few miners near denser rocks around origin.
-    local minerSlots = {
-      Vec3f(35, 8, -20), Vec3f(-40, -6, 15), Vec3f(10, 12, 40),
-      Vec3f(-25, 4, -45),
-    }
-    for i = 1, #minerSlots do
-      local miner = spawnOwnedShip(
-        self.system, self.player, origin + minerSlots[i], true, nil, nil, opts)
-      faceToward(miner, Vec3f(-minerSlots[i].x, 0, -minerSlots[i].z) + Vec3f(0, 0, 0.2))
+    -- Ore rocks (hasYield) with miners parked on station, turrets "drilling".
+    self.system:spawnAsteroidField(70, 28)
+    local ores = collectYieldRocks(self.system)
+    if #ores < 1 then
+      -- Fallback: non-ship bodies if yield tagging failed.
+      for _, child in self.system:iterChildren() do
+        local isShip = child.hasSockets and child:hasSockets()
+        if child ~= ship and not isShip and child.getScale then
+          insert(ores, child)
+          if #ores >= 6 then break end
+        end
+      end
+    end
+    -- Work a tight ore cluster so multiple miners share the frame.
+    local anchor = ores[1]:getPos()
+    table.sort(ores, function (a, b)
+      return (a:getPos() - anchor):lengthSquared() < (b:getPos() - anchor):lengthSquared()
+    end)
+    self.miningPairs = {}
+    local focusPos = anchor
+    local minerCount = math.min(5, math.max(1, #ores))
+    for i = 1, minerCount do
+      local rock = ores[i]
+      local rpos = rock:getPos()
+      local rad = rockRadius(rock)
+      -- Park just outside the rock, slightly above, nose-on for turret beams.
+      local outward = Vec3f(
+        rng:getUniformRange(-1, 1),
+        0.45 + 0.2 * rng:getUniform(),
+        rng:getUniformRange(-1, 1)):normalize()
+      local minerPos = rpos + outward:scale(rad * 1.55 + 8)
+      local miner
+      if i == 1 then
+        miner = ship
+        miner:setPos(minerPos)
+      else
+        miner = spawnOwnedShip(
+          self.system, self.player, minerPos, i > 2, 'fighter', nil, opts)
+      end
+      faceToward(miner, rpos - minerPos, rng:getUniformRange(-0.15, 0.15))
+      insert(self.miningPairs, { from = miner, at = rock })
+      -- Contact spark on the rock face the miner is working.
+      local hit = rpos + (minerPos - rpos):normalize():scale(rad * 0.92)
+      addSpark(self.system, hit, 0.35 + 0.12 * i)
+      seedPulse(self.system, miner, minerPos, hit, 0.55 + 0.06 * i)
+      if i == 1 then focusPos = rpos end
     end
     self.focus = ship
     self.hideHud = true
-    setPlateCamera(self, origin + Vec3f(0, 20, 0), 95, -0.95, 0.34)
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'mining', 48, self.system)
+      setPlateCamera(self, focusPos + Vec3f(0, 10, 0), radius, yaw, pitch)
+    end
 
   elseif preset == 'aftermath' then
     -- Mid-explosion still: two wings held, pulses + blast billboards mid-age.
@@ -724,56 +958,64 @@ function Wallpaper:generate ()
     local origin = Config.gen.origin
     ship:setPos(origin + Vec3f(0, 8000, 0))
     local wingA, wingB = {}, {}
-    for i = 1, 4 do
+    for i = 1, 5 do
       local a = spawnOwnedShip(
-        self.system, self.player, origin + Vec3f(-18, (i - 2) * 6, (i - 2) * 8),
+        self.system, self.player,
+        origin + Vec3f(-16 - (i % 2) * 3, (i - 3) * 5, (i - 3) * 7),
         i > 1, 'fighter', nil, opts)
-      faceToward(a, Vec3f(1, 0, 0))
+      faceToward(a, Vec3f(1, 0.05, 0.1), ((i % 2) * 2 - 1) * 0.25)
       insert(wingA, a)
     end
     refreshShipType(self.system)
-    for i = 1, 4 do
+    for i = 1, 5 do
       local b = spawnOwnedShip(
-        self.system, enemy, origin + Vec3f(18, (i - 2) * -5, (i - 2) * 8),
+        self.system, enemy,
+        origin + Vec3f(16 + (i % 2) * 3, (i - 3) * -4, (i - 3) * 7 + 2),
         i > 1, 'fighter', nil, opts)
-      faceToward(b, Vec3f(-1, 0, 0))
+      faceToward(b, Vec3f(-1, -0.05, -0.1), ((i % 2) * 2 - 1) * -0.22)
       insert(wingB, b)
     end
     self.player:setControlling(wingA[2])
     self.focus = wingA[2]
     self.hideHud = true
     self.skirmishPairs = {}
-    for i = 1, math.min(#wingA, #wingB) do
-      insert(self.skirmishPairs, { from = wingA[i], at = wingB[i] })
-      insert(self.skirmishPairs, { from = wingB[i], at = wingA[i] })
+    for i = 1, #wingA do
+      insert(self.skirmishPairs, { from = wingA[i], at = wingB[((i + 1) % #wingB) + 1] })
     end
-    for i = 1, 6 do
+    for i = 1, #wingB do
+      insert(self.skirmishPairs, { from = wingB[i], at = wingA[((i + 2) % #wingA) + 1] })
+    end
+    for i = 1, 8 do
       local pos = origin + Vec3f(
-        rng:getUniformRange(-12, 12),
-        rng:getUniformRange(-4, 10),
-        rng:getUniformRange(-10, 10))
-      local boom = Entities.Explosion(pos)
-      boom.age = 0.55 + 0.2 * i
-      self.system:addChild(boom)
+        rng:getUniformRange(-14, 14),
+        rng:getUniformRange(-4, 12),
+        rng:getUniformRange(-12, 12))
+      addSpark(self.system, pos, 0.5 + 0.22 * i)
     end
-    setPlateCamera(self, origin + Vec3f(0, 8, 0), 72, -1.2, 0.28)
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'skirmish', 68, self.system)
+      setPlateCamera(self, origin + Vec3f(0, 8, 0), radius, yaw, pitch)
+    end
 
   elseif preset == 'capital' then
     local origin = Config.gen.origin
-    local forward = Vec3f(0, 0, 1)
+    local forward = Vec3f(0.08, 0.02, 1)
     ship:setPos(origin)
-    faceToward(ship, forward)
+    faceToward(ship, forward, rng:getUniformRange(-0.08, 0.08))
     if ship.addLight then ship:addLight(0.35, 0.55, 1.1) end
     self.focus = ship
     self.hideHud = true
     self.camFollow = ship
-    setPlateCamera(self, nil, camRadiusFor(ship, 3.4, 160), -1.05, 0.22)
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'capital', camRadiusFor(ship, 2.2, 110), self.system)
+      setPlateCamera(self, nil, radius, yaw, pitch)
+    end
 
   elseif preset == 'armada' then
     local origin = Config.gen.origin
-    local forward = Vec3f(0, 0, 1)
+    local forward = Vec3f(0.05, 0.02, 1)
     ship:setPos(origin)
-    faceToward(ship, forward)
+    faceToward(ship, forward, 0.04)
     if ship.addLight then ship:addLight(0.35, 0.55, 1.1) end
     local rad = camRadiusFor(ship, 1.0, 50)
     local ring = math.max(40, rad * 1.08)
@@ -790,16 +1032,36 @@ function Wallpaper:generate ()
     for i = 1, #slots do
       local escort = spawnOwnedShip(
         self.system, self.player, origin + slots[i], true, nil, nil, opts)
-      faceToward(escort, forward)
+      faceToward(escort, forward, ((i % 2) * 2 - 1) * 0.1)
     end
     self.focus = ship
     self.hideHud = true
     self.camFollow = ship
-    setPlateCamera(self, nil, camRadiusFor(ship, 2.9, 150), -0.95, 0.2)
+    do
+      local yaw, pitch, radius = pickCamera(rng, 'capital', camRadiusFor(ship, 2.9, 150), self.system)
+      setPlateCamera(self, nil, radius, yaw, pitch)
+    end
   end
 
   if opts.thrusters ~= false and not self.skyOnly then
-    igniteAllShips(self.system, 0.92, 0.45)
+    igniteAllShips(self.system, 0.96, 0.62)
+  end
+
+  if opts.timing then
+    printf('Wallpaper timing: generate(scene)=%.2fs preset=%s',
+      TimeStamp.GetElapsed(tGen), preset)
+  end
+end
+
+function Wallpaper:applySuperSample (ss)
+  -- Enum indices: 1=Off, 2=2x, 3=4x
+  ss = ss or 1
+  if ss >= 4 then
+    Settings.set('render.superSample', 3)
+  elseif ss >= 2 then
+    Settings.set('render.superSample', 2)
+  else
+    Settings.set('render.superSample', 1)
   end
 end
 
@@ -990,19 +1252,31 @@ function Wallpaper:daemonWriteDone (ok, err)
 end
 
 function Wallpaper:daemonParkIdle ()
-  -- Cheap sky park so heavy capital meshes can be released between jobs.
-  self.opts.preset = 'sky'
-  self.opts.count = 1
+  -- Park without baking a nebula. Old path called generate('sky') between jobs
+  -- (~full IFS+IR cost). We keep a tiny far-away ship so GameView has a
+  -- controlling body; onDraw skips while idle so Nebula:forceLoad never runs.
+  if self.system then
+    self.system:delete()
+    self.system = nil
+  end
+  self.system = Entities.System(1)
+  -- Avoid ShapeLib capital / heavy mounts while parked.
+  Config.gen.nThrusters = 1
+  Config.gen.nTurrets = 0
+  bindShipType(self.system, 'fighter', FIGHTER_SCALE, { fighter = 'standard' })
+  local park = self.system:spawnShip()
+  park:setPos(Vec3f(1e7, 1e7, 1e7))
+  self.player:setControlling(park)
+  self.focus = park
+  self.skirmishPairs = nil
+  self.miningPairs = nil
+  self.camFollow = nil
+  self.camCenter = nil
+  self.skyOnly = true
+  self.hideHud = true
   self.opts.out = nil
   self.opts.outdir = nil
   self.opts.presets = nil
-  self.opts.frames = 2
-  self.opts.framesExplicit = true
-  self.skirmishPairs = nil
-  self.camFollow = nil
-  self.camCenter = nil
-  self:generate()
-  if self.gameView then self:applyCamera() end
   self.daemonIdle = true
   self.plateDone = true
   self.doCapture = false
@@ -1026,6 +1300,8 @@ function Wallpaper:daemonAcceptJob (job)
   self.opts.fighter = job.fighter or self.opts.fighter
   if job.thrusters ~= nil then self.opts.thrusters = job.thrusters end
   if job.superSample ~= nil then self.opts.superSample = job.superSample end
+  if job.irSamples ~= nil then self.opts.irSamples = job.irSamples end
+  if job.timing ~= nil then self.opts.timing = job.timing end
   self.opts.jobId = job.jobId
   self.opts.frames = job.frames
   self.opts.framesExplicit = job.framesExplicit
@@ -1114,12 +1390,7 @@ function Wallpaper:onInit ()
   if self.opts.daemon then
     Directory.Create(self.opts.spool)
     writeText(spoolPath(self.opts.spool, 'daemon.pid'), tostring(os.time()) .. '\n')
-    -- Seed a parked sky world so GameView has a controlling body.
-    self.opts.preset = 'sky'
-    self.opts.count = 1
-    self.opts.frames = 2
-    self.opts.framesExplicit = true
-    self:generate()
+    -- Do not bake a park sky here — idle waits without a world (see onDraw).
   else
     self:beginPlate()
     do
@@ -1138,7 +1409,9 @@ function Wallpaper:onInit ()
       :add(Controls.MasterControl(self.gameView, self.player)))
   end
 
-  self:applyCamera()
+  if not self.opts.daemon then
+    self:applyCamera()
+  end
   self.wrote = nil
 
   if self.opts.daemon then
@@ -1171,11 +1444,19 @@ function Wallpaper:onUpdate (dt)
     end
   end
 
-  -- Skirmish: hold the tableau and let turrets speak (no Attack AI drift).
-  if self.skirmishPairs and not self.daemonIdle then
-    for i = 1, #self.skirmishPairs do
-      local pair = self.skirmishPairs[i]
-      fireTurretsAt(pair.from, pair.at)
+  -- Arm turrets before update so aim orientation applies, then fire.
+  if not self.daemonIdle then
+    if self.skirmishPairs then
+      for i = 1, #self.skirmishPairs do
+        local pair = self.skirmishPairs[i]
+        armTurretsAt(pair.from, pair.at)
+      end
+    end
+    if self.miningPairs then
+      for i = 1, #self.miningPairs do
+        local pair = self.miningPairs[i]
+        armTurretsAt(pair.from, pair.at)
+      end
     end
   end
 
@@ -1185,21 +1466,39 @@ function Wallpaper:onUpdate (dt)
   end
   if self.canvas then self.canvas:update(dt) end
 
+  -- Re-assert thruster glow after ThrustController clears activationT.
+  if self.opts.thrusters ~= false and not self.skyOnly and not self.daemonIdle then
+    if self.system then
+      igniteAllShips(self.system, 0.96, 0.62)
+    end
+  end
+
   if not self.opts.interactive and not self.daemonIdle and not self.plateDone then
     self.framesLeft = self.framesLeft - 1
     if self.framesLeft <= 0 then
       self.plateDone = true
       self.doCapture = true
+      -- Final frame renders at export supersample; settle used 1x.
+      self:applySuperSample(self.captureSuperSample or self.opts.superSample or 2)
     end
   end
 end
 
 function Wallpaper:onDraw ()
+  -- Idle daemon: skip GL entirely (was redrawing a park sky every frame).
+  if self.daemonIdle or not self.system then
+    return
+  end
   if self.canvas then
     self.canvas:draw(self.resX, self.resY)
   end
   if self.doCapture then
     self.doCapture = false
+    if self.opts.timing and self._timingGenerateStart then
+      printf('Wallpaper timing: plate total=%.2fs (seed=%s preset=%s)',
+        TimeStamp.GetElapsed(self._timingGenerateStart),
+        tostring(self.opts.seed), tostring(self.opts.preset))
+    end
     self:capture()
     self:advanceOrQuit()
   end
