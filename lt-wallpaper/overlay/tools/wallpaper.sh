@@ -27,13 +27,34 @@ fi
 
 export LD_LIBRARY_PATH="$ROOT/bin:${LIBDIR}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
+# MemTotal MiB (Linux); empty if unavailable.
+mem_mib () {
+  if [[ -r /proc/meminfo ]]; then
+    awk '/^MemTotal:/ { print int($2 / 1024); exit }' /proc/meminfo
+  fi
+}
+
 BEST=""
 OUT=""
 PASS=()
+HAS_WIDTH=0
+HAS_HEIGHT=0
+WIDTH=1920
+HEIGHT=1080
 for arg in "$@"; do
   case "$arg" in
     best=*) BEST="${arg#best=}" ;;
     out=*) OUT="${arg#out=}"; PASS+=("$arg") ;;
+    width=*)
+      HAS_WIDTH=1
+      WIDTH="${arg#width=}"
+      PASS+=("$arg")
+      ;;
+    height=*)
+      HAS_HEIGHT=1
+      HEIGHT="${arg#height=}"
+      PASS+=("$arg")
+      ;;
     count=*)
       # best= owns the candidate count; ignore explicit count=
       if [[ -z "$BEST" ]]; then PASS+=("$arg"); fi
@@ -42,6 +63,29 @@ for arg in "$@"; do
   esac
 done
 
+# ≈1 GiB hosts OOM on default 1080p + deferred buffers after nebula bake.
+MEM_MIB="$(mem_mib || true)"
+if [[ -n "${MEM_MIB}" && "${MEM_MIB}" -le 1536 ]]; then
+  if [[ "$HAS_WIDTH" -eq 0 && "$HAS_HEIGHT" -eq 0 ]]; then
+    WIDTH=1280
+    HEIGHT=720
+    PASS+=("width=${WIDTH}" "height=${HEIGHT}")
+    echo "wallpaper.sh: MemTotal=${MEM_MIB}MiB → defaulting to ${WIDTH}x${HEIGHT} (pass width=/height= to override)" >&2
+  elif [[ "$HAS_WIDTH" -eq 0 || "$HAS_HEIGHT" -eq 0 ]]; then
+    echo "wallpaper.sh: warn: set both width= and height= on small hosts" >&2
+  elif [[ "${WIDTH}" -gt 1280 || "${HEIGHT}" -gt 720 ]]; then
+    echo "wallpaper.sh: warn: ${WIDTH}x${HEIGHT} often OOM-kills on ≈1 GiB (gallery uses 720p)" >&2
+  fi
+fi
+
+# Xvfb screen must cover the window (plus a little headroom).
+XVFB_W=$(( WIDTH > 1920 ? WIDTH : 1920 ))
+XVFB_H=$(( HEIGHT > 1080 ? HEIGHT : 1080 ))
+if [[ "${WIDTH}" -le 1280 && "${HEIGHT}" -le 720 ]]; then
+  XVFB_W=1280
+  XVFB_H=720
+fi
+
 run_lt () {
   local -a args=("Wallpaper" "$@")
   if [[ "${FORCE_DISPLAY:-}" == "1" && -n "${DISPLAY:-}" ]]; then
@@ -49,7 +93,7 @@ run_lt () {
     return
   fi
   if command -v xvfb-run >/dev/null 2>&1; then
-    xvfb-run -a -s "-screen 0 1920x1080x24" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
+    xvfb-run -a -s "-screen 0 ${XVFB_W}x${XVFB_H}x24" env LD_LIBRARY_PATH="$LD_LIBRARY_PATH" \
       "$BIN" "${args[@]}"
     return
   fi

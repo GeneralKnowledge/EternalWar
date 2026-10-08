@@ -100,10 +100,13 @@ Wall time is dominated by **GPU work on the CPU** (Mesa llvmpipe), not Lua.
 | Daemon park | Used to re-bake a sky between jobs | Park ship only; skip draw until next job |
 
 ```bash
-# Profile a plate on the box
-./tools/wallpaper.sh seed=42 preset=solo nebulaRes=128 frames=6 timing=1 \
-  irSamples=64 out=/tmp/wp.png
+# Profile a plate on the box (720p — 1080p OOM-kills ≈1 GiB hosts after nebula)
+./tools/wallpaper.sh seed=42 preset=solo width=1280 height=720 \
+  nebulaRes=128 frames=6 timing=1 irSamples=64 out=/tmp/wp.png
 ```
+
+On hosts with MemTotal ≤ 1536 MiB, `wallpaper.sh` defaults to 720p if you omit `width=`/`height=`.
+`Killed` with no Lua error is almost always the Linux OOM killer (`dmesg | tail`).
 
 Gallery passes `irSamples` from `LT_WALLPAPER_IR_SAMPLES` (default 64) and optional `LT_WALLPAPER_TIMING=1`.
 
