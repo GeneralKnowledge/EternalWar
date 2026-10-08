@@ -84,7 +84,12 @@ function GameView:draw (focus, active)
 
   if true then -- Alpha (Additive) Pass
     self.renderer:startAlpha(BlendMode.Additive)
+      -- Thruster jets / pulses sit on or just behind hulls. Depth-testing the
+      -- additive pass against opaque geometry eats the plumes (especially when
+      -- jets are Identity-oriented). Wallpaper plates need the VFX to read.
+      RenderState.PushDepthTest(false)
       world:render(Event.Render(BlendMode.Additive, eye))
+      RenderState.PopDepthTest()
     self.renderer:stopAlpha()
   end
 

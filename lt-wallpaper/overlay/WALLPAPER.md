@@ -64,7 +64,7 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `nebulaStyle=` | `ifs` (Nebula1) · `lt` (Nebula2) · `auto` |
 | `hull=` | Capital: `sausage` · `triangle` · `top` · `auto` |
 | `fighter=` | `standard` · `surreal` · `auto` |
-| `thrusters=` | Engine glow on ships (`1` default, `0` off) |
+| `thrusters=` | Engine glow on ships (`1` default, `0` off; re-applied after physics) |
 | `superSample=` | `1` / `2` / `4` export supersample (default `2`) |
 | `seed=good` | Pick from Josh’s curated goodSeeds |
 

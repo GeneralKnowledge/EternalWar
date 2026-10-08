@@ -91,12 +91,12 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "skirmish": {
         "preset": "skirmish",
         "label": "Skirmish",
-        "blurb": "Two wings facing off — turrets firing",
+        "blurb": "Knife-fight — crossfire pulses mid-flight",
     },
     "capital": {
         "preset": "capital",
         "label": "Capital",
-        "blurb": "ShapeLib capital — the ship that could have been",
+        "blurb": "ShapeLib capital — seeded angles, engines lit",
     },
     "armada": {
         "preset": "armada",
@@ -121,7 +121,7 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "mining": {
         "preset": "mining",
         "label": "Mining",
-        "blurb": "Ore rocks and posed miners",
+        "blurb": "Miners drilling ore — beams into the rock",
     },
     "aftermath": {
         "preset": "aftermath",
@@ -522,8 +522,29 @@ def run_bake(
 
     batch_dir: Path | None = None
     out_path: Path | None = None
-    # Fewer settle frames on small hosts — each frame is expensive under software GL.
-    settle_frames = 2 if resolve_profile() == "small" else 3
+    # Settle frames: combat/mining need travel time for pulses; sky is cheap.
+    # Nebula bake dominates wall time — a few extra update ticks are fine on 1 GiB.
+    settle_by_preset = {
+        "sky": 2,
+        "nebula": 2,
+        "solo": 6,
+        "ship": 6,
+        "fleet": 8,
+        "skirmish": 22,
+        "mining": 16,
+        "aftermath": 14,
+        "capital": 8,
+        "armada": 8,
+        "station": 5,
+        "system": 8,
+        "vista": 6,
+        "asteroids": 4,
+        "planet": 4,
+        "belt": 4,
+    }
+    settle_frames = settle_by_preset.get(preset, 6)
+    if resolve_profile() == "small":
+        settle_frames = max(2, min(settle_frames, 22))
     bake_args = [
         f"seed={seed}",
         f"preset={preset}",
