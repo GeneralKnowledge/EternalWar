@@ -105,12 +105,27 @@ CATEGORIES: dict[str, dict[str, str]] = {
     "station": {
         "preset": "station",
         "label": "Station",
-        "blurb": "Industrial hub and light traffic",
+        "blurb": "ShapeLib hub and light traffic",
     },
     "system": {
         "preset": "system",
         "label": "System",
         "blurb": "Station, rocks, ships — a living plate",
+    },
+    "vista": {
+        "preset": "vista",
+        "label": "Vista",
+        "blurb": "LTheory-lite — station, field, escort cloud",
+    },
+    "mining": {
+        "preset": "mining",
+        "label": "Mining",
+        "blurb": "Ore rocks and posed miners",
+    },
+    "aftermath": {
+        "preset": "aftermath",
+        "label": "Aftermath",
+        "blurb": "Mid-explosion still after a clash",
     },
     "asteroids": {
         "preset": "asteroids",
@@ -121,6 +136,11 @@ CATEGORIES: dict[str, dict[str, str]] = {
         "preset": "planet",
         "label": "Planet",
         "blurb": "Procedural world under the sky",
+    },
+    "belt": {
+        "preset": "belt",
+        "label": "Belt",
+        "blurb": "Planet with a rock ring",
     },
 }
 

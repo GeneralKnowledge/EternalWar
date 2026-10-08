@@ -229,6 +229,11 @@ def bake(spool: Path, argv: list[str], allow_cold: bool) -> int:
             "height": fields.get("height", "1080"),
             "nebulaRes": fields.get("nebulaRes", ""),
             "frames": fields.get("frames", ""),
+            "nebulaStyle": fields.get("nebulaStyle", "") or fields.get("nebula", ""),
+            "hull": fields.get("hull", ""),
+            "fighter": fields.get("fighter", ""),
+            "thrusters": fields.get("thrusters", ""),
+            "superSample": fields.get("superSample", "") or fields.get("ss", ""),
         }
         # Drop empties
         job = {k: v for k, v in job.items() if v}
