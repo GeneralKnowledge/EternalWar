@@ -53,7 +53,7 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `width=` / `height=` | Resolution (default 1920×1080) |
 | `out=` | PNG path (`count=1`) or stem template (`count>1` → `stem_001.png`) |
 | `outdir=` | Directory for batch PNGs (preferred when `count>1`) |
-| `preset=` | `sky` · `nebula` · `ship` · `solo` · `fleet` · `skirmish` · `capital` · `armada` · `station` · `system` · `asteroids` · `planet` |
+| `preset=` | `sky` · `ship` · `solo` · `fleet` · `skirmish` · `capital` · `armada` · `station` · `system` · `vista` · `mining` · `aftermath` · `asteroids` · `planet` · `belt` |
 | `presets=` | Comma list to cycle across the batch (e.g. `fleet,skirmish,station`) |
 | `count=` | Captures before quit; process stays loaded (default 1) |
 | `best=` | *(wrapper)* Bake N candidates in one launch; keep the highest-scoring PNG |
@@ -61,6 +61,12 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `frames=` | Settle frames before capture (default depends on preset) |
 | `interactive=1` | Keep window; **F12** capture, **R** regen, **Esc** quit |
 | `nebulaRes=` | Override nebula bake resolution |
+| `nebulaStyle=` | `ifs` (Nebula1) · `lt` (Nebula2) · `auto` |
+| `hull=` | Capital: `sausage` · `triangle` · `top` · `auto` |
+| `fighter=` | `standard` · `surreal` · `auto` |
+| `thrusters=` | Engine glow on ships (`1` default, `0` off) |
+| `superSample=` | `1` / `2` / `4` export supersample (default `2`) |
+| `seed=good` | Pick from Josh’s curated goodSeeds |
 
 ## Warm daemon
 
