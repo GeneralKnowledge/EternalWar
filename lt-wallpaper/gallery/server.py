@@ -764,7 +764,6 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        _rate[ip] = time.monotonic()
         try:
             result = run_bake(
                 category=category,
@@ -776,11 +775,16 @@ class Handler(SimpleHTTPRequestHandler):
                 best=best,
             )
         except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
+            msg = str(exc).strip() or "bake failed (no details)"
+            print(f"bake error for {ip}: {msg}", flush=True)
             self._json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": str(exc), **rate_status(ip)},
+                {"error": msg, **rate_status(ip)},
             )
             return
+
+        # Only charge the rate limit after a successful bake.
+        _rate[ip] = time.monotonic()
 
         if isinstance(result, list):
             self._json(

@@ -34,9 +34,20 @@ function randomSeed() {
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
-  const data = await res.json().catch(() => ({}));
+  const raw = await res.text();
+  let data = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { error: raw.slice(0, 240) || res.statusText || `HTTP ${res.status}` };
+  }
   if (!res.ok) {
-    const err = new Error(data.error || res.statusText);
+    const msg =
+      data.error ||
+      data.message ||
+      res.statusText ||
+      `HTTP ${res.status}`;
+    const err = new Error(msg);
     err.status = res.status;
     err.data = data;
     throw err;
@@ -263,8 +274,12 @@ els.form.addEventListener("submit", async (e) => {
     await refreshGallery();
   } catch (err) {
     delete els.status.dataset.baking;
-    const detail = err.data?.lastError ? ` — ${err.data.lastError}` : "";
-    setStatus((err.message || "Generate failed") + detail);
+    const parts = [err.message || "Generate failed"];
+    if (err.status) parts.unshift(`[${err.status}]`);
+    if (err.data?.lastError && err.data.lastError !== err.message) {
+      parts.push(`— ${err.data.lastError}`);
+    }
+    setStatus(parts.join(" "));
     if (err.data) renderRate(err.data);
   } finally {
     delete els.status.dataset.baking;
