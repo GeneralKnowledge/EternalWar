@@ -53,6 +53,23 @@ sudo ./scripts/install.sh
 # or: LT_GALLERY_PROFILE=small ./scripts/run.sh
 ```
 
+### Fill the gallery (batch bake)
+
+Server-side script — skips the UI rate limit, uses the warm daemon when ready:
+
+```bash
+# dry-run plan
+./scripts/fill-gallery.sh -n 20 --dry-run
+
+# bake 20 light plates (sky/solo/fleet/…)
+./scripts/fill-gallery.sh -n 20 --mix safe
+
+# on the VPS install:
+sudo -u ltwallpaper /opt/lt-wallpaper/gallery/scripts/fill-gallery.sh -n 20
+```
+
+`--mix safe` (default) avoids planet/belt/armada on small hosts. Avoid UI Generate while it runs.
+
 ## API
 
 | Method | Path | Notes |
