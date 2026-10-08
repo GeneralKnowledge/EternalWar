@@ -9,13 +9,23 @@ Rate limit: **1 bake per IP per minute**.
 
 ## Categories
 
+Dreams of Limit Theory — scenes from the real engine, not a port.
+
 | UI | Native `preset=` |
 |----|------------------|
 | Sky | `sky` |
-| Ship | `ship` (fighter + rocks) |
-| Solo ship | `solo` (fighter only) |
+| Ship | `ship` |
+| Solo ship | `solo` |
+| Fleet | `fleet` (V formation) |
+| Skirmish | `skirmish` (two wings, turrets) |
+| Capital | `capital` (`Gen.ShipCapital`) |
+| Armada | `armada` (capital + fighter screen) |
+| Station | `station` |
+| System | `system` (station + rocks + traffic) |
 | Asteroids | `asteroids` |
 | Planet | `planet` |
+
+**Best of N:** gallery **Best of** (or CLI `best=6`) bakes N candidates in one warm process and keeps the highest-scoring plate.
 
 ## Local run
 
@@ -52,4 +62,4 @@ sudo ./scripts/install.sh
 | GET | `/api/status` | rate-limit / busy |
 | GET | `/api/gallery` | optional `?category=` |
 | GET | `/api/image/<id>` | PNG |
-| POST | `/api/generate` | `{category, seed?, size, quality}` |
+| POST | `/api/generate` | `{category, seed?, size, quality, count?, best?}` — `count` keeps N plates; `best`>1 keeps only the highest-scoring candidate |

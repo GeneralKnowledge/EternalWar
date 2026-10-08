@@ -9,11 +9,13 @@ one bake per IP per minute. Serves a selectable-category gallery.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import random
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -51,34 +53,74 @@ STATIC = ROOT / "static"
 
 RATE_LIMIT_SEC = int(os.environ.get("LT_GALLERY_RATE_SEC", "60"))
 BAKE_TIMEOUT_SEC = int(os.environ.get("LT_GALLERY_BAKE_TIMEOUT", "300"))
+MAX_BATCH_COUNT = int(os.environ.get("LT_GALLERY_MAX_BATCH", "8"))
+MAX_BEST_COUNT = int(os.environ.get("LT_GALLERY_MAX_BEST", "8"))
 DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8080"))
+# auto = use warm daemon when ready, else cold wallpaper.sh
+DAEMON_MODE = os.environ.get("LT_WALLPAPER_DAEMON", "auto").lower()
+DAEMON_SPOOL = Path(
+    os.environ.get(
+        "LT_WALLPAPER_SPOOL",
+        "/var/lib/lt-wallpaper/spool",
+    )
+)
 
 CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
         "preset": "sky",
         "label": "Sky",
-        "blurb": "IFS nebula + stars — no ships",
+        "blurb": "IFS nebula + stars — the void alone",
     },
     "ship": {
         "preset": "ship",
         "label": "Ship",
-        "blurb": "ShapeLib fighter in an asteroid field",
+        "blurb": "Fighter drifting a rock field",
     },
     "solo": {
         "preset": "solo",
         "label": "Solo ship",
-        "blurb": "Fighter against the sky only",
+        "blurb": "One hull against the nebula",
+    },
+    "fleet": {
+        "preset": "fleet",
+        "label": "Fleet",
+        "blurb": "V formation — many hulls in frame",
+    },
+    "skirmish": {
+        "preset": "skirmish",
+        "label": "Skirmish",
+        "blurb": "Two wings facing off — turrets firing",
+    },
+    "capital": {
+        "preset": "capital",
+        "label": "Capital",
+        "blurb": "ShapeLib capital — the ship that could have been",
+    },
+    "armada": {
+        "preset": "armada",
+        "label": "Armada",
+        "blurb": "Capital lead with a fighter screen",
+    },
+    "station": {
+        "preset": "station",
+        "label": "Station",
+        "blurb": "Industrial hub and light traffic",
+    },
+    "system": {
+        "preset": "system",
+        "label": "System",
+        "blurb": "Station, rocks, ships — a living plate",
     },
     "asteroids": {
         "preset": "asteroids",
         "label": "Asteroids",
-        "blurb": "Rock field, camera pulled back",
+        "blurb": "Ore field, camera pulled back",
     },
     "planet": {
         "preset": "planet",
         "label": "Planet",
-        "blurb": "Procedural world plate",
+        "blurb": "Procedural world under the sky",
     },
 }
 
@@ -222,56 +264,32 @@ def random_seed() -> str:
     return f"{hi}{lo:06d}"
 
 
-def run_bake(
+def daemon_status() -> dict[str, Any]:
+    spool = Path(os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))).resolve()
+    ready = (spool / "daemon.ready").is_file() and not (spool / "job.req").is_file()
+    return {
+        "mode": DAEMON_MODE,
+        "spool": str(spool),
+        "ready": ready,
+        "pidFile": (spool / "daemon.pid").is_file(),
+    }
+
+
+def _ingest_png(
+    src: Path,
     *,
     category: str,
+    preset: str,
     seed: str,
     width: int,
     height: int,
     nebula_res: int,
+    label: str,
 ) -> dict[str, Any]:
-    global _busy, _last_error
-    cat = CATEGORIES[category]
-    preset = cat["preset"]
     item_id = uuid.uuid4().hex[:12]
-    out_path = IMAGES / f"{item_id}.png"
-    ltheory = find_ltheory_root()
-    script = ltheory / "tools" / "wallpaper.sh"
-
-    args = [
-        str(script),
-        f"seed={seed}",
-        f"preset={preset}",
-        f"width={width}",
-        f"height={height}",
-        f"nebulaRes={nebula_res}",
-        f"out={out_path}",
-        "frames=3",
-    ]
-
-    with _bake_lock:
-        _busy = True
-        _last_error = None
-        try:
-            proc = subprocess.run(
-                args,
-                cwd=str(ltheory),
-                capture_output=True,
-                text=True,
-                timeout=BAKE_TIMEOUT_SEC,
-                env={**os.environ, "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", "")},
-            )
-            if proc.returncode != 0 or not out_path.is_file():
-                detail = (proc.stderr or proc.stdout or "bake failed").strip()
-                _last_error = detail[-800:]
-                raise RuntimeError(_last_error)
-        except subprocess.TimeoutExpired as exc:
-            _last_error = f"bake timed out after {BAKE_TIMEOUT_SEC}s"
-            raise RuntimeError(_last_error) from exc
-        finally:
-            _busy = False
-
-    item = {
+    dest = IMAGES / f"{item_id}.png"
+    dest.write_bytes(src.read_bytes())
+    return {
         "id": item_id,
         "category": category,
         "preset": preset,
@@ -282,13 +300,231 @@ def run_bake(
         "file": f"images/{item_id}.png",
         "source": "generated",
         "createdAt": utc_now(),
-        "label": f"{cat['label']} · {seed[:16]}",
+        "label": label,
     }
+
+
+def _load_score_pick(ltheory: Path) -> Any:
+    """Load tools/score_pick.py from the built ltheory tree (or overlay fallback)."""
+    candidates = [
+        ltheory / "tools" / "score_pick.py",
+        ROOT.parent / "overlay" / "tools" / "score_pick.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            spec = importlib.util.spec_from_file_location("lt_score_pick", path)
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules["lt_score_pick"] = mod
+                spec.loader.exec_module(mod)
+                return mod
+    raise RuntimeError("score_pick.py not found")
+
+
+def run_bake(
+    *,
+    category: str,
+    seed: str,
+    width: int,
+    height: int,
+    nebula_res: int,
+    count: int = 1,
+    best: int = 1,
+) -> dict[str, Any] | list[dict[str, Any]]:
+    """Run one Wallpaper process.
+
+    count>1 keeps all plates. best>1 bakes that many candidates and keeps the
+    highest-scoring plate only (still one engine launch).
+    """
+    global _busy, _last_error
+    cat = CATEGORIES[category]
+    preset = cat["preset"]
+    count = max(1, min(int(count), MAX_BATCH_COUNT))
+    best = max(1, min(int(best), MAX_BEST_COUNT))
+    keep_best_only = best > 1
+    if keep_best_only:
+        count = best  # candidates in one warm process
+    ltheory = find_ltheory_root()
+    script = ltheory / "tools" / "wallpaper.sh"
+    daemon = ltheory / "tools" / "wallpaperd.py"
+    IMAGES.mkdir(parents=True, exist_ok=True)
+
+    batch_dir: Path | None = None
+    out_path: Path | None = None
+    bake_args = [
+        f"seed={seed}",
+        f"preset={preset}",
+        f"width={width}",
+        f"height={height}",
+        f"nebulaRes={nebula_res}",
+        "frames=3",
+    ]
+    if keep_best_only:
+        out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
+        bake_args.extend([f"best={best}", f"out={out_path}"])
+        # After best-of, a single PNG lands at out_path.
+        count = 1
+        timeout = BAKE_TIMEOUT_SEC + max(0, best - 1) * 45
+    elif count > 1:
+        batch_dir = IMAGES / f"_batch_{uuid.uuid4().hex[:10]}"
+        batch_dir.mkdir(parents=True, exist_ok=True)
+        bake_args.extend([f"count={count}", f"outdir={batch_dir}"])
+        timeout = BAKE_TIMEOUT_SEC + max(0, count - 1) * 45
+    else:
+        out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
+        bake_args.extend([f"count=1", f"out={out_path}"])
+        timeout = BAKE_TIMEOUT_SEC
+
+    use_daemon = DAEMON_MODE in ("1", "on", "true", "yes", "auto")
+    if DAEMON_MODE in ("0", "off", "false", "no", "cold"):
+        use_daemon = False
+    spool = Path(
+        os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))
+    ).resolve()
+
+    with _bake_lock:
+        _busy = True
+        _last_error = None
+        try:
+            if use_daemon and daemon.is_file():
+                args = [
+                    sys.executable,
+                    str(daemon),
+                    "--spool",
+                    str(spool),
+                    "bake",
+                    "--cold",
+                    *bake_args,
+                ]
+            else:
+                args = [str(script), *bake_args]
+            proc = subprocess.run(
+                args,
+                cwd=str(ltheory),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env={
+                    **os.environ,
+                    "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", ""),
+                    "LT_WALLPAPER_SPOOL": str(spool),
+                },
+            )
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                _last_error = detail[-800:]
+                raise RuntimeError(_last_error)
+            if count == 1:
+                assert out_path is not None
+                if not out_path.is_file():
+                    detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                    _last_error = detail[-800:]
+                    raise RuntimeError(_last_error)
+            else:
+                assert batch_dir is not None
+                pngs = sorted(batch_dir.glob("lt_*.png"))
+                if len(pngs) < 1:
+                    detail = (proc.stderr or proc.stdout or "batch produced no PNGs").strip()
+                    _last_error = detail[-800:]
+                    raise RuntimeError(_last_error)
+        except subprocess.TimeoutExpired as exc:
+            _last_error = f"bake timed out after {timeout}s"
+            raise RuntimeError(_last_error) from exc
+        finally:
+            _busy = False
+
+    if count == 1:
+        assert out_path is not None
+        label = f"{cat['label']} · {seed[:16]}"
+        if keep_best_only:
+            label = f"{cat['label']} · best of {best} · {seed[:16]}"
+        item = {
+            "id": out_path.stem,
+            "category": category,
+            "preset": preset,
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "nebulaRes": nebula_res,
+            "file": f"images/{out_path.name}",
+            "source": "generated",
+            "createdAt": utc_now(),
+            "label": label,
+        }
+        if keep_best_only:
+            item["bestOf"] = best
+        with _lock:
+            manifest = load_manifest()
+            manifest.setdefault("items", []).insert(0, item)
+            save_manifest(manifest)
+        return item
+
+    assert batch_dir is not None
+    pngs = sorted(batch_dir.glob("lt_*.png"))
+
+    if keep_best_only:
+        score_mod = _load_score_pick(ltheory)
+        winner, stats = score_mod.pick_best(pngs)
+        parts = winner.stem.split("_", 3)
+        plate_preset = parts[2] if len(parts) >= 3 else preset
+        plate_seed = parts[3] if len(parts) >= 4 else seed
+        item = _ingest_png(
+            winner,
+            category=category,
+            preset=plate_preset,
+            seed=str(plate_seed),
+            width=width,
+            height=height,
+            nebula_res=nebula_res,
+            label=(
+                f"{cat['label']} · best of {len(pngs)} · "
+                f"score {stats['score']:.0f} · {str(plate_seed)[:12]}"
+            ),
+        )
+        item["bestOf"] = len(pngs)
+        item["score"] = round(float(stats["score"]), 2)
+        for png in pngs:
+            png.unlink(missing_ok=True)
+        batch_dir.rmdir()
+        with _lock:
+            manifest = load_manifest()
+            manifest.setdefault("items", []).insert(0, item)
+            save_manifest(manifest)
+        return item
+
+    items: list[dict[str, Any]] = []
+    for png in pngs:
+        # Filename: lt_001_preset_seed.png — seed may contain digits only.
+        parts = png.stem.split("_", 3)
+        plate_preset = parts[2] if len(parts) >= 3 else preset
+        plate_seed = parts[3] if len(parts) >= 4 else seed
+        plate_cat = category
+        for cid, cinfo in CATEGORIES.items():
+            if cinfo["preset"] == plate_preset:
+                plate_cat = cid
+                break
+        label_cat = CATEGORIES.get(plate_cat, cat)
+        item = _ingest_png(
+            png,
+            category=plate_cat,
+            preset=plate_preset,
+            seed=plate_seed,
+            width=width,
+            height=height,
+            nebula_res=nebula_res,
+            label=f"{label_cat['label']} · {str(plate_seed)[:16]}",
+        )
+        items.append(item)
+    for png in batch_dir.glob("*.png"):
+        png.unlink(missing_ok=True)
+    batch_dir.rmdir()
+
     with _lock:
         manifest = load_manifest()
-        manifest.setdefault("items", []).insert(0, item)
+        for item in reversed(items):
+            manifest.setdefault("items", []).insert(0, item)
         save_manifest(manifest)
-    return item
+    return items
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -341,6 +577,9 @@ class Handler(SimpleHTTPRequestHandler):
                     "profileNote": cfg["note"],
                     "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
+                    "maxBatchCount": MAX_BATCH_COUNT,
+                    "maxBestCount": MAX_BEST_COUNT,
+                    "daemon": daemon_status(),
                     "ltheory": str(find_ltheory_root()),
                 },
             )
@@ -360,6 +599,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "ok": ok,
                     "busy": _busy,
                     "profile": resolve_profile(),
+                    "daemon": daemon_status(),
                     "ltheory": str(ltheory) if ltheory else None,
                 },
             )
@@ -473,14 +713,40 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(HTTPStatus.BAD_REQUEST, {"error": "bad seed"})
             return
 
+        try:
+            count = int(body.get("count") or 1)
+        except (TypeError, ValueError):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad count"})
+            return
+        if count < 1 or count > MAX_BATCH_COUNT:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"count must be 1..{MAX_BATCH_COUNT}"},
+            )
+            return
+
+        try:
+            best = int(body.get("best") or 1)
+        except (TypeError, ValueError):
+            self._json(HTTPStatus.BAD_REQUEST, {"error": "bad best"})
+            return
+        if best < 1 or best > MAX_BEST_COUNT:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"error": f"best must be 1..{MAX_BEST_COUNT}"},
+            )
+            return
+
         _rate[ip] = time.monotonic()
         try:
-            item = run_bake(
+            result = run_bake(
                 category=category,
                 seed=seed,
                 width=width,
                 height=height,
                 nebula_res=nebula_res,
+                count=count,
+                best=best,
             )
         except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
             self._json(
@@ -489,7 +755,13 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        self._json(HTTPStatus.OK, {"item": item, **rate_status(ip)})
+        if isinstance(result, list):
+            self._json(
+                HTTPStatus.OK,
+                {"items": result, "item": result[0] if result else None, **rate_status(ip)},
+            )
+        else:
+            self._json(HTTPStatus.OK, {"item": result, **rate_status(ip)})
 
 
 def main() -> None:
