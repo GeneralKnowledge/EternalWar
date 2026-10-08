@@ -92,6 +92,8 @@ See `.env.example`. Important knobs:
 | `LT_GALLERY_HOST` / `PORT` | Bind address |
 | `LT_WALLPAPER_DAEMON` | `auto` / `on` / `off` — use warm daemon |
 | `LT_WALLPAPER_SPOOL` | Job spool shared with `lt-wallpaperd` |
+| `LT_WALLPAPER_IR_SAMPLES` | GGX IR samples (default `64`; upstream game used `256`) |
+| `LT_WALLPAPER_TIMING` | `1` to log nebula/plate timings in the engine |
 
 ## Health
 

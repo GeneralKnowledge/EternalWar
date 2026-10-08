@@ -34,7 +34,9 @@
     hull=sausage|triangle|top|auto   Capital hull family
     fighter=standard|surreal|auto           Fighter generator
     thrusters=0|1       Engine glow on ships (default 1)
-    superSample=1|2|4   Export supersample (default 2)
+    superSample=1|2|4   Export supersample (default 2); settle always 1x
+    irSamples=<int>     GGX IR bake samples (default 64 wallpaper / 256 game)
+    timing=0|1          Print nebula/plate phase timings
     seed=good           Pick from Josh's curated goodSeeds list
 
   Wrapper-only (tools/wallpaper.sh / wallpaperd.py):
@@ -200,6 +202,10 @@ local function applyOptKV (opts, k, v)
     opts.thrusters = (v ~= '0' and v ~= 'false' and v ~= 'no')
   elseif k == 'superSample' or k == 'ss' then
     opts.superSample = tonumber(v)
+  elseif k == 'irSamples' then
+    opts.irSamples = tonumber(v)
+  elseif k == 'timing' then
+    opts.timing = (v ~= '0' and v ~= 'false' and v ~= 'no')
   elseif k == 'daemon' then
     opts.daemon = (v == '1' or v == 'true' or v == 'yes')
   elseif k == 'spool' then
@@ -250,6 +256,8 @@ local function parseArgs ()
     fighter = 'auto',
     thrusters = true,
     superSample = 2,
+    irSamples = 64,
+    timing = false,
     daemon = false,
     spool = nil,
     jobId = nil,
@@ -327,6 +335,8 @@ local function parseJobBody (body)
     fighter = 'auto',
     thrusters = true,
     superSample = 2,
+    irSamples = 64,
+    timing = false,
     jobId = nil,
   }
   for line in string.gmatch(body, '[^\r\n]+') do
@@ -641,26 +651,25 @@ function Wallpaper:generate ()
   end
   -- ShapeLib stations for wallpaper plates (StationOld remains for vanilla).
   Config.gen.stationMesh = 'shape'
+  -- IR map sample count (see Nebula:forceLoad). 64 ≈ same look, ~4× less IR work.
+  Config.gen.irMapSamples = opts.irSamples or 64
+  Config.gen.wallpaperTiming = opts.timing and true or false
 
   Config.debug.metrics = false
   Config.render.vsync = false
 
-  -- Enum indices: 1=Off, 2=2x, 3=4x
-  local ss = opts.superSample or 2
-  if ss >= 4 then
-    Settings.set('render.superSample', 3)
-  elseif ss >= 2 then
-    Settings.set('render.superSample', 2)
-  else
-    Settings.set('render.superSample', 1)
-  end
+  -- Capture supersample is applied on the final frame only; settle stays 1x.
+  self.captureSuperSample = opts.superSample or 2
+  self:applySuperSample(1)
   Settings.set('postfx.vignette.enable', true)
   Settings.set('postfx.vignette.strength', 0.28)
   Settings.set('postfx.vignette.hardness', 18.0)
 
+  local tGen = TimeStamp.Get()
   if self.system then self.system:delete() end
   self.system = Entities.System(seed)
   local rng = self.system.rng
+  self._timingGenerateStart = tGen
 
   -- Mount thrusters/turrets before any ShipType is built (FindMountPoint).
   Config.gen.nThrusters = math.max(Config.gen.nThrusters or 1, 2)
@@ -1037,6 +1046,23 @@ function Wallpaper:generate ()
   if opts.thrusters ~= false and not self.skyOnly then
     igniteAllShips(self.system, 0.96, 0.62)
   end
+
+  if opts.timing then
+    printf('Wallpaper timing: generate(scene)=%.2fs preset=%s',
+      TimeStamp.GetElapsed(tGen), preset)
+  end
+end
+
+function Wallpaper:applySuperSample (ss)
+  -- Enum indices: 1=Off, 2=2x, 3=4x
+  ss = ss or 1
+  if ss >= 4 then
+    Settings.set('render.superSample', 3)
+  elseif ss >= 2 then
+    Settings.set('render.superSample', 2)
+  else
+    Settings.set('render.superSample', 1)
+  end
 end
 
 function Wallpaper:applyCamera ()
@@ -1226,19 +1252,31 @@ function Wallpaper:daemonWriteDone (ok, err)
 end
 
 function Wallpaper:daemonParkIdle ()
-  -- Cheap sky park so heavy capital meshes can be released between jobs.
-  self.opts.preset = 'sky'
-  self.opts.count = 1
+  -- Park without baking a nebula. Old path called generate('sky') between jobs
+  -- (~full IFS+IR cost). We keep a tiny far-away ship so GameView has a
+  -- controlling body; onDraw skips while idle so Nebula:forceLoad never runs.
+  if self.system then
+    self.system:delete()
+    self.system = nil
+  end
+  self.system = Entities.System(1)
+  -- Avoid ShapeLib capital / heavy mounts while parked.
+  Config.gen.nThrusters = 1
+  Config.gen.nTurrets = 0
+  bindShipType(self.system, 'fighter', FIGHTER_SCALE, { fighter = 'standard' })
+  local park = self.system:spawnShip()
+  park:setPos(Vec3f(1e7, 1e7, 1e7))
+  self.player:setControlling(park)
+  self.focus = park
+  self.skirmishPairs = nil
+  self.miningPairs = nil
+  self.camFollow = nil
+  self.camCenter = nil
+  self.skyOnly = true
+  self.hideHud = true
   self.opts.out = nil
   self.opts.outdir = nil
   self.opts.presets = nil
-  self.opts.frames = 2
-  self.opts.framesExplicit = true
-  self.skirmishPairs = nil
-  self.camFollow = nil
-  self.camCenter = nil
-  self:generate()
-  if self.gameView then self:applyCamera() end
   self.daemonIdle = true
   self.plateDone = true
   self.doCapture = false
@@ -1262,6 +1300,8 @@ function Wallpaper:daemonAcceptJob (job)
   self.opts.fighter = job.fighter or self.opts.fighter
   if job.thrusters ~= nil then self.opts.thrusters = job.thrusters end
   if job.superSample ~= nil then self.opts.superSample = job.superSample end
+  if job.irSamples ~= nil then self.opts.irSamples = job.irSamples end
+  if job.timing ~= nil then self.opts.timing = job.timing end
   self.opts.jobId = job.jobId
   self.opts.frames = job.frames
   self.opts.framesExplicit = job.framesExplicit
@@ -1350,12 +1390,7 @@ function Wallpaper:onInit ()
   if self.opts.daemon then
     Directory.Create(self.opts.spool)
     writeText(spoolPath(self.opts.spool, 'daemon.pid'), tostring(os.time()) .. '\n')
-    -- Seed a parked sky world so GameView has a controlling body.
-    self.opts.preset = 'sky'
-    self.opts.count = 1
-    self.opts.frames = 2
-    self.opts.framesExplicit = true
-    self:generate()
+    -- Do not bake a park sky here — idle waits without a world (see onDraw).
   else
     self:beginPlate()
     do
@@ -1374,7 +1409,9 @@ function Wallpaper:onInit ()
       :add(Controls.MasterControl(self.gameView, self.player)))
   end
 
-  self:applyCamera()
+  if not self.opts.daemon then
+    self:applyCamera()
+  end
   self.wrote = nil
 
   if self.opts.daemon then
@@ -1441,16 +1478,27 @@ function Wallpaper:onUpdate (dt)
     if self.framesLeft <= 0 then
       self.plateDone = true
       self.doCapture = true
+      -- Final frame renders at export supersample; settle used 1x.
+      self:applySuperSample(self.captureSuperSample or self.opts.superSample or 2)
     end
   end
 end
 
 function Wallpaper:onDraw ()
+  -- Idle daemon: skip GL entirely (was redrawing a park sky every frame).
+  if self.daemonIdle or not self.system then
+    return
+  end
   if self.canvas then
     self.canvas:draw(self.resX, self.resY)
   end
   if self.doCapture then
     self.doCapture = false
+    if self.opts.timing and self._timingGenerateStart then
+      printf('Wallpaper timing: plate total=%.2fs (seed=%s preset=%s)',
+        TimeStamp.GetElapsed(self._timingGenerateStart),
+        tostring(self.opts.seed), tostring(self.opts.preset))
+    end
     self:capture()
     self:advanceOrQuit()
   end

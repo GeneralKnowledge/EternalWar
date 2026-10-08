@@ -19,9 +19,26 @@ function Nebula:forceLoad ()
   else
     bake = Gen.Generator.Get('Nebula', rng)
   end
-  self.envMap = bake(rng, Config.gen.nebulaRes, self.starDir):managed()
-  self.irMap = self.envMap:genIRMap(256):managed()
+
+  local t0 = TimeStamp.Get()
+  local res = Config.gen.nebulaRes
+  self.envMap = bake(rng, res, self.starDir):managed()
+  -- genIRMap(n) is GGX *sample count* per texel (not resolution). Upstream
+  -- hardcodes 256 — the dominant software-GL cost after the IFS cubemap bake.
+  -- Wallpaper sets Config.gen.irMapSamples lower; visual change is tiny on stills.
+  local irSamples = Config.gen.irMapSamples or 256
+  local t1 = TimeStamp.Get()
+  self.irMap = self.envMap:genIRMap(irSamples):managed()
   self.stars = Gen.Starfield(rng, Config.gen.nStars(rng)):managed()
+  if Config.gen.wallpaperTiming then
+    printf(
+      'Wallpaper timing: nebula IFS=%.2fs IR(samples=%s)=%.2fs total=%.2fs res=%s',
+      TimeStamp.GetDifference(t0, t1),
+      tostring(irSamples),
+      TimeStamp.GetElapsed(t1),
+      TimeStamp.GetElapsed(t0),
+      tostring(res))
+  end
 end
 
 function Nebula:render (state)

@@ -545,6 +545,15 @@ def run_bake(
     settle_frames = settle_by_preset.get(preset, 6)
     if resolve_profile() == "small":
         settle_frames = max(2, min(settle_frames, 22))
+    # irSamples=64: GGX IR filter sample count (not resolution). Quality-neutral
+    # on stills vs upstream 256; large win under software GL.
+    ir_samples = int(os.environ.get("LT_WALLPAPER_IR_SAMPLES", "64"))
+    timing = os.environ.get("LT_WALLPAPER_TIMING", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
     bake_args = [
         f"seed={seed}",
         f"preset={preset}",
@@ -552,7 +561,10 @@ def run_bake(
         f"height={height}",
         f"nebulaRes={nebula_res}",
         f"frames={settle_frames}",
+        f"irSamples={ir_samples}",
     ]
+    if timing:
+        bake_args.append("timing=1")
     if keep_best_only:
         out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
         bake_args.extend([f"best={best}", f"out={out_path}"])
