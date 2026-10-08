@@ -22,13 +22,20 @@
     height=<int>        Window / export height (default 1080)
     out=<path>          PNG path (count=1) or stem template (count>1 → stem_001.png)
     outdir=<path>       Directory for batch PNGs (preferred when count>1)
-    preset=<name>       sky | nebula | ship | solo | asteroids | planet |
-                        station | fleet | skirmish | system | capital | armada
+    preset=<name>       sky | nebula | ship | solo | asteroids | planet | belt |
+                        station | fleet | skirmish | system | vista | capital |
+                        armada | mining | aftermath
     presets=<a,b,...>   Cycle these presets across the batch (overrides preset)
     count=<int>         Captures before quit; process stays loaded (default 1)
     frames=<int>        Settle frames before capture (default depends on preset)
     interactive=1       Keep window; F12 capture, R regen, Esc quit
     nebulaRes=<int>     Override Config.gen.nebulaRes
+    nebulaStyle=ifs|lt  Force IFS (Nebula1) or light-transport (Nebula2) sky
+    hull=sausage|triangle|top|auto   Capital hull family
+    fighter=standard|surreal|auto           Fighter generator
+    thrusters=0|1       Engine glow on ships (default 1)
+    superSample=1|2|4   Export supersample (default 2)
+    seed=good           Pick from Josh's curated goodSeeds list
 
   Wrapper-only (tools/wallpaper.sh / wallpaperd.py):
     best=<int>          Bake N candidates in one launch; keep the highest-scoring PNG
@@ -38,6 +45,8 @@
 local Entities = requireAll('Game.Entities')
 local Actions = requireAll('Game.Actions')
 local DebugControl = require('Game.Controls.DebugControl')
+local ShipFighter = require('Gen.ShipFighter')
+local ShipCapital = require('Gen.ShipCapital')
 
 local Wallpaper = Application()
 Wallpaper.opts = nil
@@ -49,12 +58,16 @@ local PRESETS = {
   solo = true,     -- fighter only
   asteroids = true,
   planet = true,
+  belt = true,     -- planet + asteroid belt ring
   station = true,  -- ShapeLib station + traffic
   fleet = true,    -- lead ship + escorts
   skirmish = true, -- two sides mid-fight
-  system = true,   -- station + rocks + ships (vista)
-  capital = true,  -- Gen.ShipCapital sausage
+  system = true,   -- station + rocks + ships
+  vista = true,    -- LTheory-lite: station + field + static escort cloud
+  capital = true,  -- Gen.ShipCapital (hull variants)
   armada = true,   -- capital + fighter screen
+  mining = true,   -- ore rocks + posed miners
+  aftermath = true,-- mid-explosion still after a clash
 }
 
 local DEFAULT_FRAMES = {
@@ -64,17 +77,38 @@ local DEFAULT_FRAMES = {
   solo = 4,
   asteroids = 4,
   planet = 5,
+  belt = 5,
   station = 6,
   fleet = 4,
   -- Turret volleys need a few frames for pulses to be in-flight; no Attack AI.
   skirmish = 10,
   system = 10,
+  vista = 6,
   capital = 5,
   armada = 5,
+  mining = 5,
+  aftermath = 8,
+}
+
+-- Josh's curated sky seeds from Config.App.lua (digit form for CLI).
+local GOOD_SEEDS = {
+  '14589938814258111262',
+  '15297218883250103974',
+  '1842258441393851360',
+  '1305797465843153519',
+  '5421862249219039751',
+  '638780708004697442',
 }
 
 local CAPITAL_SCALE = 48
 local FIGHTER_SCALE = 4
+-- Burger references missing ShipCapital.Plate — skip it.
+local CAPITAL_HULLS = {
+  sausage = ShipCapital.Sausage,
+  triangle = ShipCapital.Triangle,
+  top = ShipCapital.Top,
+}
+local CAPITAL_HULL_NAMES = { 'sausage', 'triangle', 'top' }
 
 local function isSkyPreset (name)
   return name == 'sky' or name == 'nebula'
@@ -120,6 +154,19 @@ local function applyOptKV (opts, k, v)
     opts.interactive = (v == '1' or v == 'true' or v == 'yes')
   elseif k == 'nebulaRes' then
     opts.nebulaRes = tonumber(v)
+  elseif k == 'nebulaStyle' or k == 'nebula' then
+    -- ifs | lt | auto (also accept nebula1 / nebula2 aliases)
+    if v == 'nebula1' then v = 'ifs' end
+    if v == 'nebula2' then v = 'lt' end
+    opts.nebulaStyle = v
+  elseif k == 'hull' then
+    opts.hull = v
+  elseif k == 'fighter' then
+    opts.fighter = v
+  elseif k == 'thrusters' then
+    opts.thrusters = (v ~= '0' and v ~= 'false' and v ~= 'no')
+  elseif k == 'superSample' or k == 'ss' then
+    opts.superSample = tonumber(v)
   elseif k == 'daemon' then
     opts.daemon = (v == '1' or v == 'true' or v == 'yes')
   elseif k == 'spool' then
@@ -165,6 +212,11 @@ local function parseArgs ()
     framesExplicit = false,
     interactive = false,
     nebulaRes = nil,
+    nebulaStyle = 'auto',
+    hull = 'auto',
+    fighter = 'auto',
+    thrusters = true,
+    superSample = 2,
     daemon = false,
     spool = nil,
     jobId = nil,
@@ -184,6 +236,11 @@ local function parseArgs ()
     elseif not applyOptKV(opts, k, v) then
       printf('Wallpaper: ignoring unrecognized flag <%s>', k)
     end
+  end
+  if opts.seed == 'good' or opts.seed == 'curated' then
+    local idx = 1 + (os.time() % #GOOD_SEEDS)
+    opts.seed = GOOD_SEEDS[idx]
+    printf('Wallpaper: using curated goodSeed[%d]=%s', idx, opts.seed)
   end
   return finalizeOpts(opts)
 end
@@ -232,11 +289,20 @@ local function parseJobBody (body)
     framesExplicit = false,
     interactive = false,
     nebulaRes = nil,
+    nebulaStyle = 'auto',
+    hull = 'auto',
+    fighter = 'auto',
+    thrusters = true,
+    superSample = 2,
     jobId = nil,
   }
   for line in string.gmatch(body, '[^\r\n]+') do
     local k, v = line:match('^([%w_]+)=(.*)$')
     if k then applyOptKV(opts, k, v) end
+  end
+  if opts.seed == 'good' or opts.seed == 'curated' then
+    local idx = 1 + (os.time() % #GOOD_SEEDS)
+    opts.seed = GOOD_SEEDS[idx]
   end
   return finalizeOpts(opts)
 end
@@ -267,18 +333,50 @@ local function parseSeed (s)
   return RNG.Create(1 + (#s * 1315423911) % 2147483647):managed():get64()
 end
 
+local function wrapRngGen (fn)
+  return function (seed, _res)
+    return fn(RNG.Create(seed))
+  end
+end
+
+local function pickCapitalHull (opts, rng)
+  local name = opts.hull or 'auto'
+  if name == 'auto' or not CAPITAL_HULLS[name] then
+    name = CAPITAL_HULL_NAMES[1 + rng:getInt(0, #CAPITAL_HULL_NAMES - 1)]
+  end
+  return name, CAPITAL_HULLS[name]
+end
+
+local function pickFighterGen (opts, rng)
+  local name = opts.fighter or 'auto'
+  if name == 'auto' then
+    -- Bias Standard; Surreal ~30% for silhouette variety.
+    name = rng:chance(0.30) and 'surreal' or 'standard'
+  end
+  if name == 'surreal' then
+    return name, wrapRngGen(ShipFighter.Surreal)
+  end
+  return 'standard', wrapRngGen(ShipFighter.Standard)
+end
+
 --- Force a fresh ShapeLib hull on the next System:spawnShip().
 local function refreshShipType (system)
   system.shipType = nil
 end
 
 --- Bind fighter or capital generator before spawnShip().
-local function bindShipType (system, kind, scale)
-  local gen = Gen.Ship.ShipFighter
+local function bindShipType (system, kind, scale, opts)
+  opts = opts or {}
   local scl = scale or FIGHTER_SCALE
+  local gen
   if kind == 'capital' then
-    gen = Gen.Ship.ShipCapital
+    local _name, hullFn = pickCapitalHull(opts, system.rng)
+    gen = wrapRngGen(hullFn)
     scl = scale or CAPITAL_SCALE
+  else
+    local _name, fighterFn = pickFighterGen(opts, system.rng)
+    gen = fighterFn
+    scl = scale or FIGHTER_SCALE
   end
   system.shipType = ShipType(system.rng:get31(), gen, scl)
 end
@@ -287,15 +385,54 @@ local function faceToward (entity, forward)
   entity:setRot(Quat.FromLookUp(forward:normalize(), Vec3f(0, 1, 0)))
 end
 
+local function igniteThrusters (ship, amount, boost)
+  if not ship or not ship.hasSockets or not ship:hasSockets() then return end
+  amount = amount or 0.9
+  boost = boost or 0.4
+  for thruster in ship:iterSocketsByType(SocketType.Thruster) do
+    thruster.activationT = amount
+    thruster.activation = amount
+    thruster.boostT = boost
+    thruster.boost = boost
+  end
+end
+
+local function igniteAllShips (system, amount, boost)
+  for _, child in system:iterChildren() do
+    if child.hasSockets and child:hasSockets() then
+      igniteThrusters(child, amount, boost)
+    end
+  end
+end
+
+--- Planetary belt rocks around a planet (from SystemBasic geometry).
+local function spawnPlanetBelt (system, planet, count)
+  local rng = system.rng
+  local center = planet:getPos()
+  local rc = 2.00 * planet:getRadius()
+  local rw = 0.20 * planet:getRadius()
+  for _ = 1, count do
+    local r = rc + rng:getUniformRange(-rw, rw) * (0.5 + 0.5 * rng:getExp())
+    local h = 0.1 * rw * rng:getGaussian()
+    local dir = rng:getDir2()
+    local scale = 5.0 * (1.0 + rng:getExp() ^ 2.0)
+    local rock = Entities.Asteroid(rng:get31(), scale)
+    rock:setPos(center + Vec3f(r * dir.x, h, r * dir.y))
+    rock:setRot(rng:getQuat())
+    rock:setScale(scale)
+    system:addChild(rock)
+  end
+end
+
 --- Spawn a ship. reuseType=true keeps the current ShapeLib hull (fleet cohesion).
 --- kind: nil/'fighter'/'capital' — ignored when reuseType is true.
-local function spawnOwnedShip (system, owner, pos, reuseType, kind, scale)
+local function spawnOwnedShip (system, owner, pos, reuseType, kind, scale, opts)
   if not reuseType then
-    if kind == 'capital' or kind == 'fighter' then
-      bindShipType(system, kind, scale)
-    else
-      refreshShipType(system)
-    end
+    bindShipType(
+      system,
+      kind == 'capital' and 'capital' or 'fighter',
+      scale,
+      opts or {})
   end
   local ship = system:spawnShip()
   if pos then ship:setPos(pos) end
@@ -355,15 +492,36 @@ function Wallpaper:generate ()
   local seed = parseSeed(self.opts.seed)
   self.seed = seed
   local preset = self.opts.preset
+  local opts = self.opts
   printf('Wallpaper seed: %s  preset: %s  size: %dx%d',
-    tostring(seed), preset, self.opts.width, self.opts.height)
+    tostring(seed), preset, opts.width, opts.height)
 
-  if self.opts.nebulaRes then
-    Config.gen.nebulaRes = self.opts.nebulaRes
+  if opts.nebulaRes then
+    Config.gen.nebulaRes = opts.nebulaRes
   end
+  if opts.nebulaStyle and opts.nebulaStyle ~= 'auto' then
+    Config.gen.nebulaStyle = opts.nebulaStyle
+  else
+    Config.gen.nebulaStyle = nil
+  end
+  -- ShapeLib stations for wallpaper plates (StationOld remains for vanilla).
+  Config.gen.stationMesh = 'shape'
 
   Config.debug.metrics = false
   Config.render.vsync = false
+
+  -- Enum indices: 1=Off, 2=2x, 3=4x
+  local ss = opts.superSample or 2
+  if ss >= 4 then
+    Settings.set('render.superSample', 3)
+  elseif ss >= 2 then
+    Settings.set('render.superSample', 2)
+  else
+    Settings.set('render.superSample', 1)
+  end
+  Settings.set('postfx.vignette.enable', true)
+  Settings.set('postfx.vignette.strength', 0.28)
+  Settings.set('postfx.vignette.hardness', 18.0)
 
   if self.system then self.system:delete() end
   self.system = Entities.System(seed)
@@ -375,7 +533,7 @@ function Wallpaper:generate ()
     startKind = 'capital'
   end
   local ship = spawnOwnedShip(
-    self.system, self.player, Config.gen.origin, false, startKind)
+    self.system, self.player, Config.gen.origin, false, startKind, nil, opts)
   self.player:setControlling(ship)
 
   self.focus = ship
@@ -400,20 +558,26 @@ function Wallpaper:generate ()
   elseif preset == 'asteroids' then
     self.system:spawnAsteroidField(120, 10)
 
-  elseif preset == 'planet' then
+  elseif preset == 'planet' or preset == 'belt' then
     self.system:spawnPlanet()
+    local planet
     for _, child in self.system:iterChildren() do
       if child ~= ship and child.getScale then
         local ok, scale = pcall(function () return child:getScale() end)
         if ok and scale and scale > 1000 then
+          planet = child
           self.focus = child
           break
         end
       end
     end
+    if planet and preset == 'belt' then
+      spawnPlanetBelt(self.system, planet, 48)
+    end
 
   elseif preset == 'station' then
     local station = self.system:spawnStation()
+    if station.addLight then station:addLight(1.0, 0.82, 0.55) end
     self.focus = station
     self.hideHud = true
     -- Light traffic around the station (local offsets for Escort)
@@ -422,7 +586,8 @@ function Wallpaper:generate ()
         (i % 2 == 0 and 1 or -1) * (90 + 35 * i),
         10 * (i - 2),
         70 + 20 * i)
-      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset, true)
+      local traffic = spawnOwnedShip(
+        self.system, self.player, station:getPos() + offset, true, nil, nil, opts)
       faceToward(traffic, Vec3f(0, 0, 1))
       traffic:pushAction(Actions.Escort(station, offset))
     end
@@ -444,12 +609,12 @@ function Wallpaper:generate ()
       Vec3f(  0,  7, -22),
     }
     for i = 1, #slots do
-      local escort = spawnOwnedShip(self.system, self.player, origin + slots[i], true)
+      local escort = spawnOwnedShip(
+        self.system, self.player, origin + slots[i], true, nil, nil, opts)
       faceToward(escort, forward)
     end
     self.focus = ship
     self.hideHud = true
-    -- Orbit the lead (works like solo) with a pullback that fits the V.
     setPlateCamera(self, nil, 62, -1.0, 0.26)
     self.camFollow = ship
 
@@ -462,12 +627,11 @@ function Wallpaper:generate ()
     ship:setPos(origin + Vec3f(0, 8000, 0))
 
     local wingA, wingB = {}, {}
-    refreshShipType(self.system)
     for i = 1, 5 do
       local z = (i - 3) * 12
       local y = ((i % 2) * 2 - 1) * 4
       local a = spawnOwnedShip(
-        self.system, self.player, origin + Vec3f(-22, y, z), i > 1)
+        self.system, self.player, origin + Vec3f(-22, y, z), i > 1, 'fighter', nil, opts)
       faceToward(a, Vec3f(1, 0, 0))
       insert(wingA, a)
     end
@@ -476,7 +640,7 @@ function Wallpaper:generate ()
       local z = (i - 3) * 12
       local y = ((i % 2) * 2 - 1) * 4
       local b = spawnOwnedShip(
-        self.system, enemy, origin + Vec3f(22, -y, z), i > 1)
+        self.system, enemy, origin + Vec3f(22, -y, z), i > 1, 'fighter', nil, opts)
       faceToward(b, Vec3f(-1, 0, 0))
       insert(wingB, b)
     end
@@ -489,47 +653,131 @@ function Wallpaper:generate ()
       insert(self.skirmishPairs, { from = wingA[i], at = wingB[i] })
       insert(self.skirmishPairs, { from = wingB[i], at = wingA[i] })
     end
-    -- Midpoint plate — both columns stay readable.
     setPlateCamera(self, origin + Vec3f(0, 6, 0), 70, -1.25, 0.30)
 
   elseif preset == 'system' then
-    -- Reminiscing vista: station, rocks, a few ships under the nebula.
     local station = self.system:spawnStation()
+    if station.addLight then station:addLight(1.0, 0.82, 0.55) end
     self.system:spawnAsteroidField(60, 6)
     for i = 1, 5 do
       local offset = Vec3f(
         (i % 2 == 0 and 1 or -1) * (140 + 40 * i),
         20 * (i % 3 - 1),
         100 + 30 * i)
-      local traffic = spawnOwnedShip(self.system, self.player, station:getPos() + offset, true)
+      local traffic = spawnOwnedShip(
+        self.system, self.player, station:getPos() + offset, true, nil, nil, opts)
       faceToward(traffic, Vec3f(0, 0, 1))
       traffic:pushAction(Actions.Escort(station, offset))
     end
-    -- Park the player stub near the station for camera focus
     ship:setPos(station:getPos() + Vec3f(160, 40, -120))
     self.focus = station
     self.hideHud = true
+
+  elseif preset == 'vista' then
+    -- LTheory-lite: station + field + static escort cloud (no Escort AI drift).
+    local station = self.system:spawnStation()
+    if station.addLight then station:addLight(1.0, 0.85, 0.6) end
+    self.system:spawnAsteroidField(90, 8)
+    local origin = station:getPos()
+    ship:setPos(origin + Vec3f(180, 50, -140))
+    faceToward(ship, Vec3f(0, 0, 1))
+    local slots = {
+      Vec3f(120,  30, -80), Vec3f(220, -20, -60), Vec3f(160,  10,  40),
+      Vec3f(280,  40, -120), Vec3f(90, -30, -160), Vec3f(240,  60,  20),
+      Vec3f(200, -40, -200), Vec3f(140,  70, -40), Vec3f(300,  20, -40),
+      Vec3f(100,  0,  80), Vec3f(260, -50, -90), Vec3f(180,  40, -220),
+      Vec3f(320,  10, -150), Vec3f(70,  50, -100), Vec3f(210, -10,  90),
+      Vec3f(150, -60, -30), Vec3f(290,  35,  50), Vec3f(110,  25, -240),
+    }
+    for i = 1, #slots do
+      local escort = spawnOwnedShip(
+        self.system, self.player, origin + slots[i], i > 1, 'fighter', nil, opts)
+      faceToward(escort, Vec3f(0.2, 0, 1))
+    end
+    self.focus = station
+    self.hideHud = true
+    setPlateCamera(self, origin + Vec3f(40, 80, -40), 520, -1.15, 0.32)
+
+  elseif preset == 'mining' then
+    self.system:spawnAsteroidField(50, 18)
+    local origin = Config.gen.origin
+    ship:setPos(origin)
+    faceToward(ship, Vec3f(0.4, 0, 1))
+    -- Pose a few miners near denser rocks around origin.
+    local minerSlots = {
+      Vec3f(35, 8, -20), Vec3f(-40, -6, 15), Vec3f(10, 12, 40),
+      Vec3f(-25, 4, -45),
+    }
+    for i = 1, #minerSlots do
+      local miner = spawnOwnedShip(
+        self.system, self.player, origin + minerSlots[i], true, nil, nil, opts)
+      faceToward(miner, Vec3f(-minerSlots[i].x, 0, -minerSlots[i].z) + Vec3f(0, 0, 0.2))
+    end
+    self.focus = ship
+    self.hideHud = true
+    setPlateCamera(self, origin + Vec3f(0, 20, 0), 95, -0.95, 0.34)
+
+  elseif preset == 'aftermath' then
+    -- Mid-explosion still: two wings held, pulses + blast billboards mid-age.
+    local enemy = Entities.Player()
+    insert(self.system.players, enemy)
+    local origin = Config.gen.origin
+    ship:setPos(origin + Vec3f(0, 8000, 0))
+    local wingA, wingB = {}, {}
+    for i = 1, 4 do
+      local a = spawnOwnedShip(
+        self.system, self.player, origin + Vec3f(-18, (i - 2) * 6, (i - 2) * 8),
+        i > 1, 'fighter', nil, opts)
+      faceToward(a, Vec3f(1, 0, 0))
+      insert(wingA, a)
+    end
+    refreshShipType(self.system)
+    for i = 1, 4 do
+      local b = spawnOwnedShip(
+        self.system, enemy, origin + Vec3f(18, (i - 2) * -5, (i - 2) * 8),
+        i > 1, 'fighter', nil, opts)
+      faceToward(b, Vec3f(-1, 0, 0))
+      insert(wingB, b)
+    end
+    self.player:setControlling(wingA[2])
+    self.focus = wingA[2]
+    self.hideHud = true
+    self.skirmishPairs = {}
+    for i = 1, math.min(#wingA, #wingB) do
+      insert(self.skirmishPairs, { from = wingA[i], at = wingB[i] })
+      insert(self.skirmishPairs, { from = wingB[i], at = wingA[i] })
+    end
+    for i = 1, 6 do
+      local pos = origin + Vec3f(
+        rng:getUniformRange(-12, 12),
+        rng:getUniformRange(-4, 10),
+        rng:getUniformRange(-10, 10))
+      local boom = Entities.Explosion(pos)
+      boom.age = 0.55 + 0.2 * i
+      self.system:addChild(boom)
+    end
+    setPlateCamera(self, origin + Vec3f(0, 8, 0), 72, -1.2, 0.28)
 
   elseif preset == 'capital' then
     local origin = Config.gen.origin
     local forward = Vec3f(0, 0, 1)
     ship:setPos(origin)
     faceToward(ship, forward)
+    if ship.addLight then ship:addLight(0.35, 0.55, 1.1) end
     self.focus = ship
     self.hideHud = true
     self.camFollow = ship
     setPlateCamera(self, nil, camRadiusFor(ship, 3.4, 160), -1.05, 0.22)
 
   elseif preset == 'armada' then
-    -- Capital lead + fighter screen. Fighters use a larger scale so they
-    -- still read when the camera is pulled back for the capital.
     local origin = Config.gen.origin
     local forward = Vec3f(0, 0, 1)
     ship:setPos(origin)
     faceToward(ship, forward)
+    if ship.addLight then ship:addLight(0.35, 0.55, 1.1) end
     local rad = camRadiusFor(ship, 1.0, 50)
     local ring = math.max(40, rad * 1.08)
-    bindShipType(self.system, 'fighter', 14)
+    bindShipType(self.system, 'fighter', 14, opts)
     local slots = {
       Vec3f(-ring * 0.55,  rad * 0.08, -ring * 0.15),
       Vec3f( ring * 0.55, -rad * 0.05, -ring * 0.15),
@@ -541,13 +789,17 @@ function Wallpaper:generate ()
     }
     for i = 1, #slots do
       local escort = spawnOwnedShip(
-        self.system, self.player, origin + slots[i], true)
+        self.system, self.player, origin + slots[i], true, nil, nil, opts)
       faceToward(escort, forward)
     end
     self.focus = ship
     self.hideHud = true
     self.camFollow = ship
     setPlateCamera(self, nil, camRadiusFor(ship, 2.9, 150), -0.95, 0.2)
+  end
+
+  if opts.thrusters ~= false and not self.skyOnly then
+    igniteAllShips(self.system, 0.92, 0.45)
   end
 end
 
@@ -587,7 +839,7 @@ function Wallpaper:applyCamera ()
       cam:setRadius(180)
       cam:setPitch(0.35)
       cam:setYaw(-0.8)
-    elseif preset == 'planet' then
+    elseif preset == 'planet' or preset == 'belt' then
       cam:setRadius(self.focus.getScale and (self.focus:getScale() * 3.5) or 8000)
       cam:setPitch(0.25)
       cam:setYaw(-Math.Pi2)
@@ -595,10 +847,14 @@ function Wallpaper:applyCamera ()
       cam:setRadius(420)
       cam:setPitch(0.32)
       cam:setYaw(-0.95)
-    elseif preset == 'system' then
-      cam:setRadius(700)
-      cam:setPitch(0.28)
-      cam:setYaw(-1.25)
+    elseif preset == 'system' or preset == 'vista' then
+      cam:setRadius(self.camRadius or (preset == 'vista' and 520 or 700))
+      cam:setPitch(self.camPitch or 0.28)
+      cam:setYaw(self.camYaw or -1.25)
+    elseif preset == 'mining' or preset == 'aftermath' then
+      cam:setRadius(self.camRadius or 90)
+      cam:setPitch(self.camPitch or 0.32)
+      cam:setYaw(self.camYaw or -1.0)
     elseif preset == 'capital' or preset == 'armada' then
       cam:setRadius(self.camRadius or camRadiusFor(self.focus, 3.4, 160))
       cam:setPitch(self.camPitch or 0.22)
@@ -765,6 +1021,11 @@ function Wallpaper:daemonAcceptJob (job)
   self.opts.out = job.out
   self.opts.outdir = job.outdir
   self.opts.nebulaRes = job.nebulaRes
+  self.opts.nebulaStyle = job.nebulaStyle or self.opts.nebulaStyle
+  self.opts.hull = job.hull or self.opts.hull
+  self.opts.fighter = job.fighter or self.opts.fighter
+  if job.thrusters ~= nil then self.opts.thrusters = job.thrusters end
+  if job.superSample ~= nil then self.opts.superSample = job.superSample end
   self.opts.jobId = job.jobId
   self.opts.frames = job.frames
   self.opts.framesExplicit = job.framesExplicit
