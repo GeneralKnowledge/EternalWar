@@ -517,13 +517,15 @@ def run_bake(
 
     batch_dir: Path | None = None
     out_path: Path | None = None
+    # Fewer settle frames on small hosts — each frame is expensive under software GL.
+    settle_frames = 2 if resolve_profile() == "small" else 3
     bake_args = [
         f"seed={seed}",
         f"preset={preset}",
         f"width={width}",
         f"height={height}",
         f"nebulaRes={nebula_res}",
-        "frames=3",
+        f"frames={settle_frames}",
     ]
     if keep_best_only:
         out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
