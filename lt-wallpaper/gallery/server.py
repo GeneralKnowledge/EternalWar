@@ -189,6 +189,10 @@ _rate: dict[str, float] = {}  # ip -> last bake monotonic time
 _busy = False
 _busy_since: float | None = None
 _last_error: str | None = None
+# Async bake jobs: id -> job dict (survives proxy timeouts on long POSTs)
+_jobs: dict[str, dict[str, Any]] = {}
+_jobs_lock = threading.Lock()
+_JOB_TTL_SEC = 3600
 
 
 def mem_total_mib() -> int | None:
@@ -273,6 +277,7 @@ def rate_status(ip: str) -> dict[str, Any]:
     busy_for = None
     if _busy and _busy_since is not None:
         busy_for = int(max(0.0, now - _busy_since))
+    job = _current_job_snapshot()
     return {
         "limitSec": RATE_LIMIT_SEC,
         "retryAfterSec": int(remaining + 0.999) if remaining > 0 else 0,
@@ -280,7 +285,142 @@ def rate_status(ip: str) -> dict[str, Any]:
         "busy": _busy,
         "busyForSec": busy_for,
         "lastError": _last_error,
+        "job": job,
+        "daemon": daemon_status(),
     }
+
+
+def _current_job_snapshot() -> dict[str, Any] | None:
+    with _jobs_lock:
+        running = [j for j in _jobs.values() if j.get("status") in ("queued", "running")]
+        if not running:
+            return None
+        j = max(running, key=lambda x: float(x.get("startedAtMono") or 0))
+        return _public_job(j)
+
+
+def _public_job(job: dict[str, Any]) -> dict[str, Any]:
+    now = time.monotonic()
+    started = float(job.get("startedAtMono") or now)
+    return {
+        "id": job.get("id"),
+        "status": job.get("status"),
+        "phase": job.get("phase"),
+        "progress": job.get("progress", 0),
+        "message": job.get("message"),
+        "error": job.get("error"),
+        "logTail": job.get("logTail"),
+        "hint": job.get("hint"),
+        "category": job.get("category"),
+        "preset": job.get("preset"),
+        "best": job.get("best"),
+        "count": job.get("count"),
+        "mode": job.get("mode"),
+        "elapsedSec": int(max(0.0, now - started)),
+        "item": job.get("item"),
+        "items": job.get("items"),
+    }
+
+
+def _set_job(job_id: str, **fields: Any) -> None:
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if not job:
+            return
+        job.update(fields)
+
+
+def _prune_jobs() -> None:
+    now = time.monotonic()
+    with _jobs_lock:
+        dead = [
+            jid
+            for jid, j in _jobs.items()
+            if now - float(j.get("startedAtMono") or now) > _JOB_TTL_SEC
+        ]
+        for jid in dead:
+            del _jobs[jid]
+
+
+def _job_hint(error: str) -> str:
+    e = error.lower()
+    if "namespace" in e or "readwritepaths" in e:
+        return (
+            "Warm daemon systemd unit is crashing. "
+            "Run: sudo mkdir -p /opt/lt-wallpaper/ltheory/wallpaper && "
+            "sudo systemctl reset-failed lt-wallpaperd && sudo systemctl restart lt-wallpaperd"
+        )
+    if "timed out" in e or "timeout" in e:
+        return "Bake timed out. Try Solo + draft/720p + Best of 1, or raise LT_GALLERY_BAKE_TIMEOUT."
+    if "memory" in e or "killed" in e or "oom" in e:
+        return "Likely OOM on a small host. Use draft/720p, Best of 1, avoid Belt/Planet."
+    if "not found" in e and "ltheory" in e:
+        return "ltheory tree missing under LTHEORY_ROOT — re-run gallery/scripts/install.sh"
+    if "daemon not ready" in e:
+        return "Warm daemon down; cold fallback should still work. Check: systemctl status lt-wallpaperd"
+    if "xvfb" in e or "display" in e:
+        return "Install xvfb (sudo apt-get install xvfb) or set DISPLAY."
+    return "Check: sudo journalctl -u lt-wallpaper-gallery -u lt-wallpaperd -n 80 --no-pager"
+
+
+def _run_bake_job(job_id: str, ip: str, params: dict[str, Any]) -> None:
+    global _busy, _busy_since, _last_error
+    _set_job(
+        job_id,
+        status="running",
+        phase="starting",
+        progress=5,
+        message="Starting bake…",
+    )
+    try:
+        daemon = daemon_status()
+        mode = "warm" if daemon.get("ready") else "cold"
+        _set_job(
+            job_id,
+            mode=mode,
+            phase="engine",
+            progress=15,
+            message=f"Running native engine ({mode})…",
+        )
+        result = run_bake(**params)
+        _rate[ip] = time.monotonic()
+        if isinstance(result, list):
+            _set_job(
+                job_id,
+                status="done",
+                phase="done",
+                progress=100,
+                message=f"Saved {len(result)} plates",
+                items=result,
+                item=result[0] if result else None,
+            )
+        else:
+            _set_job(
+                job_id,
+                status="done",
+                phase="done",
+                progress=100,
+                message=f"Saved {result.get('label') or 'wallpaper'}",
+                item=result,
+                items=None,
+            )
+    except Exception as exc:  # noqa: BLE001
+        msg = str(exc).strip() or "bake failed (no details)"
+        _last_error = msg[-800:]
+        print(f"bake job {job_id} error: {msg}", flush=True)
+        _set_job(
+            job_id,
+            status="error",
+            phase="error",
+            progress=100,
+            message="Generate failed",
+            error=msg[-1200:],
+            logTail=msg[-1200:],
+            hint=_job_hint(msg),
+        )
+    finally:
+        _busy = False
+        _busy_since = None
 
 
 def random_seed() -> str:
@@ -604,6 +744,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "profileNote": cfg["note"],
                     "memTotalMiB": mem_total_mib(),
                     "rateLimitSec": RATE_LIMIT_SEC,
+                    "bakeTimeoutSec": BAKE_TIMEOUT_SEC,
                     "maxBatchCount": MAX_BATCH_COUNT,
                     "maxBestCount": MAX_BEST_COUNT,
                     "daemon": daemon_status(),
@@ -634,6 +775,19 @@ class Handler(SimpleHTTPRequestHandler):
 
         if path == "/api/status":
             self._json(HTTPStatus.OK, rate_status(client_ip(self)))
+            return
+
+        if path.startswith("/api/jobs/"):
+            job_id = path[len("/api/jobs/") :].strip("/")
+            if not re.fullmatch(r"[a-f0-9]{12}", job_id or ""):
+                self._json(HTTPStatus.BAD_REQUEST, {"error": "bad job id"})
+                return
+            with _jobs_lock:
+                job = _jobs.get(job_id)
+            if not job:
+                self._json(HTTPStatus.NOT_FOUND, {"error": "job not found"})
+                return
+            self._json(HTTPStatus.OK, _public_job(job))
             return
 
         if path == "/api/gallery":
@@ -764,36 +918,60 @@ class Handler(SimpleHTTPRequestHandler):
             )
             return
 
-        try:
-            result = run_bake(
-                category=category,
-                seed=seed,
-                width=width,
-                height=height,
-                nebula_res=nebula_res,
-                count=count,
-                best=best,
-            )
-        except Exception as exc:  # noqa: BLE001 — surface bake errors to UI
-            msg = str(exc).strip() or "bake failed (no details)"
-            print(f"bake error for {ip}: {msg}", flush=True)
-            self._json(
-                HTTPStatus.INTERNAL_SERVER_ERROR,
-                {"error": msg, **rate_status(ip)},
-            )
-            return
+        # Async job so long bakes survive reverse-proxy / tunnel POST timeouts.
+        _prune_jobs()
+        job_id = uuid.uuid4().hex[:12]
+        cat = CATEGORIES[category]
+        job = {
+            "id": job_id,
+            "status": "queued",
+            "phase": "queued",
+            "progress": 1,
+            "message": "Queued…",
+            "error": None,
+            "logTail": None,
+            "hint": None,
+            "category": category,
+            "preset": cat["preset"],
+            "best": best,
+            "count": count,
+            "mode": None,
+            "startedAtMono": time.monotonic(),
+            "item": None,
+            "items": None,
+            "ip": ip,
+        }
+        with _jobs_lock:
+            _jobs[job_id] = job
+        # Reserve the bake slot immediately (run_bake also toggles _busy).
+        global _busy, _busy_since
+        _busy = True
+        _busy_since = time.monotonic()
 
-        # Only charge the rate limit after a successful bake.
-        _rate[ip] = time.monotonic()
-
-        if isinstance(result, list):
-            self._json(
-                HTTPStatus.OK,
-                {"items": result, "item": result[0] if result else None, **rate_status(ip)},
-            )
-        else:
-            self._json(HTTPStatus.OK, {"item": result, **rate_status(ip)})
-
+        params = {
+            "category": category,
+            "seed": seed,
+            "width": width,
+            "height": height,
+            "nebula_res": nebula_res,
+            "count": count,
+            "best": best,
+        }
+        thread = threading.Thread(
+            target=_run_bake_job,
+            args=(job_id, ip, params),
+            name=f"bake-{job_id}",
+            daemon=True,
+        )
+        thread.start()
+        self._json(
+            HTTPStatus.ACCEPTED,
+            {
+                "jobId": job_id,
+                "job": _public_job(job),
+                **rate_status(ip),
+            },
+        )
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="LT Wallpaper Gallery server")

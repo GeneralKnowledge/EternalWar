@@ -12,6 +12,10 @@ const els = {
   rand: document.getElementById("rand"),
   status: document.getElementById("status"),
   rate: document.getElementById("rate"),
+  progress: document.getElementById("progress"),
+  progressBar: document.getElementById("progressBar"),
+  progressLabel: document.getElementById("progressLabel"),
+  errorBox: document.getElementById("errorBox"),
   lightbox: document.getElementById("lightbox"),
   lightImg: document.getElementById("lightImg"),
   lightMeta: document.getElementById("lightMeta"),
@@ -24,12 +28,21 @@ const state = {
   filter: "all",
   items: [],
   polling: null,
+  baking: false,
+  activeJobId: null,
 };
 
 function randomSeed() {
   const hi = Math.floor(Math.random() * 9e15);
   const lo = Math.floor(Math.random() * 1e6);
   return String(hi) + String(lo).padStart(6, "0");
+}
+
+function formatElapsed(sec) {
+  const s = Math.max(0, Number(sec) || 0);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
 async function api(path, opts) {
@@ -39,7 +52,7 @@ async function api(path, opts) {
   try {
     data = raw ? JSON.parse(raw) : {};
   } catch {
-    data = { error: raw.slice(0, 240) || res.statusText || `HTTP ${res.status}` };
+    data = { error: raw.slice(0, 400) || res.statusText || `HTTP ${res.status}` };
   }
   if (!res.ok) {
     const msg =
@@ -59,38 +72,102 @@ function setStatus(msg) {
   els.status.textContent = msg;
 }
 
+function hideError() {
+  if (!els.errorBox) return;
+  els.errorBox.hidden = true;
+  els.errorBox.textContent = "";
+}
+
+function showError({ title, detail, hint, logTail }) {
+  if (!els.errorBox) {
+    setStatus(title + (detail ? ` — ${detail}` : ""));
+    return;
+  }
+  els.errorBox.hidden = false;
+  const blocks = [];
+  blocks.push(`<strong>${escapeHtml(title)}</strong>`);
+  if (detail) blocks.push(`<p class="err-detail">${escapeHtml(detail)}</p>`);
+  if (hint) blocks.push(`<p class="err-hint">${escapeHtml(hint)}</p>`);
+  if (logTail) {
+    blocks.push(`<pre class="err-log">${escapeHtml(logTail)}</pre>`);
+  }
+  els.errorBox.innerHTML = blocks.join("");
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function setProgress({ visible, pct, label }) {
+  if (!els.progress) return;
+  els.progress.hidden = !visible;
+  if (!visible) return;
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  if (els.progressBar) els.progressBar.style.width = `${p}%`;
+  if (els.progressLabel) els.progressLabel.textContent = label || "";
+  els.generate.classList.toggle("baking", visible);
+}
+
+function phaseLabel(job) {
+  if (!job) return "Working…";
+  const elapsed = formatElapsed(job.elapsedSec);
+  const mode = job.mode ? ` · ${job.mode}` : "";
+  const base = job.message || job.phase || "Working…";
+  return `${base}${mode} · ${elapsed}`;
+}
+
 function renderRate(status) {
   if (!status) {
     els.rate.textContent = "";
+    return;
+  }
+  if (state.baking) {
+    const job = status.job;
+    const age = status.busyForSec != null ? status.busyForSec : job?.elapsedSec;
+    els.rate.textContent = `Baking… ${formatElapsed(age)}`;
+    els.generate.disabled = true;
+    if (job) {
+      setProgress({
+        visible: true,
+        pct: job.progress ?? 10,
+        label: phaseLabel(job),
+      });
+    }
     return;
   }
   if (status.busy) {
     const age = status.busyForSec != null ? ` (${status.busyForSec}s)` : "";
     els.rate.textContent = `Bake in progress${age}…`;
     els.generate.disabled = true;
-    // Keep the footer honest — "Ready" under a disabled button is confusing.
-    if (!els.status.dataset.baking) {
-      setStatus(
-        "Generate locked — a bake is still running on the server. " +
-          "On a 1 GiB host this can take several minutes (especially Best of > 1 or Belt/Planet). " +
-          "If it never finishes: sudo systemctl restart lt-wallpaper-gallery",
-      );
-    }
+    setProgress({
+      visible: true,
+      pct: status.job?.progress ?? 20,
+      label: phaseLabel(status.job) || "Another bake is running on the server…",
+    });
+    setStatus(
+      "Generate locked — a bake is still running. " +
+        "On 1 GiB hosts this can take several minutes. " +
+        "If stuck: sudo systemctl restart lt-wallpaper-gallery",
+    );
     return;
   }
   if (status.retryAfterSec > 0) {
     els.rate.textContent = `Next bake in ${status.retryAfterSec}s`;
     els.generate.disabled = true;
-    if (!els.status.dataset.baking) {
-      setStatus(
-        `Generate locked — rate limit (1 bake / ${status.limitSec}s). Wait ${status.retryAfterSec}s, then try again.`,
-      );
-    }
+    setProgress({ visible: false });
+    setStatus(
+      `Generate locked — rate limit (1 bake / ${status.limitSec}s). Wait ${status.retryAfterSec}s.`,
+    );
     return;
   }
   els.rate.textContent = `Ready · 1 bake / ${status.limitSec}s`;
   els.generate.disabled = false;
-  if (!els.status.dataset.baking && els.status.textContent.startsWith("Generate locked")) {
+  setProgress({ visible: false });
+  if (els.status.textContent.startsWith("Generate locked")) {
     setStatus(
       `Ready — native wallpaper.sh (1 bake / ${status.limitSec || 60}s). Prefer Best of 1 on small hosts.`,
     );
@@ -218,15 +295,46 @@ function startStatusPoll() {
   state.polling = setInterval(refreshStatus, 1000);
 }
 
+async function pollJob(jobId) {
+  const started = Date.now();
+  const maxMs = ((state.meta?.bakeTimeoutSec || 600) + 120) * 1000;
+  while (Date.now() - started < maxMs) {
+    const job = await api(`/api/jobs/${jobId}`);
+    setProgress({
+      visible: true,
+      pct: job.progress ?? 10,
+      label: phaseLabel(job),
+    });
+    els.rate.textContent = `Baking… ${formatElapsed(job.elapsedSec)}`;
+    setStatus(phaseLabel(job));
+
+    if (job.status === "done") {
+      return job;
+    }
+    if (job.status === "error") {
+      const err = new Error(job.error || "Generate failed");
+      err.data = job;
+      err.status = 500;
+      throw err;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error("Timed out waiting for bake job — check server journals");
+}
+
 els.rand.addEventListener("click", () => {
   els.seed.value = randomSeed();
 });
 
 els.form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (els.generate.disabled) return;
+  if (els.generate.disabled || state.baking) return;
+
+  hideError();
+  state.baking = true;
   els.generate.disabled = true;
-  els.status.dataset.baking = "1";
+  els.generate.textContent = "Baking…";
+
   const maxBatch = state.meta?.maxBatchCount || 8;
   const maxBest = state.meta?.maxBestCount || 8;
   let count = parseInt(els.count?.value || "1", 10);
@@ -235,17 +343,21 @@ els.form.addEventListener("submit", async (e) => {
   if (!Number.isFinite(best) || best < 1) best = 1;
   if (count > maxBatch) count = maxBatch;
   if (best > maxBest) best = maxBest;
-  // Best-of wins over multi-keep when both are set.
   if (best > 1) count = 1;
-  setStatus(
-    best > 1
-      ? `Baking ${best} candidates — keeping the best… (can take several minutes on small hosts)`
+
+  setProgress({
+    visible: true,
+    pct: 3,
+    label: best > 1
+      ? `Queuing best-of ${best}…`
       : count > 1
-        ? `Baking ${count} plates in one engine launch…`
-        : "Baking with native ltheory… this can take a few minutes on 1 GiB.",
-  );
+        ? `Queuing ${count} plates…`
+        : "Queuing bake…",
+  });
+  setStatus("Starting bake job…");
+
   try {
-    const data = await api("/api/generate", {
+    const started = await api("/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -257,32 +369,51 @@ els.form.addEventListener("submit", async (e) => {
         best,
       }),
     });
-    delete els.status.dataset.baking;
-    if (data.items && data.items.length > 1) {
-      setStatus(`Saved ${data.items.length} plates (${data.items[0].width}×${data.items[0].height}).`);
-    } else if (data.item) {
+
+    const jobId = started.jobId || started.job?.id;
+    if (!jobId) {
+      throw new Error("Server did not return a job id");
+    }
+    state.activeJobId = jobId;
+    setProgress({
+      visible: true,
+      pct: started.job?.progress ?? 8,
+      label: phaseLabel(started.job) || "Job accepted…",
+    });
+
+    const job = await pollJob(jobId);
+
+    if (job.items && job.items.length > 1) {
+      setStatus(`Saved ${job.items.length} plates (${job.items[0].width}×${job.items[0].height}).`);
+    } else if (job.item) {
       const scoreBit =
-        data.item.bestOf > 1
-          ? ` · best of ${data.item.bestOf} (score ${data.item.score})`
+        job.item.bestOf > 1
+          ? ` · best of ${job.item.bestOf} (score ${job.item.score})`
           : "";
       setStatus(
-        `Saved ${data.item.label} (${data.item.width}×${data.item.height})${scoreBit}.`,
+        `Saved ${job.item.label} (${job.item.width}×${job.item.height})${scoreBit}.`,
       );
-      if (!els.seed.value.trim()) els.seed.value = data.item.seed;
+      if (!els.seed.value.trim()) els.seed.value = job.item.seed;
+    } else {
+      setStatus(job.message || "Bake complete.");
     }
-    renderRate(data);
     await refreshGallery();
   } catch (err) {
-    delete els.status.dataset.baking;
-    const parts = [err.message || "Generate failed"];
-    if (err.status) parts.unshift(`[${err.status}]`);
-    if (err.data?.lastError && err.data.lastError !== err.message) {
-      parts.push(`— ${err.data.lastError}`);
-    }
-    setStatus(parts.join(" "));
-    if (err.data) renderRate(err.data);
+    const detail = err.data?.error || err.message || "Generate failed";
+    const hint = err.data?.hint;
+    const logTail = err.data?.logTail || err.data?.lastError;
+    showError({
+      title: err.status ? `Generate failed [${err.status}]` : "Generate failed",
+      detail,
+      hint,
+      logTail,
+    });
+    setStatus("Generate failed — see details below.");
   } finally {
-    delete els.status.dataset.baking;
+    state.baking = false;
+    state.activeJobId = null;
+    els.generate.textContent = "Generate";
+    setProgress({ visible: false });
     await refreshStatus();
   }
 });
@@ -311,4 +442,5 @@ async function boot() {
 
 boot().catch((err) => {
   setStatus(`Failed to load: ${err.message}`);
+  showError({ title: "Failed to load gallery", detail: err.message });
 });

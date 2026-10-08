@@ -51,7 +51,14 @@
         </label>
         <button type="submit" class="primary" id="generate">Generate</button>
       </form>
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track" aria-hidden="true">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <p class="progress-label" id="progressLabel">Starting…</p>
+      </div>
       <p class="status" id="status">Ready — native bake. Best-of keeps one winner; Count keeps every plate.</p>
+      <div class="error-box" id="errorBox" hidden></div>
     </section>
 
     <section class="gallery-wrap" aria-label="Gallery">
