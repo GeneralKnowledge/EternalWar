@@ -30,8 +30,9 @@
     interactive=1       Keep window; F12 capture, R regen, Esc quit
     nebulaRes=<int>     Override Config.gen.nebulaRes
 
-  Wrapper-only (tools/wallpaper.sh):
+  Wrapper-only (tools/wallpaper.sh / wallpaperd.py):
     best=<int>          Bake N candidates in one launch; keep the highest-scoring PNG
+    daemon=1 spool=DIR  Stay loaded; pull jobs from DIR/job.req (warm daemon)
 ]]
 
 local Entities = requireAll('Game.Entities')
@@ -95,6 +96,61 @@ local function splitPresets (csv)
   return list
 end
 
+local function applyOptKV (opts, k, v)
+  if k == 'seed' then
+    opts.seed = v
+  elseif k == 'width' then
+    opts.width = tonumber(v) or opts.width
+  elseif k == 'height' then
+    opts.height = tonumber(v) or opts.height
+  elseif k == 'out' then
+    opts.out = v
+  elseif k == 'outdir' then
+    opts.outdir = v
+  elseif k == 'preset' then
+    opts.preset = v
+  elseif k == 'presets' then
+    opts.presets = splitPresets(v)
+  elseif k == 'count' then
+    opts.count = math.max(1, math.floor(tonumber(v) or 1))
+  elseif k == 'frames' then
+    opts.frames = math.max(1, math.floor(tonumber(v) or 4))
+    opts.framesExplicit = true
+  elseif k == 'interactive' then
+    opts.interactive = (v == '1' or v == 'true' or v == 'yes')
+  elseif k == 'nebulaRes' then
+    opts.nebulaRes = tonumber(v)
+  elseif k == 'daemon' then
+    opts.daemon = (v == '1' or v == 'true' or v == 'yes')
+  elseif k == 'spool' then
+    opts.spool = v
+  elseif k == 'id' then
+    opts.jobId = v
+  else
+    return false
+  end
+  return true
+end
+
+local function finalizeOpts (opts)
+  if opts.presets and #opts.presets > 0 then
+    opts.preset = opts.presets[1]
+  elseif not PRESETS[opts.preset] then
+    printf('Wallpaper: unknown preset <%s>, using ship', tostring(opts.preset))
+    opts.preset = 'ship'
+  end
+  if not opts.frames then
+    opts.frames = DEFAULT_FRAMES[opts.preset] or 4
+  end
+  if opts.count > 1 or opts.daemon then
+    opts.interactive = false
+  end
+  if opts.daemon and (not opts.spool or opts.spool == '') then
+    opts.spool = './wallpaper/spool'
+  end
+  return opts
+end
+
 local function parseArgs ()
   local opts = {
     seed = nil,
@@ -109,6 +165,9 @@ local function parseArgs ()
     framesExplicit = false,
     interactive = false,
     nebulaRes = nil,
+    daemon = false,
+    spool = nil,
+    jobId = nil,
   }
   local args = rawget(_G, '__args__') or {}
   for i = 1, #args do
@@ -122,47 +181,64 @@ local function parseArgs ()
       else
         printf('Wallpaper: ignoring unrecognized arg <%s>', a)
       end
-    elseif k == 'seed' then
-      opts.seed = v
-    elseif k == 'width' then
-      opts.width = tonumber(v) or opts.width
-    elseif k == 'height' then
-      opts.height = tonumber(v) or opts.height
-    elseif k == 'out' then
-      opts.out = v
-    elseif k == 'outdir' then
-      opts.outdir = v
-    elseif k == 'preset' then
-      opts.preset = v
-    elseif k == 'presets' then
-      opts.presets = splitPresets(v)
-    elseif k == 'count' then
-      opts.count = math.max(1, math.floor(tonumber(v) or 1))
-    elseif k == 'frames' then
-      opts.frames = math.max(1, math.floor(tonumber(v) or 4))
-      opts.framesExplicit = true
-    elseif k == 'interactive' then
-      opts.interactive = (v == '1' or v == 'true' or v == 'yes')
-    elseif k == 'nebulaRes' then
-      opts.nebulaRes = tonumber(v)
-    else
+    elseif not applyOptKV(opts, k, v) then
       printf('Wallpaper: ignoring unrecognized flag <%s>', k)
     end
   end
-  if opts.presets and #opts.presets > 0 then
-    opts.preset = opts.presets[1]
-  elseif not PRESETS[opts.preset] then
-    printf('Wallpaper: unknown preset <%s>, using ship', tostring(opts.preset))
-    opts.preset = 'ship'
+  return finalizeOpts(opts)
+end
+
+local function spoolPath (spool, name)
+  return (spool:gsub('/+$', '')) .. '/' .. name
+end
+
+local function writeText (path, body)
+  local f, err = io.open(path, 'w')
+  if not f then
+    printf('Wallpaper: failed to write %s (%s)', path, tostring(err))
+    return false
   end
-  if not opts.frames then
-    opts.frames = DEFAULT_FRAMES[opts.preset] or 4
+  f:write(body)
+  f:close()
+  return true
+end
+
+local function readText (path)
+  local f = io.open(path, 'r')
+  if not f then return nil end
+  local body = f:read('*a')
+  f:close()
+  return body
+end
+
+local function fileExists (path)
+  local f = io.open(path, 'r')
+  if not f then return false end
+  f:close()
+  return true
+end
+
+local function parseJobBody (body)
+  local opts = {
+    seed = nil,
+    width = nil,
+    height = nil,
+    out = nil,
+    outdir = nil,
+    preset = 'ship',
+    presets = nil,
+    count = 1,
+    frames = nil,
+    framesExplicit = false,
+    interactive = false,
+    nebulaRes = nil,
+    jobId = nil,
+  }
+  for line in string.gmatch(body, '[^\r\n]+') do
+    local k, v = line:match('^([%w_]+)=(.*)$')
+    if k then applyOptKV(opts, k, v) end
   end
-  -- Batch mode never uses the interactive keep-alive path.
-  if opts.count > 1 then
-    opts.interactive = false
-  end
-  return opts
+  return finalizeOpts(opts)
 end
 
 local function seedToArg (seed)
@@ -625,9 +701,140 @@ function Wallpaper:beginPlate ()
   self.plateDone = false
 end
 
+function Wallpaper:daemonSetReady (ready)
+  local spool = self.opts.spool
+  if not spool then return end
+  local readyPath = spoolPath(spool, 'daemon.ready')
+  if ready then
+    writeText(readyPath, '1\n')
+  elseif fileExists(readyPath) then
+    os.remove(readyPath)
+  end
+end
+
+function Wallpaper:daemonWriteDone (ok, err)
+  local spool = self.opts.spool
+  local id = self.opts.jobId or 'job'
+  local lines = { 'id=' .. id, ok and 'ok=1' or 'ok=0' }
+  if err then
+    insert(lines, 'error=' .. tostring(err):gsub('\n', ' '))
+  end
+  local list = self.wroteList or {}
+  insert(lines, 'count=' .. tostring(#list))
+  for i = 1, #list do
+    insert(lines, string.format('path%d=%s', i - 1, list[i]))
+  end
+  -- Atomic-ish: write .tmp then rename via second write to job.done
+  local tmp = spoolPath(spool, 'job.done.tmp')
+  local done = spoolPath(spool, 'job.done')
+  writeText(tmp, table.concat(lines, '\n') .. '\n')
+  os.rename(tmp, done)
+  local req = spoolPath(spool, 'job.req')
+  if fileExists(req) then os.remove(req) end
+end
+
+function Wallpaper:daemonParkIdle ()
+  -- Cheap sky park so heavy capital meshes can be released between jobs.
+  self.opts.preset = 'sky'
+  self.opts.count = 1
+  self.opts.out = nil
+  self.opts.outdir = nil
+  self.opts.presets = nil
+  self.opts.frames = 2
+  self.opts.framesExplicit = true
+  self.skirmishPairs = nil
+  self.camFollow = nil
+  self.camCenter = nil
+  self:generate()
+  if self.gameView then self:applyCamera() end
+  self.daemonIdle = true
+  self.plateDone = true
+  self.doCapture = false
+  self:daemonSetReady(true)
+  printf('Wallpaper daemon idle — waiting for jobs in %s', self.opts.spool)
+end
+
+function Wallpaper:daemonAcceptJob (job)
+  self:daemonSetReady(false)
+  -- Merge job into live opts (keep spool/daemon flags).
+  local spool = self.opts.spool
+  self.opts.seed = job.seed
+  self.opts.preset = job.preset
+  self.opts.presets = job.presets
+  self.opts.count = job.count or 1
+  self.opts.out = job.out
+  self.opts.outdir = job.outdir
+  self.opts.nebulaRes = job.nebulaRes
+  self.opts.jobId = job.jobId
+  self.opts.frames = job.frames
+  self.opts.framesExplicit = job.framesExplicit
+  if not self.opts.framesExplicit then
+    self.opts.frames = self:settleFramesForPreset(self.opts.preset)
+  end
+  self.opts.spool = spool
+  self.opts.daemon = true
+  self.opts.interactive = false
+
+  local w = job.width or self.opts.width
+  local h = job.height or self.opts.height
+  if w and h and self.window and (w ~= self.resX or h ~= self.resY) then
+    self.opts.width = w
+    self.opts.height = h
+    self.window:setSize(w, h)
+  end
+
+  self.batchIndex = 1
+  self.wroteList = {}
+  self.daemonIdle = false
+  do
+    local seedIn = self.opts.seed
+    if seedIn == '' then seedIn = nil end
+    local n = tonumber(seedToArg(parseSeed(seedIn)):sub(-9)) or 1
+    self.batchSeedRng = RNG.Create(1 + (n % 2147483646)):managed()
+  end
+  printf('Wallpaper daemon job %s — preset=%s count=%d',
+    tostring(self.opts.jobId), self.opts.preset, self.opts.count)
+  self:beginPlate()
+end
+
+function Wallpaper:daemonPoll ()
+  local spool = self.opts.spool
+  if fileExists(spoolPath(spool, 'shutdown')) then
+    printf('Wallpaper daemon shutdown requested')
+    self:quit()
+    return
+  end
+  local req = spoolPath(spool, 'job.req')
+  if not fileExists(req) then return end
+  local body = readText(req)
+  if not body or body == '' then return end
+  -- Remove stale done from a previous client.
+  local done = spoolPath(spool, 'job.done')
+  if fileExists(done) then os.remove(done) end
+  local ok, jobOrErr = pcall(parseJobBody, body)
+  if not ok then
+    self:daemonWriteDone(false, jobOrErr)
+    self:daemonSetReady(true)
+    return
+  end
+  local jobOk, err = pcall(function ()
+    self:daemonAcceptJob(jobOrErr)
+  end)
+  if not jobOk then
+    printf('Wallpaper daemon job failed to start: %s', tostring(err))
+    self:daemonWriteDone(false, err)
+    self:daemonParkIdle()
+  end
+end
+
 function Wallpaper:advanceOrQuit ()
   if self.batchIndex >= self.opts.count then
     printf('Wallpaper batch complete: %d plate(s)', self.opts.count)
+    if self.opts.daemon then
+      self:daemonWriteDone(true)
+      self:daemonParkIdle()
+      return
+    end
     self:quit()
     return
   end
@@ -641,18 +848,29 @@ function Wallpaper:onInit ()
   self.player = Entities.Player()
   self.batchIndex = 1
   self.wroteList = {}
+  self.daemonIdle = false
 
-  -- World first; GameView needs a controlling body from generate().
-  self:beginPlate()
-  do
-    local n = tonumber(seedToArg(self.seed):sub(-9)) or 1
-    self.batchSeedRng = RNG.Create(1 + (n % 2147483646)):managed()
+  if self.opts.daemon then
+    Directory.Create(self.opts.spool)
+    writeText(spoolPath(self.opts.spool, 'daemon.pid'), tostring(os.time()) .. '\n')
+    -- Seed a parked sky world so GameView has a controlling body.
+    self.opts.preset = 'sky'
+    self.opts.count = 1
+    self.opts.frames = 2
+    self.opts.framesExplicit = true
+    self:generate()
+  else
+    self:beginPlate()
+    do
+      local n = tonumber(seedToArg(self.seed):sub(-9)) or 1
+      self.batchSeedRng = RNG.Create(1 + (n % 2147483646)):managed()
+    end
   end
 
   DebugControl.ltheory = self
   self.gameView = GUI.GameView(self.player)
   self.canvas = UI.Canvas()
-  if self.hideHud or self.skyOnly or self.opts.count > 1 then
+  if self.hideHud or self.skyOnly or self.opts.count > 1 or self.opts.daemon then
     self.canvas:add(self.gameView)
   else
     self.canvas:add(self.gameView
@@ -661,6 +879,10 @@ function Wallpaper:onInit ()
 
   self:applyCamera()
   self.wrote = nil
+
+  if self.opts.daemon then
+    self:daemonParkIdle()
+  end
 end
 
 function Wallpaper:onInput ()
@@ -680,18 +902,29 @@ function Wallpaper:onInput ()
 end
 
 function Wallpaper:onUpdate (dt)
+  if self.opts.daemon and self.daemonIdle then
+    self.daemonPollAcc = (self.daemonPollAcc or 0) + 1
+    if self.daemonPollAcc >= 8 then
+      self.daemonPollAcc = 0
+      self:daemonPoll()
+    end
+  end
+
   -- Skirmish: hold the tableau and let turrets speak (no Attack AI drift).
-  if self.skirmishPairs then
+  if self.skirmishPairs and not self.daemonIdle then
     for i = 1, #self.skirmishPairs do
       local pair = self.skirmishPairs[i]
       fireTurretsAt(pair.from, pair.at)
     end
   end
 
-  self.player:getRoot():update(dt)
-  self.canvas:update(dt)
+  if self.player and self.player.getRoot then
+    local root = self.player:getRoot()
+    if root then root:update(dt) end
+  end
+  if self.canvas then self.canvas:update(dt) end
 
-  if not self.opts.interactive and not self.plateDone then
+  if not self.opts.interactive and not self.daemonIdle and not self.plateDone then
     self.framesLeft = self.framesLeft - 1
     if self.framesLeft <= 0 then
       self.plateDone = true
@@ -701,7 +934,9 @@ function Wallpaper:onUpdate (dt)
 end
 
 function Wallpaper:onDraw ()
-  self.canvas:draw(self.resX, self.resY)
+  if self.canvas then
+    self.canvas:draw(self.resX, self.resY)
+  end
   if self.doCapture then
     self.doCapture = false
     self:capture()

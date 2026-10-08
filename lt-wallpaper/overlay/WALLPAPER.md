@@ -57,9 +57,28 @@ LD_LIBRARY_PATH=libphx/ext/lib/linux64 ./bin/lt64r Wallpaper \
 | `presets=` | Comma list to cycle across the batch (e.g. `fleet,skirmish,station`) |
 | `count=` | Captures before quit; process stays loaded (default 1) |
 | `best=` | *(wrapper)* Bake N candidates in one launch; keep the highest-scoring PNG |
+| `daemon=1` `spool=DIR` | Stay loaded; pull jobs from `DIR/job.req` |
 | `frames=` | Settle frames before capture (default depends on preset) |
 | `interactive=1` | Keep window; **F12** capture, **R** regen, **Esc** quit |
 | `nebulaRes=` | Override nebula bake resolution |
+
+## Warm daemon
+
+Keeps one `lt` process loaded across bakes (skips GL/script bootstrap each time).
+
+```bash
+# Terminal A — supervise the engine
+./tools/wallpaperd.py --spool ./wallpaper/spool serve --width 1920 --height 1080
+
+# Terminal B — submit jobs (falls back to cold wallpaper.sh with --cold)
+./tools/wallpaperd.py --spool ./wallpaper/spool bake --cold \
+  preset=armada best=4 out=wallpaper/out.png
+./tools/wallpaperd.py status
+```
+
+Spool protocol: `daemon.ready` while idle → client writes `job.req` → daemon writes `job.done` → idle again. Touch `shutdown` to stop.
+
+Gallery uses the daemon automatically when ready (`LT_WALLPAPER_DAEMON=auto`). systemd unit: `lt-wallpaperd.service`.
 
 ## Notes
 

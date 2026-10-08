@@ -1,6 +1,7 @@
 [Unit]
 Description=LT Wallpaper Gallery (native bake UI)
-After=network.target
+After=network.target lt-wallpaperd.service
+Wants=lt-wallpaperd.service
 Documentation=file:///opt/lt-wallpaper/gallery/DEPLOY.md
 
 [Service]
@@ -9,6 +10,8 @@ User=ltwallpaper
 Group=ltwallpaper
 WorkingDirectory=/opt/lt-wallpaper/gallery
 EnvironmentFile=-/opt/lt-wallpaper/gallery/.env
+Environment=LT_WALLPAPER_SPOOL=/var/lib/lt-wallpaper/spool
+Environment=LT_WALLPAPER_DAEMON=auto
 ExecStart=/usr/bin/python3 /opt/lt-wallpaper/gallery/server.py
 Restart=on-failure
 RestartSec=5

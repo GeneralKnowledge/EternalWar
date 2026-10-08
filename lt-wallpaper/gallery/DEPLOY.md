@@ -22,10 +22,12 @@ Then:
 
 ```bash
 curl -sS http://127.0.0.1:8080/api/health
-sudo systemctl status lt-wallpaper-gallery
+sudo systemctl status lt-wallpaperd lt-wallpaper-gallery
 ```
 
-The unit binds **127.0.0.1:8080** by default — point a tunnel or reverse proxy at that. Optional nginx sample: `deploy/nginx.example.conf`.
+The gallery binds **127.0.0.1:8080** by default — point a tunnel or reverse proxy at that. Optional nginx sample: `deploy/nginx.example.conf`.
+
+A **warm daemon** (`lt-wallpaperd`) keeps one `lt` process loaded so bakes skip cold start. Gallery uses it when `daemon.ready` (`LT_WALLPAPER_DAEMON=auto`).
 
 ### What install.sh does
 
@@ -34,14 +36,14 @@ The unit binds **127.0.0.1:8080** by default — point a tunnel or reverse proxy
 3. Rsyncs `lt-wallpaper/` → `/opt/lt-wallpaper`  
 4. Runs `setup.sh` to clone/build Josh’s `ltheory`  
 5. Writes `gallery/.env` with `LT_GALLERY_PROFILE=small` when MemTotal ≤ 1.5 GiB  
-6. Enables `lt-wallpaper-gallery.service`  
-7. Stores PNGs in `/var/lib/lt-wallpaper/gallery`
+6. Enables `lt-wallpaperd.service` + `lt-wallpaper-gallery.service`  
+7. Stores PNGs in `/var/lib/lt-wallpaper/gallery`, spool in `/var/lib/lt-wallpaper/spool`
 
 ### Ops
 
 ```bash
-sudo systemctl restart lt-wallpaper-gallery
-sudo journalctl -u lt-wallpaper-gallery -f
+sudo systemctl restart lt-wallpaperd lt-wallpaper-gallery
+sudo journalctl -u lt-wallpaperd -u lt-wallpaper-gallery -f
 sudo edit /opt/lt-wallpaper/gallery/.env   # then restart
 ```
 
@@ -72,10 +74,13 @@ See `.env.example`. Important knobs:
 | `LT_GALLERY_PROFILE` | `small` / `standard` / `full` |
 | `LT_GALLERY_RATE_SEC` | Per-IP bake cooldown (default 60) |
 | `LT_GALLERY_HOST` / `PORT` | Bind address |
+| `LT_WALLPAPER_DAEMON` | `auto` / `on` / `off` — use warm daemon |
+| `LT_WALLPAPER_SPOOL` | Job spool shared with `lt-wallpaperd` |
 
 ## Health
 
-`GET /api/health` → `{ ok, busy, profile, ltheory }`  
+`GET /api/health` → `{ ok, busy, profile, daemon, ltheory }`  
+`daemon.ready: true` when the warm process is idle.  
 `ok: false` if the native binary tree is missing.
 
 ## Expectations on 1 GiB + 2 GiB swap

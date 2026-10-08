@@ -17,6 +17,7 @@ GALLERY_SRC="$(cd "$(dirname "$0")/.." && pwd)"
 LT_WALLPAPER_SRC="$(cd "$GALLERY_SRC/.." && pwd)"
 INSTALL_ROOT="${LT_INSTALL_ROOT:-/opt/lt-wallpaper}"
 DATA_ROOT="${LT_GALLERY_DATA:-/var/lib/lt-wallpaper/gallery}"
+SPOOL_ROOT="${LT_WALLPAPER_SPOOL:-/var/lib/lt-wallpaper/spool}"
 SERVICE_USER="${LT_SERVICE_USER:-ltwallpaper}"
 PROFILE="${LT_GALLERY_PROFILE:-}"
 
@@ -38,8 +39,8 @@ rsync -a --delete \
   --exclude '.git/' \
   "$LT_WALLPAPER_SRC/" "$INSTALL_ROOT/"
 
-mkdir -p "$DATA_ROOT/images"
-chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT" "$DATA_ROOT"
+mkdir -p "$DATA_ROOT/images" "$SPOOL_ROOT"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT" "$DATA_ROOT" "$SPOOL_ROOT"
 
 if [[ -z "$PROFILE" ]]; then
   mem_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
@@ -60,6 +61,8 @@ LT_GALLERY_DATA=$DATA_ROOT
 LT_GALLERY_PROFILE=$PROFILE
 LT_GALLERY_RATE_SEC=60
 LT_GALLERY_BAKE_TIMEOUT=600
+LT_WALLPAPER_DAEMON=auto
+LT_WALLPAPER_SPOOL=$SPOOL_ROOT
 EOF
 chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/gallery/.env"
 chmod 640 "$INSTALL_ROOT/gallery/.env"
@@ -73,28 +76,34 @@ cp -a "$INSTALL_ROOT/overlay/script/App/Wallpaper.lua" \
   "$INSTALL_ROOT/ltheory/script/App/Wallpaper.lua"
 cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
   "$INSTALL_ROOT/overlay/tools/score_pick.py" \
+  "$INSTALL_ROOT/overlay/tools/wallpaperd.py" \
   "$INSTALL_ROOT/ltheory/tools/"
 chmod +x "$INSTALL_ROOT/ltheory/tools/wallpaper.sh" \
-  "$INSTALL_ROOT/ltheory/tools/score_pick.py"
+  "$INSTALL_ROOT/ltheory/tools/score_pick.py" \
+  "$INSTALL_ROOT/ltheory/tools/wallpaperd.py"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/ltheory"
 
-echo "==> Installing systemd unit"
-install -m 644 "$GALLERY_SRC/deploy/lt-wallpaper-gallery.service" \
-  /etc/systemd/system/lt-wallpaper-gallery.service
-# Patch User/paths if non-default
-sed -i \
-  -e "s|/opt/lt-wallpaper|$INSTALL_ROOT|g" \
-  -e "s|User=ltwallpaper|User=$SERVICE_USER|g" \
-  -e "s|Group=ltwallpaper|Group=$SERVICE_USER|g" \
-  /etc/systemd/system/lt-wallpaper-gallery.service
+echo "==> Installing systemd units (warm daemon + gallery)"
+for unit in lt-wallpaperd.service lt-wallpaper-gallery.service; do
+  install -m 644 "$GALLERY_SRC/deploy/$unit" "/etc/systemd/system/$unit"
+  sed -i \
+    -e "s|/opt/lt-wallpaper|$INSTALL_ROOT|g" \
+    -e "s|/var/lib/lt-wallpaper/spool|$SPOOL_ROOT|g" \
+    -e "s|User=ltwallpaper|User=$SERVICE_USER|g" \
+    -e "s|Group=ltwallpaper|Group=$SERVICE_USER|g" \
+    "/etc/systemd/system/$unit"
+done
 
 systemctl daemon-reload
+systemctl enable --now lt-wallpaperd.service
 systemctl enable --now lt-wallpaper-gallery.service
 
 echo
 echo "Installed."
-echo "  service:  systemctl status lt-wallpaper-gallery"
+echo "  daemon:   systemctl status lt-wallpaperd"
+echo "  gallery:  systemctl status lt-wallpaper-gallery"
 echo "  health:   curl -sS http://127.0.0.1:8080/api/health"
 echo "  UI:       http://127.0.0.1:8080/  (localhost — point your tunnel/proxy here)"
 echo "  env:      $INSTALL_ROOT/gallery/.env"
 echo "  data:     $DATA_ROOT"
+echo "  spool:    $SPOOL_ROOT"

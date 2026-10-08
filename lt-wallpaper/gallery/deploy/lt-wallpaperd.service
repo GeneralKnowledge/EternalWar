@@ -1,0 +1,29 @@
+[Unit]
+Description=LT Wallpaper warm daemon (persistent lt process)
+After=network.target
+Documentation=file:///opt/lt-wallpaper/overlay/WALLPAPER.md
+
+[Service]
+Type=simple
+User=ltwallpaper
+Group=ltwallpaper
+WorkingDirectory=/opt/lt-wallpaper/ltheory
+EnvironmentFile=-/opt/lt-wallpaper/gallery/.env
+Environment=LT_WALLPAPER_SPOOL=/var/lib/lt-wallpaper/spool
+ExecStart=/usr/bin/python3 /opt/lt-wallpaper/ltheory/tools/wallpaperd.py --spool /var/lib/lt-wallpaper/spool serve --width 1920 --height 1080
+Restart=on-failure
+RestartSec=5
+
+MemoryHigh=900M
+MemoryMax=2500M
+TimeoutStopSec=40
+Nice=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/lt-wallpaper /opt/lt-wallpaper/ltheory/wallpaper
+
+[Install]
+WantedBy=multi-user.target

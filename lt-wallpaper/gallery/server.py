@@ -57,6 +57,14 @@ MAX_BATCH_COUNT = int(os.environ.get("LT_GALLERY_MAX_BATCH", "8"))
 MAX_BEST_COUNT = int(os.environ.get("LT_GALLERY_MAX_BEST", "8"))
 DEFAULT_HOST = os.environ.get("LT_GALLERY_HOST", "0.0.0.0")
 DEFAULT_PORT = int(os.environ.get("LT_GALLERY_PORT", "8080"))
+# auto = use warm daemon when ready, else cold wallpaper.sh
+DAEMON_MODE = os.environ.get("LT_WALLPAPER_DAEMON", "auto").lower()
+DAEMON_SPOOL = Path(
+    os.environ.get(
+        "LT_WALLPAPER_SPOOL",
+        "/var/lib/lt-wallpaper/spool",
+    )
+)
 
 CATEGORIES: dict[str, dict[str, str]] = {
     "sky": {
@@ -256,6 +264,17 @@ def random_seed() -> str:
     return f"{hi}{lo:06d}"
 
 
+def daemon_status() -> dict[str, Any]:
+    spool = Path(os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))).resolve()
+    ready = (spool / "daemon.ready").is_file() and not (spool / "job.req").is_file()
+    return {
+        "mode": DAEMON_MODE,
+        "spool": str(spool),
+        "ready": ready,
+        "pidFile": (spool / "daemon.pid").is_file(),
+    }
+
+
 def _ingest_png(
     src: Path,
     *,
@@ -327,41 +346,69 @@ def run_bake(
         count = best  # candidates in one warm process
     ltheory = find_ltheory_root()
     script = ltheory / "tools" / "wallpaper.sh"
+    daemon = ltheory / "tools" / "wallpaperd.py"
     IMAGES.mkdir(parents=True, exist_ok=True)
 
     batch_dir: Path | None = None
     out_path: Path | None = None
-    args = [
-        str(script),
+    bake_args = [
         f"seed={seed}",
         f"preset={preset}",
         f"width={width}",
         f"height={height}",
         f"nebulaRes={nebula_res}",
         "frames=3",
-        f"count={count}",
     ]
-    if count > 1:
+    if keep_best_only:
+        out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
+        bake_args.extend([f"best={best}", f"out={out_path}"])
+        # After best-of, a single PNG lands at out_path.
+        count = 1
+        timeout = BAKE_TIMEOUT_SEC + max(0, best - 1) * 45
+    elif count > 1:
         batch_dir = IMAGES / f"_batch_{uuid.uuid4().hex[:10]}"
         batch_dir.mkdir(parents=True, exist_ok=True)
-        args.append(f"outdir={batch_dir}")
+        bake_args.extend([f"count={count}", f"outdir={batch_dir}"])
         timeout = BAKE_TIMEOUT_SEC + max(0, count - 1) * 45
     else:
         out_path = IMAGES / f"{uuid.uuid4().hex[:12]}.png"
-        args.append(f"out={out_path}")
+        bake_args.extend([f"count=1", f"out={out_path}"])
         timeout = BAKE_TIMEOUT_SEC
+
+    use_daemon = DAEMON_MODE in ("1", "on", "true", "yes", "auto")
+    if DAEMON_MODE in ("0", "off", "false", "no", "cold"):
+        use_daemon = False
+    spool = Path(
+        os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))
+    ).resolve()
 
     with _bake_lock:
         _busy = True
         _last_error = None
         try:
+            if use_daemon and daemon.is_file():
+                args = [
+                    sys.executable,
+                    str(daemon),
+                    "--spool",
+                    str(spool),
+                    "bake",
+                    "--cold",
+                    *bake_args,
+                ]
+            else:
+                args = [str(script), *bake_args]
             proc = subprocess.run(
                 args,
                 cwd=str(ltheory),
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                env={**os.environ, "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", "")},
+                env={
+                    **os.environ,
+                    "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", ""),
+                    "LT_WALLPAPER_SPOOL": str(spool),
+                },
             )
             if proc.returncode != 0:
                 detail = (proc.stderr or proc.stdout or "bake failed").strip()
@@ -388,6 +435,9 @@ def run_bake(
 
     if count == 1:
         assert out_path is not None
+        label = f"{cat['label']} · {seed[:16]}"
+        if keep_best_only:
+            label = f"{cat['label']} · best of {best} · {seed[:16]}"
         item = {
             "id": out_path.stem,
             "category": category,
@@ -399,8 +449,10 @@ def run_bake(
             "file": f"images/{out_path.name}",
             "source": "generated",
             "createdAt": utc_now(),
-            "label": f"{cat['label']} · {seed[:16]}",
+            "label": label,
         }
+        if keep_best_only:
+            item["bestOf"] = best
         with _lock:
             manifest = load_manifest()
             manifest.setdefault("items", []).insert(0, item)
@@ -527,6 +579,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "rateLimitSec": RATE_LIMIT_SEC,
                     "maxBatchCount": MAX_BATCH_COUNT,
                     "maxBestCount": MAX_BEST_COUNT,
+                    "daemon": daemon_status(),
                     "ltheory": str(find_ltheory_root()),
                 },
             )
@@ -546,6 +599,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "ok": ok,
                     "busy": _busy,
                     "profile": resolve_profile(),
+                    "daemon": daemon_status(),
                     "ltheory": str(ltheory) if ltheory else None,
                 },
             )

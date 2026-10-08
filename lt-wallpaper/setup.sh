@@ -38,7 +38,7 @@ if [[ -d "$LIB64" ]]; then
 fi
 
 cd "$DEST"
-chmod +x tools/wallpaper.sh tools/score_pick.py configure.py
+chmod +x tools/wallpaper.sh tools/score_pick.py tools/wallpaperd.py configure.py
 echo "Configuring…"
 python3 configure.py
 echo "Building…"
@@ -47,4 +47,6 @@ echo
 echo "Done. Generate with:"
 echo "  cd $DEST && ./tools/wallpaper.sh seed=42 preset=ship out=wallpaper/out.png"
 echo "  cd $DEST && ./tools/wallpaper.sh best=6 preset=capital out=wallpaper/best.png"
-echo "  cd $DEST && ./tools/wallpaper.sh best=6 preset=armada out=wallpaper/armada.png"
+echo "  # Warm daemon (keep lt loaded across bakes):"
+echo "  cd $DEST && ./tools/wallpaperd.py serve &"
+echo "  cd $DEST && ./tools/wallpaperd.py bake --cold preset=fleet best=4 out=wallpaper/out.png"
