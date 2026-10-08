@@ -68,12 +68,22 @@ chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/gallery/.env"
 chmod 640 "$INSTALL_ROOT/gallery/.env"
 
 echo "==> Building ltheory (this can take a while / thrash on 1 GiB)"
-sudo -u "$SERVICE_USER" env LTHEORY_DIR="$INSTALL_ROOT/ltheory" \
-  bash "$INSTALL_ROOT/setup.sh"
+# Run as service user from a cwd they can access (not ~/… of the invoking user).
+# Otherwise git fails: "failed to stat '.../gallery': Permission denied".
+sudo -u "$SERVICE_USER" -H env LTHEORY_DIR="$INSTALL_ROOT/ltheory" \
+  bash -c "cd '$INSTALL_ROOT' && bash '$INSTALL_ROOT/setup.sh'"
 
 # Ensure wallpaper overlay tools/app are present after build
 cp -a "$INSTALL_ROOT/overlay/script/App/Wallpaper.lua" \
   "$INSTALL_ROOT/ltheory/script/App/Wallpaper.lua"
+if [[ -d "$INSTALL_ROOT/overlay/script/Game" ]]; then
+  mkdir -p "$INSTALL_ROOT/ltheory/script/Game"
+  cp -a "$INSTALL_ROOT/overlay/script/Game/." "$INSTALL_ROOT/ltheory/script/Game/"
+fi
+if [[ -d "$INSTALL_ROOT/overlay/script/Gen" ]]; then
+  mkdir -p "$INSTALL_ROOT/ltheory/script/Gen"
+  cp -a "$INSTALL_ROOT/overlay/script/Gen/." "$INSTALL_ROOT/ltheory/script/Gen/"
+fi
 cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
   "$INSTALL_ROOT/overlay/tools/score_pick.py" \
   "$INSTALL_ROOT/overlay/tools/wallpaperd.py" \
