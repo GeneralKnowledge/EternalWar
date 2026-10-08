@@ -187,6 +187,7 @@ _lock = threading.Lock()
 _bake_lock = threading.Lock()
 _rate: dict[str, float] = {}  # ip -> last bake monotonic time
 _busy = False
+_busy_since: float | None = None
 _last_error: str | None = None
 
 
@@ -269,11 +270,15 @@ def rate_status(ip: str) -> dict[str, Any]:
     now = time.monotonic()
     last = _rate.get(ip, 0.0)
     remaining = max(0.0, RATE_LIMIT_SEC - (now - last))
+    busy_for = None
+    if _busy and _busy_since is not None:
+        busy_for = int(max(0.0, now - _busy_since))
     return {
         "limitSec": RATE_LIMIT_SEC,
         "retryAfterSec": int(remaining + 0.999) if remaining > 0 else 0,
         "allowed": remaining <= 0 and not _busy,
         "busy": _busy,
+        "busyForSec": busy_for,
         "lastError": _last_error,
     }
 
@@ -356,7 +361,7 @@ def run_bake(
     count>1 keeps all plates. best>1 bakes that many candidates and keeps the
     highest-scoring plate only (still one engine launch).
     """
-    global _busy, _last_error
+    global _busy, _busy_since, _last_error
     cat = CATEGORIES[category]
     preset = cat["preset"]
     count = max(1, min(int(count), MAX_BATCH_COUNT))
@@ -404,6 +409,7 @@ def run_bake(
 
     with _bake_lock:
         _busy = True
+        _busy_since = time.monotonic()
         _last_error = None
         try:
             if use_daemon and daemon.is_file():
@@ -452,6 +458,7 @@ def run_bake(
             raise RuntimeError(_last_error) from exc
         finally:
             _busy = False
+            _busy_since = None
 
     if count == 1:
         assert out_path is not None

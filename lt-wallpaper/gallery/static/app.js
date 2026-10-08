@@ -54,17 +54,36 @@ function renderRate(status) {
     return;
   }
   if (status.busy) {
-    els.rate.textContent = "Bake in progress…";
+    const age = status.busyForSec != null ? ` (${status.busyForSec}s)` : "";
+    els.rate.textContent = `Bake in progress${age}…`;
     els.generate.disabled = true;
+    // Keep the footer honest — "Ready" under a disabled button is confusing.
+    if (!els.status.dataset.baking) {
+      setStatus(
+        "Generate locked — a bake is still running on the server. " +
+          "On a 1 GiB host this can take several minutes (especially Best of > 1 or Belt/Planet). " +
+          "If it never finishes: sudo systemctl restart lt-wallpaper-gallery",
+      );
+    }
     return;
   }
   if (status.retryAfterSec > 0) {
     els.rate.textContent = `Next bake in ${status.retryAfterSec}s`;
     els.generate.disabled = true;
+    if (!els.status.dataset.baking) {
+      setStatus(
+        `Generate locked — rate limit (1 bake / ${status.limitSec}s). Wait ${status.retryAfterSec}s, then try again.`,
+      );
+    }
     return;
   }
   els.rate.textContent = `Ready · 1 bake / ${status.limitSec}s`;
   els.generate.disabled = false;
+  if (!els.status.dataset.baking && els.status.textContent.startsWith("Generate locked")) {
+    setStatus(
+      `Ready — native wallpaper.sh (1 bake / ${status.limitSec || 60}s). Prefer Best of 1 on small hosts.`,
+    );
+  }
 }
 
 function renderCategories() {
@@ -194,7 +213,9 @@ els.rand.addEventListener("click", () => {
 
 els.form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (els.generate.disabled) return;
   els.generate.disabled = true;
+  els.status.dataset.baking = "1";
   const maxBatch = state.meta?.maxBatchCount || 8;
   const maxBest = state.meta?.maxBestCount || 8;
   let count = parseInt(els.count?.value || "1", 10);
@@ -207,10 +228,10 @@ els.form.addEventListener("submit", async (e) => {
   if (best > 1) count = 1;
   setStatus(
     best > 1
-      ? `Baking ${best} candidates — keeping the best…`
+      ? `Baking ${best} candidates — keeping the best… (can take several minutes on small hosts)`
       : count > 1
         ? `Baking ${count} plates in one engine launch…`
-        : "Baking with native ltheory… this can take a bit.",
+        : "Baking with native ltheory… this can take a few minutes on 1 GiB.",
   );
   try {
     const data = await api("/api/generate", {
@@ -225,6 +246,7 @@ els.form.addEventListener("submit", async (e) => {
         best,
       }),
     });
+    delete els.status.dataset.baking;
     if (data.items && data.items.length > 1) {
       setStatus(`Saved ${data.items.length} plates (${data.items[0].width}×${data.items[0].height}).`);
     } else if (data.item) {
@@ -240,9 +262,12 @@ els.form.addEventListener("submit", async (e) => {
     renderRate(data);
     await refreshGallery();
   } catch (err) {
-    setStatus(err.message || "Generate failed");
+    delete els.status.dataset.baking;
+    const detail = err.data?.lastError ? ` — ${err.data.lastError}` : "";
+    setStatus((err.message || "Generate failed") + detail);
     if (err.data) renderRate(err.data);
   } finally {
+    delete els.status.dataset.baking;
     await refreshStatus();
   }
 });
