@@ -39,7 +39,9 @@ rsync -a --delete \
   --exclude '.git/' \
   "$LT_WALLPAPER_SRC/" "$INSTALL_ROOT/"
 
-mkdir -p "$DATA_ROOT/images" "$SPOOL_ROOT"
+mkdir -p "$DATA_ROOT/images" "$SPOOL_ROOT" \
+  "$INSTALL_ROOT/ltheory/wallpaper" 2>/dev/null || true
+# Ensure wallpaper staging dir exists after build too (systemd ReadWritePaths).
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT" "$DATA_ROOT" "$SPOOL_ROOT"
 
 if [[ -z "$PROFILE" ]]; then
