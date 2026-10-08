@@ -93,6 +93,7 @@ cp -a "$INSTALL_ROOT/overlay/tools/wallpaper.sh" \
 chmod +x "$INSTALL_ROOT/ltheory/tools/wallpaper.sh" \
   "$INSTALL_ROOT/ltheory/tools/score_pick.py" \
   "$INSTALL_ROOT/ltheory/tools/wallpaperd.py"
+mkdir -p "$INSTALL_ROOT/ltheory/wallpaper"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_ROOT/ltheory"
 
 echo "==> Installing systemd units (warm daemon + gallery)"
@@ -106,7 +107,20 @@ for unit in lt-wallpaperd.service lt-wallpaper-gallery.service; do
     "/etc/systemd/system/$unit"
 done
 
+# Match warm-daemon window to profile (small → 720p).
+if [[ "$PROFILE" == "small" ]]; then
+  sed -i \
+    -e 's|--width 1920 --height 1080|--width 1280 --height 720|g' \
+    -e 's|--width 1280 --height 720|--width 1280 --height 720|g' \
+    /etc/systemd/system/lt-wallpaperd.service
+else
+  sed -i \
+    -e 's|--width 1280 --height 720|--width 1920 --height 1080|g' \
+    /etc/systemd/system/lt-wallpaperd.service
+fi
+
 systemctl daemon-reload
+systemctl reset-failed lt-wallpaperd.service 2>/dev/null || true
 systemctl enable --now lt-wallpaperd.service
 systemctl enable --now lt-wallpaper-gallery.service
 
