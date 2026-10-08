@@ -14,6 +14,7 @@ import json
 import os
 import random
 import re
+import signal
 import subprocess
 import sys
 import threading
@@ -546,56 +547,73 @@ def run_bake(
     spool = Path(
         os.environ.get("LT_WALLPAPER_SPOOL", str(DAEMON_SPOOL))
     ).resolve()
+    daemon_ready = (
+        (spool / "daemon.ready").is_file() and not (spool / "job.req").is_file()
+    )
 
     with _bake_lock:
         _busy = True
         _busy_since = time.monotonic()
         _last_error = None
         try:
-            if use_daemon and daemon.is_file():
+            # Prefer warm daemon only when actually idle. If it's mid-job or
+            # crash-looping, call wallpaper.sh directly (avoid wallpaperd wait).
+            if use_daemon and daemon.is_file() and daemon_ready:
                 args = [
                     sys.executable,
                     str(daemon),
                     "--spool",
                     str(spool),
                     "bake",
-                    "--cold",
                     *bake_args,
                 ]
             else:
                 args = [str(script), *bake_args]
-            proc = subprocess.run(
+            # New session so timeout can kill xvfb-run + lt children together.
+            proc = subprocess.Popen(
                 args,
                 cwd=str(ltheory),
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout,
+                start_new_session=True,
                 env={
                     **os.environ,
                     "FORCE_DISPLAY": os.environ.get("FORCE_DISPLAY", ""),
                     "LT_WALLPAPER_SPOOL": str(spool),
                 },
             )
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError, OSError):
+                    proc.kill()
+                try:
+                    stdout, stderr = proc.communicate(timeout=5)
+                except Exception:  # noqa: BLE001
+                    stdout, stderr = "", ""
+                _last_error = f"bake timed out after {timeout}s"
+                raise RuntimeError(_last_error) from exc
+
             if proc.returncode != 0:
-                detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                detail = (stderr or stdout or "bake failed").strip()
                 _last_error = detail[-800:]
                 raise RuntimeError(_last_error)
             if count == 1:
                 assert out_path is not None
                 if not out_path.is_file():
-                    detail = (proc.stderr or proc.stdout or "bake failed").strip()
+                    detail = (stderr or stdout or "bake failed").strip()
                     _last_error = detail[-800:]
                     raise RuntimeError(_last_error)
             else:
                 assert batch_dir is not None
                 pngs = sorted(batch_dir.glob("lt_*.png"))
                 if len(pngs) < 1:
-                    detail = (proc.stderr or proc.stdout or "batch produced no PNGs").strip()
+                    detail = (stderr or stdout or "batch produced no PNGs").strip()
                     _last_error = detail[-800:]
                     raise RuntimeError(_last_error)
-        except subprocess.TimeoutExpired as exc:
-            _last_error = f"bake timed out after {timeout}s"
-            raise RuntimeError(_last_error) from exc
         finally:
             _busy = False
             _busy_since = None
